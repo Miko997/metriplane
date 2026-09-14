@@ -7,7 +7,7 @@ set -euo pipefail
 # Metriplane DEMO_ALL: "run everything and map PASS/FAIL"
 #
 # Produces:
-#   runs/demo_all_YYYYmmdd_HHMMSS/
+#   <platform-runs-dir>/demo_all_YYYYmmdd_HHMMSS/
 #     - *.log (one per step)
 #     - manifest.tsv (step/status/rc/log/cmd)
 #
@@ -41,7 +41,7 @@ Options:
   -h, --help           Show this help
 
 Environment:
-  RUNS (optional)      Where mp.sh writes run directories (default: $HOME/metriplane_runs)
+  RUNS (optional)      Where mp.sh writes run directories (default: platform runs directory)
 EOF
 }
 
@@ -87,13 +87,31 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT/.venv"
 PYTHON="$VENV_DIR/bin/python"
 RUN_ID="demo_all_$(date +%Y%m%d_%H%M%S)"
-LOG_DIR="$ROOT/runs/$RUN_ID"
+
+if [[ "${RUNS:-}" =~ [^[:space:]] ]]; then
+  RUNS_DIR="$RUNS"
+else
+  PATHS_PYTHON="python3"
+  if [[ -x "$PYTHON" ]]; then
+    PATHS_PYTHON="$PYTHON"
+  fi
+  RUNS_DIR="$(cd "$ROOT" && "$PATHS_PYTHON" -c \
+    '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
+fi
+LOG_DIR="$RUNS_DIR/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
 MANIFEST="$LOG_DIR/manifest.tsv"
 printf "step\tstatus\trc\tseconds\tlog\tcmd\n" > "$MANIFEST"
-
-RUNS_DIR="${RUNS:-$HOME/metriplane_runs}"
 
 echo "Repo root : $ROOT"
 echo "Venv dir  : $VENV_DIR"

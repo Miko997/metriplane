@@ -23,8 +23,10 @@ SUBJECTS = {
 
 def obj(marker, x, y, zone=None, vel=None):
     return ObjectStateModel(
-        id=str(marker), pos_world=(x, y, 0.0),
-        vel_world=(vel[0], vel[1], 0.0) if vel else None, zone=zone,
+        id=str(marker),
+        pos_world=(x, y, 0.0),
+        vel_world=(vel[0], vel[1], 0.0) if vel else None,
+        zone=zone,
     )
 
 
@@ -34,8 +36,9 @@ def engine(rule):
 
 
 def test_forbidden_zone_emits():
-    e = engine(ContractRuleSpec(id="fz", type="forbidden_zone",
-                                subject="movable", zones=["exit_lane"]))
+    e = engine(
+        ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"])
+    )
     events = e.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])
     assert len(events) == 1
     ev = events[0]
@@ -46,8 +49,11 @@ def test_forbidden_zone_emits():
 
 
 def test_forbidden_zone_cooldown_suppresses():
-    e = engine(ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable",
-                                zones=["exit_lane"], cooldown_s=5.0))
+    e = engine(
+        ContractRuleSpec(
+            id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"], cooldown_s=5.0
+        )
+    )
     e.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])
     e2 = e.update(1.0, [obj(7, 1.0, 1.0, zone="exit_lane")])  # within cooldown
     assert e2 == []
@@ -56,9 +62,16 @@ def test_forbidden_zone_cooldown_suppresses():
 
 
 def test_minimum_distance_emits_after_min_duration():
-    e = engine(ContractRuleSpec(id="md", type="minimum_distance",
-                                subject_a="people", subject_b="movable",
-                                distance_m=0.6, min_duration_s=0.3))
+    e = engine(
+        ContractRuleSpec(
+            id="md",
+            type="minimum_distance",
+            subject_a="people",
+            subject_b="movable",
+            distance_m=0.6,
+            min_duration_s=0.3,
+        )
+    )
     # close at t=0 but min_duration not yet met
     ev0 = e.update(0.0, [obj(3, 0.0, 0.0), obj(7, 0.3, 0.0)])
     assert ev0 == []
@@ -69,9 +82,16 @@ def test_minimum_distance_emits_after_min_duration():
 
 
 def test_minimum_distance_resets_when_apart():
-    e = engine(ContractRuleSpec(id="md", type="minimum_distance",
-                                subject_a="people", subject_b="movable",
-                                distance_m=0.6, min_duration_s=0.3))
+    e = engine(
+        ContractRuleSpec(
+            id="md",
+            type="minimum_distance",
+            subject_a="people",
+            subject_b="movable",
+            distance_m=0.6,
+            min_duration_s=0.3,
+        )
+    )
     e.update(0.0, [obj(3, 0.0, 0.0), obj(7, 0.3, 0.0)])
     # move apart → resets continuous-violation timer
     e.update(0.5, [obj(3, 0.0, 0.0), obj(7, 5.0, 0.0)])
@@ -81,9 +101,15 @@ def test_minimum_distance_resets_when_apart():
 
 
 def test_zone_occupancy_duration_emits():
-    e = engine(ContractRuleSpec(id="zo", type="zone_occupancy_duration",
-                                subject="movable", zones=["exit_lane"],
-                                max_duration_s=5.0))
+    e = engine(
+        ContractRuleSpec(
+            id="zo",
+            type="zone_occupancy_duration",
+            subject="movable",
+            zones=["exit_lane"],
+            max_duration_s=5.0,
+        )
+    )
     for t in range(0, 5):
         ev = e.update(float(t), [obj(12, 1.0, 1.0, zone="exit_lane")])
         assert ev == []  # dwell < 5.0
@@ -93,10 +119,16 @@ def test_zone_occupancy_duration_emits():
 
 
 def test_forbidden_direction_emits_wrong_way():
-    e = engine(ContractRuleSpec(id="dir", type="forbidden_direction",
-                                subject="movable", zones=["packing_lane"],
-                                allowed_direction="left_to_right",
-                                min_speed_mps=0.05))
+    e = engine(
+        ContractRuleSpec(
+            id="dir",
+            type="forbidden_direction",
+            subject="movable",
+            zones=["packing_lane"],
+            allowed_direction="left_to_right",
+            min_speed_mps=0.05,
+        )
+    )
     # moving right_to_left (vx negative) in packing_lane → wrong way
     ev = e.update(0.0, [obj(7, 1.0, 1.0, zone="packing_lane", vel=(-0.5, 0.0))])
     assert len(ev) == 1
@@ -104,42 +136,53 @@ def test_forbidden_direction_emits_wrong_way():
 
 
 def test_forbidden_direction_allows_correct_way():
-    e = engine(ContractRuleSpec(id="dir", type="forbidden_direction",
-                                subject="movable", zones=["packing_lane"],
-                                allowed_direction="left_to_right",
-                                min_speed_mps=0.05))
+    e = engine(
+        ContractRuleSpec(
+            id="dir",
+            type="forbidden_direction",
+            subject="movable",
+            zones=["packing_lane"],
+            allowed_direction="left_to_right",
+            min_speed_mps=0.05,
+        )
+    )
     ev = e.update(0.0, [obj(7, 1.0, 1.0, zone="packing_lane", vel=(0.5, 0.0))])
     assert ev == []
 
 
 def test_speed_limit_emits():
-    e = engine(ContractRuleSpec(id="sp", type="speed_limit",
-                                subject="movable", max_speed_mps=1.5))
+    e = engine(ContractRuleSpec(id="sp", type="speed_limit", subject="movable", max_speed_mps=1.5))
     ev = e.update(0.0, [obj(7, 0.0, 0.0, vel=(2.0, 0.0))])
     assert len(ev) == 1
     assert ev[0].observed_value == 2.0
 
 
 def test_zone_capacity_emits():
-    e = engine(ContractRuleSpec(id="cap", type="zone_capacity",
-                                subject="movable", zones=["dock"], max_count=1))
-    ev = e.update(0.0, [obj(7, 0.0, 0.0, zone="dock"),
-                        obj(12, 1.0, 0.0, zone="dock")])
+    e = engine(
+        ContractRuleSpec(
+            id="cap", type="zone_capacity", subject="movable", zones=["dock"], max_count=1
+        )
+    )
+    ev = e.update(0.0, [obj(7, 0.0, 0.0, zone="dock"), obj(12, 1.0, 0.0, zone="dock")])
     assert len(ev) == 1
     assert ev[0].observed_value == 2
     assert set(ev[0].object_ids) == {"cart_01", "pallet_01"}
 
 
 def test_disabled_rule_does_not_emit():
-    e = engine(ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable",
-                                zones=["exit_lane"], enabled=False))
+    e = engine(
+        ContractRuleSpec(
+            id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"], enabled=False
+        )
+    )
     ev = e.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])
     assert ev == []
 
 
 def test_event_has_full_provenance():
-    e = engine(ContractRuleSpec(id="fz", type="forbidden_zone",
-                                subject="movable", zones=["exit_lane"]))
+    e = engine(
+        ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"])
+    )
     ev = e.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])[0]
     assert ev.contract_id == "t"
     assert ev.rule_id == "fz"
@@ -150,18 +193,23 @@ def test_event_has_full_provenance():
 
 
 def test_event_ids_deterministic_and_sequential():
-    e1 = engine(ContractRuleSpec(id="fz", type="forbidden_zone",
-                                 subject="movable", zones=["exit_lane"]))
-    e2 = engine(ContractRuleSpec(id="fz", type="forbidden_zone",
-                                 subject="movable", zones=["exit_lane"]))
+    e1 = engine(
+        ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"])
+    )
+    e2 = engine(
+        ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"])
+    )
     ev1 = e1.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])
     ev2 = e2.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])
     assert ev1[0].event_id == ev2[0].event_id == "cevt_000001"
 
 
 def test_to_rule_alert_maps_high_to_critical():
-    e = engine(ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable",
-                                zones=["exit_lane"], severity="high"))
+    e = engine(
+        ContractRuleSpec(
+            id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"], severity="high"
+        )
+    )
     ev = e.update(0.0, [obj(7, 1.0, 1.0, zone="exit_lane")])[0]
     alert = ev.to_rule_alert()
     assert alert.severity == "critical"

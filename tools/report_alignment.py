@@ -114,7 +114,9 @@ def main() -> int:
         dy = float(xy0[1] - xy1[1])
         dist = float(np.hypot(dx, dy))
         is_anchor = "YES" if mid in anchors else ""
-        print(f"{mid:>2d}  ({xy0[0]:>7.3f},{xy0[1]:>7.3f})   ({xy1[0]:>7.3f},{xy1[1]:>7.3f})   {dist:>7.3f}   {is_anchor}")
+        print(
+            f"{mid:>2d}  ({xy0[0]:>7.3f},{xy0[1]:>7.3f})   ({xy1[0]:>7.3f},{xy1[1]:>7.3f})   {dist:>7.3f}   {is_anchor}"
+        )
 
     return 0
 

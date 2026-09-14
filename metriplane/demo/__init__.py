@@ -66,10 +66,7 @@ def _bundled_inputs() -> Iterator[tuple[Path, Path]]:
         root = Path(extracted_root)
         session = root / "assembly_cell_missing_tool.jsonl"
         pack = root / "assembly_cell"
-        required = [
-            root / Path(path).relative_to("assets")
-            for path in BUNDLED_DEMO_RESOURCES
-        ]
+        required = [root / Path(path).relative_to("assets") for path in BUNDLED_DEMO_RESOURCES]
         missing = [path.name for path in required if not path.is_file()]
         if missing:
             raise _DemoError(f"Bundled demo resources are missing: {', '.join(missing)}")
@@ -99,9 +96,7 @@ def export_demo_inputs(destination: str | Path) -> Path:
         raise _DemoError(f"Export parent is not a directory: {output.parent}")
 
     # Stage beside the destination so the final rename stays on one filesystem.
-    staging = Path(
-        tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=output.parent)
-    )
+    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=output.parent))
     published = False
     reserved_output = False
     try:
@@ -122,8 +117,7 @@ def export_demo_inputs(destination: str | Path) -> Path:
             reserved_output = True
         except FileExistsError:
             raise _DemoError(
-                "Refusing to replace an export path that appeared while exporting: "
-                f"{output}",
+                f"Refusing to replace an export path that appeared while exporting: {output}",
                 exit_code=2,
             )
 
@@ -164,13 +158,9 @@ def _print_export_next_steps(export_dir: Path) -> None:
     )
     print(f"  metriplane atlas report --run-dir {quote(run_dir)}")
     print(
-        "  metriplane atlas bundle verify "
-        f"{quote(run_dir / 'evidence_bundles' / 'INC-0001.zip')}"
+        f"  metriplane atlas bundle verify {quote(run_dir / 'evidence_bundles' / 'INC-0001.zip')}"
     )
-    print(
-        "  metriplane atlas test "
-        f"{quote(run_dir / 'regression_tests' / 'INC-0001.yaml')} --json"
-    )
+    print(f"  metriplane atlas test {quote(run_dir / 'regression_tests' / 'INC-0001.yaml')} --json")
 
 
 def run_demo(out_dir: str | Path) -> DemoResult:
@@ -295,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_export_next_steps(export_dir)
         return 0
 
-    out_dir = (args.out.expanduser().resolve() if args.out else _next_default_out_dir())
+    out_dir = args.out.expanduser().resolve() if args.out else _next_default_out_dir()
     print("Metriplane bundled demo")
     print()
     print("Scenario:")

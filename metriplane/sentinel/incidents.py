@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 from metriplane.sentinel.events import IncidentRecord, RuleAlert
 
+IncidentKey = tuple[str, tuple[str, ...], str]
+
 
 @dataclass
 class IncidentEngineConfig:
@@ -17,16 +19,16 @@ class IncidentEngineConfig:
         An open incident closes when no matching alert is seen for longer than
         this many seconds. The close timestamp is the last alert ts.
     """
+
     gap_close_s: float = 1.0
 
 
-def _incident_key(alert: RuleAlert) -> tuple[str, tuple[str, ...], str]:
+def _incident_key(alert: RuleAlert) -> IncidentKey:
     """Group alerts by rule, the set of objects involved, and zone."""
     return (alert.rule_id, tuple(sorted(alert.object_ids)), alert.zone or "")
 
 
-def _summarize(rule_id: str, object_ids: list[str], zones: list[str],
-               duration_s: float) -> str:
+def _summarize(rule_id: str, object_ids: list[str], zones: list[str], duration_s: float) -> str:
     objs = ", ".join(object_ids) if object_ids else "object"
     zone_part = f" in {zones[0]}" if zones else ""
     return f"{objs} triggered {rule_id}{zone_part} for {round(duration_s, 1)}s"
@@ -53,8 +55,8 @@ class IncidentEngine:
         ordered = sorted(alerts, key=lambda a: (a.ts, a.alert_id))
 
         # open incident per group key
-        open_inc: dict[tuple, IncidentRecord] = {}
-        open_last_ts: dict[tuple, float] = {}
+        open_inc: dict[IncidentKey, IncidentRecord] = {}
+        open_last_ts: dict[IncidentKey, float] = {}
         closed: list[IncidentRecord] = []
 
         def flush_expired(now_ts: float) -> None:
@@ -63,8 +65,9 @@ class IncidentEngine:
                     inc = open_inc.pop(key)
                     last = open_last_ts.pop(key)
                     inc.close(last)
-                    inc.summary = _summarize(inc.rule_id, inc.object_ids,
-                                             inc.zones, inc.duration_s or 0.0)
+                    inc.summary = _summarize(
+                        inc.rule_id, inc.object_ids, inc.zones, inc.duration_s or 0.0
+                    )
                     closed.append(inc)
 
         for alert in ordered:
@@ -97,8 +100,7 @@ class IncidentEngine:
         for key, inc in open_inc.items():
             last = open_last_ts[key]
             inc.close(last)
-            inc.summary = _summarize(inc.rule_id, inc.object_ids,
-                                     inc.zones, inc.duration_s or 0.0)
+            inc.summary = _summarize(inc.rule_id, inc.object_ids, inc.zones, inc.duration_s or 0.0)
             closed.append(inc)
 
         closed.sort(key=lambda i: (i.opened_ts, i.incident_id))
@@ -109,6 +111,7 @@ def _severity_rank(sev: str) -> int:
     return {"info": 0, "warning": 1, "critical": 2}.get(sev, 0)
 
 
-def build_incidents(alerts: list[RuleAlert],
-                    config: IncidentEngineConfig | None = None) -> list[IncidentRecord]:
+def build_incidents(
+    alerts: list[RuleAlert], config: IncidentEngineConfig | None = None
+) -> list[IncidentRecord]:
     return IncidentEngine(config).group(alerts)

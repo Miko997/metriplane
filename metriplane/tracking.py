@@ -17,6 +17,7 @@ class ObjectRegistry:
     - Update with detections each frame
     - Expire objects not seen for timeout_s
     """
+
     timeout_s: float = 1.5
     objects: Dict[str, ObjectStateModel] = field(default_factory=dict)
     last_seen_s: Dict[str, float] = field(default_factory=dict)

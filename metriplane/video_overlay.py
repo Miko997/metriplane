@@ -170,7 +170,9 @@ def draw_overlay_bgr(
         total_th = 0
         baseline_max = 0
         for line in lines:
-            (tw, th), baseline = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, cfg.font_scale, cfg.thickness)
+            (tw, th), baseline = cv2.getTextSize(
+                line, cv2.FONT_HERSHEY_SIMPLEX, cfg.font_scale, cfg.thickness
+            )
             line_sizes.append((tw, th, baseline))
             max_tw = max(max_tw, tw)
             baseline_max = max(baseline_max, baseline)

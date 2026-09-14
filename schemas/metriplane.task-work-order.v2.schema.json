@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.task-work-order.v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "materialization_id",
+    "task_id",
+    "linear_issue",
+    "repository",
+    "project_id",
+    "base_sha",
+    "base_tree",
+    "grantor_id",
+    "executor_id",
+    "evaluated_at",
+    "verdict",
+    "input_digests",
+    "delegation",
+    "dependencies",
+    "linear_relation_digest",
+    "commands",
+    "resolution",
+    "catalog_row"
+  ],
+  "properties": {
+    "schema_version": {"const": "metriplane.task-work-order.v2"},
+    "materialization_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+    "linear_issue": {"type": "string", "pattern": "^MET-[0-9]+$"},
+    "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+    "project_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "base_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "grantor_id": {"type": "string", "minLength": 1},
+    "executor_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "evaluated_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "verdict": {"const": "READY"},
+    "input_digests": {
+      "type": "object",
+      "minProperties": 11,
+      "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    },
+    "delegation": {"type": "object"},
+    "dependencies": {"type": "array"},
+    "linear_relation_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "commands": {"type": "array", "minItems": 1},
+    "resolution": {"type": "object"},
+    "catalog_row": {"type": "object"}
+  }
+}

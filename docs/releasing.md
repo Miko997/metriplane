@@ -5,9 +5,11 @@ SPDX-License-Identifier: MIT
 
 # Releasing Metriplane
 
-Metriplane uses PyPI Trusted Publishing. A release tag starts a workflow that
-builds one wheel and one source distribution, records their SHA-256 hashes,
-publishes those exact files to TestPyPI, and verifies them. Production
+Metriplane uses PyPI Trusted Publishing. Before a release tag exists, an
+owner-only staging workflow builds one wheel and one source distribution from
+exact protected `main`, records their source identity and SHA-256 hashes, and
+retains that canonical set. The release tag workflow imports those exact files,
+publishes them to TestPyPI, and verifies them without rebuilding. Production
 publication is a separate owner-only manual dispatch that names the successful
 tag workflow run, version, and an exact confirmation phrase. The `pypi`
 environment is an additional protection layer, not the only approval control.
@@ -47,9 +49,18 @@ but is explicitly excluded from the generated documentation site.
    protection is absent or misconfigured.
 3. Restrict `testpypi` to release tags and restrict `pypi` to protected
    `main`. The manual production dispatch rejects any other ref or a stale main
-   commit. Protect `v*` tags against update and deletion with a repository
-   ruleset.
-4. Configure Trusted Publishers for the `metriplane` project in both
+   commit. Keep the active repository ruleset `Protect release tags` targeted
+   at tags with the sole include `refs/tags/v*`, empty exclusions and bypass
+   actors, and exactly the `update` and `deletion` rules. Do not add a creation
+   rule: new release tags must remain creatable.
+4. Activate the App-only `main` update ruleset and the protected
+   `release-leases/**` ruleset described in
+   [Release blocker workflow](maintainers/blocker-workflow.md#production-serialization).
+   Confirm that only the broker App can mutate lease refs and that it
+   acknowledges an exact lease with its App-owned
+   `Release serialization / required` check. Production publication is fail
+   closed until this MET-77 dependency is live.
+5. Configure Trusted Publishers for the `metriplane` project in both
    [TestPyPI](https://test.pypi.org/manage/account/publishing/) and
    [PyPI](https://pypi.org/manage/account/publishing/):
 
@@ -60,8 +71,8 @@ but is explicitly excluded from the generated documentation site.
    | Workflow | `publish-pypi.yml` | `publish-pypi.yml` |
    | Environment | `testpypi` | `pypi` |
 
-5. Require two-factor authentication on both registry accounts.
-6. Confirm that GitHub Actions has read access to repository contents and that
+6. Require two-factor authentication on both registry accounts.
+7. Confirm that GitHub Actions has read access to repository contents and that
    only the TestPyPI and production publishing jobs receive `id-token: write`.
 
 No long-lived registry token belongs in GitHub secrets.
@@ -74,8 +85,10 @@ the only place that changes the package version.
 1. Set `metriplane.__version__` to the intended version.
 2. Confirm distribution metadata and `metriplane --version` use that same
    value.
-3. Finalize the changelog, migration notes, README quickstart, and release
-   notes. Remove all pre-release wording that is no longer true.
+3. Finalize the changelog, migration note, README quickstart, and substantive
+   release copy. The migration note must be final, but release notes and launch
+   materials remain explicitly **DRAFT — UNPUBLISHED** with unfilled commit,
+   date, workflow, and artifact-hash fields until production verification.
 4. Confirm supported-environment wording matches executed checks.
 5. Verify that the frozen v0.2.0 evidence, tag, DOI metadata, checksums,
    `CITATION.cff`, and `.zenodo.json` were not rewritten.
@@ -91,24 +104,36 @@ explicit approval.
 
 Run from a clean checkout. Replace `<version>` with the exact candidate version,
 keep the same shell for the following blocks, and use separate temporary
-environments for the source tree, wheel, and source distribution.
+environments for the source tree, wheel, and source distribution. Source
+qualification uses the exact root lock and tool identities in the
+[maintainer testing policy](maintainers/testing-policy.md); it does not resolve a
+parallel release-only toolchain. The canonical frozen sync installs the exact
+setuptools build backend, and the retained distribution build runs without an
+isolated resolver.
 
 ```bash
 release_version="<version>"
-python3.12 -m venv /tmp/metriplane-release-source
-source /tmp/metriplane-release-source/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e . pytest setuptools build twine
-python -m pip check
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
+release_source_root="$(mktemp -d)"
+export UV_PROJECT_ENVIRONMENT="$release_source_root/.venv"
+export UV_NO_CONFIG=1
+test "$(uv --version | awk '{print $2}')" = "0.12.0"
+uv --no-config lock --check
+uv --no-config sync --frozen --all-groups
+uv --no-config pip check
+uv --no-config run --frozen python -m playwright install chromium --with-deps
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+  uv --no-config run --frozen python -m pytest -q
 release_artifact_root="$(mktemp -d)"
-python -m build --outdir "$release_artifact_root/dist"
-python -m twine check --strict "$release_artifact_root"/dist/*
-python tools/release_artifacts.py create-manifest \
+uv --no-config run --frozen python -m build \
+  --no-isolation \
+  --outdir "$release_artifact_root/dist"
+uv --no-config run --frozen python -m twine check --strict \
+  "$release_artifact_root"/dist/*
+uv --no-config run --frozen python tools/release_artifacts.py create-manifest \
   --dist "$release_artifact_root/dist" \
   --manifest "$release_artifact_root/SHA256SUMS" \
   --version "$release_version"
-python tools/release_artifacts.py inspect-sdist \
+uv --no-config run --frozen python tools/release_artifacts.py inspect-sdist \
   --sdist "$release_artifact_root/dist/metriplane-${release_version}.tar.gz" \
   --version "$release_version"
 ```
@@ -149,10 +174,77 @@ python3.12 -m venv /tmp/metriplane-release-sdist
 )
 ```
 
+Run the complete documented evidence-to-regression proof with the installed
+wheel, outside the checkout. Both Atlas runs use the same explicit run identity
+so the deterministic files are directly comparable:
+
+```bash
+metriplane_cmd=/tmp/metriplane-release-wheel/bin/metriplane
+wheel_python=/tmp/metriplane-release-wheel/bin/python
+proof_root="$(mktemp -d)"
+proof_inputs="$proof_root/inputs"
+proof_run_a="$proof_root/run-a"
+proof_run_b="$proof_root/run-b"
+
+"$metriplane_cmd" demo --export-inputs "$proof_inputs"
+"$metriplane_cmd" atlas validate-pack "$proof_inputs/domain-pack"
+
+for proof_run in "$proof_run_a" "$proof_run_b"; do
+  "$metriplane_cmd" atlas run \
+    --session-jsonl "$proof_inputs/session.jsonl" \
+    --pack "$proof_inputs/domain-pack" \
+    --out "$proof_run" \
+    --run-id v040-release-proof
+  "$metriplane_cmd" atlas report --run-dir "$proof_run"
+  "$metriplane_cmd" atlas bundle verify \
+    "$proof_run/evidence_bundles/INC-0001.zip"
+  "$metriplane_cmd" atlas test \
+    "$proof_run/regression_tests/INC-0001.yaml" --json
+done
+
+for artifact in \
+  physical_event_log.jsonl deviations.jsonl incidents.jsonl \
+  reality_graph.json process_trace.json flow_metrics.csv; do
+  cmp -- "$proof_run_a/$artifact" "$proof_run_b/$artifact"
+done
+```
+
+The declared negative case mutates only a disposable copy of the directory-form
+bundle. Verification must exit 3, report `pass: false`, and name the changed
+file:
+
+```bash
+negative_bundle="$proof_root/tampered-bundle"
+cp -R "$proof_run_a/evidence_bundles/INC-0001" "$negative_bundle"
+printf '\n' >> "$negative_bundle/incident.json"
+set +e
+negative_json="$("$metriplane_cmd" atlas bundle verify "$negative_bundle")"
+negative_status=$?
+set -e
+test "$negative_status" -eq 3
+printf '%s\n' "$negative_json" | "$wheel_python" -c \
+  'import json,sys; r=json.load(sys.stdin); assert r["pass"] is False; assert "checksum mismatch: incident.json" in r["errors"]'
+```
+
 Inspect both archives before approval. They must contain package source,
 license and notice files, metadata, and every bundled-demo resource. They must
 not contain credentials, local paths, generated runs, caches, private media,
 editor files, or unrelated research archives.
+
+## Retain the canonical publication artifacts
+
+After the exact protected-main candidate and every prepublication gate are
+green, manually run **Stage Python distributions** from `main` with the exact
+version and confirmation `stage metriplane <version> canonical artifacts`.
+Review the successful run and retain its `python-package-distributions`
+artifact. It must contain exactly one wheel, one source distribution,
+`SHA256SUMS`, and `BUILD_IDENTITY.json`; the identity must name the exact main
+commit, tree, version, staging workflow, and run ID.
+
+Do not run staging twice for the same candidate. The tag workflow fails closed
+unless it finds exactly one successful exact-source staging run with one
+unexpired canonical artifact. Any source change invalidates the staging run and
+requires a new protected candidate and one new canonical build.
 
 ## Create the annotated tag
 
@@ -187,31 +279,45 @@ The publication workflow rejects:
 
 ## Staged publication and explicit production promotion
 
-The workflow performs this sequence:
+The staging and publication workflows perform this sequence:
 
-1. verify tag provenance;
-2. run the reusable Release Gates;
-3. rerun the complete test suite;
-4. build the wheel and source distribution once;
+1. before tagging, verify the owner requested staging from exact protected
+   `main` and that the version and public targets are unoccupied;
+2. run the reusable Release Gates on that exact source;
+3. sync the canonical lock, prove its exact governed tool versions, install the
+   locked Playwright browser and runtime dependencies, and rerun the complete
+   test suite;
+4. build the wheel and source distribution once with the locked build frontend
+   and setuptools backend, without an isolated resolver;
 5. run strict metadata validation;
 6. test the wheel outside the checkout;
 7. install and test the source distribution in a different environment;
-8. upload the two files with a SHA-256 manifest;
-9. publish those files to TestPyPI;
-10. compare TestPyPI's file hashes with the build manifest and install the
-    staged package;
-11. stop after verified TestPyPI publication;
-12. from the latest `main`, have the owner manually run **Publish Python
+8. retain the two files with their SHA-256 manifest and exact source identity;
+9. after the annotated tag is pushed, verify tag provenance and Release Gates,
+   locate the unique successful staging run for that exact commit, and import
+   its canonical artifact without rebuilding;
+10. publish those files to TestPyPI;
+11. compare TestPyPI's file hashes with the build manifest and install the
+   staged package;
+12. stop after verified TestPyPI publication;
+13. from the latest `main`, have the owner manually run **Publish Python
     distributions** with the successful tag workflow run ID, exact version,
     and exact confirmation
     `publish metriplane <version> to production`;
-13. verify that the named source run was a successful tag run for the same
+14. verify that the named source run was a successful tag run for the same
     annotated tag and commit and that it has one unexpired immutable artifact;
-14. re-download that exact artifact set and compare it with TestPyPI before the
+15. re-download that exact artifact set and compare it with TestPyPI before the
     `pypi` environment is entered;
-15. publish the verified files to PyPI;
-16. compare production PyPI's hashes with the same manifest and verify a clean
-    production installation.
+16. wait for the App-only main-update broker to create the exact protected
+    publish-lease ref and acknowledge that all main updates are fenced;
+17. revalidate live blocker approvals while the lease is held, then reassert the
+    lease, its exact App check, and exact current `main` immediately before the
+    trusted publishing action;
+18. publish the verified files to PyPI;
+19. while the lease remains active, compare production PyPI's hashes with the
+    same manifest and verify a clean production installation;
+20. wait for the broker to re-prove exact `main`, retire its exact lease, and
+    complete the same App check successfully before main updates resume.
 
 Do not start the production workflow dispatch until the TestPyPI verification
 job is green and its version, doctor, demo, bundle-verification, and
@@ -219,6 +325,13 @@ regression-check results have been reviewed. If the environment also pauses,
 approve it only after confirming the dispatch inputs. A failed TestPyPI stage
 means stop, diagnose, and prepare a new version if any immutable file was
 already accepted by a registry.
+
+Any `main` drift detected before step 18 burns the candidate; stop and create a
+new tag. A failed or ambiguous production upload or verification deliberately
+leaves the App-owned lease active. Do not delete it by hand or retry
+publication. Reconcile the PyPI file hashes and broker state first, then use the
+broker's audited recovery path. Drift detected after PyPI accepts immutable
+bytes is a release incident, not an unpublished candidate.
 
 ## Verify production and finish the release
 
@@ -240,45 +353,129 @@ python3.12 -m venv /tmp/metriplane-production-check
 )
 ```
 
-Only then finalize the GitHub release body, merge the separately validated
-website release pull request, deploy the website, and update repository
-discovery metadata.
-
 ### Stop gate: Zenodo and citation metadata
 
 Before creating the GitHub release, the owner must verify that Zenodo's GitHub
-integration will **not** automatically archive v0.3.0. The frozen v0.2.0 DOI
-must not be attached to v0.3.0, and no v0.3.0 DOI may be claimed before a
+integration will **not** automatically archive v0.4.0.post2. The frozen v0.2.0 DOI
+must not be attached to v0.4.0.post2, and no v0.4.0.post2 DOI may be claimed before a
 separate, intentionally described archive exists. If automatic archiving is
 enabled or its behavior is uncertain, stop before creating the GitHub release.
 
 See [Citing Metriplane](user-guide/citing.md) for the separate software,
 frozen-artifact, and paper citation paths.
 
-## v0.3.0 release-candidate checklist
+Only then finalize the GitHub release body. Attach the retained workflow copies
+of the wheel, source distribution, and `SHA256SUMS`; do not rebuild or rename
+them. Download all three GitHub Release assets into a new directory, require the
+exact three-name inventory, verify the manifest, and compare every SHA-256 value
+with the retained workflow artifact and both public registries. Any missing,
+extra, or changed asset stops release completion.
 
-This section is a preparation checklist, not evidence that v0.3.0 is published.
+After that readback succeeds, merge the separately validated website release
+pull request, deploy the website, and update repository discovery metadata.
 
-- [ ] Final candidate version is `0.3.0` in the package, CLI, and metadata.
+## v0.4.0.post2 publication-recovery stop gates
+
+v0.4.0.post2 publishes the existing reduced Truth Recovery core scope under the
+replacement publication identity. It adds no product capability or assurance.
+Stop the candidate before tagging or publication if any condition is false:
+
+- `0.4.0.post2` and `v0.4.0.post2` were confirmed unoccupied before the candidate was
+  frozen;
+- `v0.4.0` still identifies
+  `6a87936b5471c320efa6bcd7f5d1fe5569ca57b9`, no 0.4.0 registry package or
+  GitHub Release exists, and no artifact from failed workflow `33695500256` is
+  reused;
+- `v0.4.0.post1` still identifies
+  `69f3d88c0779ff19962c455637a12701ff043876`; its locked qualification,
+  retained hashes, and TestPyPI files remain historical, production run
+  `33963231781` remains cancelled before lease creation or upload, no post1
+  production package or GitHub Release exists, and no post1 artifact is reused;
+- the active `Protect release tags` provider ruleset has exact include
+  `refs/tags/v*`, empty exclusions and bypass actors, and exactly `update` and
+  `deletion` rules, leaving creation permitted;
+- the exact candidate commit and tree descend from dependency-complete protected
+  `main` and remain unchanged throughout qualification;
+- MP2-007 and MP2-014 through MP2-017 remain explicitly deferred to v0.4.1
+  Assurance Hardening rather than being described as passed, completed, or
+  waived;
+- historical v2.5.x authority packets were not consumed or recreated as release
+  authority;
+- current-version external-fixture evaluations are separate, checksummed
+  materializations and the frozen source-specific v0.3.0 proof trees are
+  unchanged;
+- release claims do not expand static inventories or deterministic software
+  checks into production-safety, physical-accuracy, generic-robotics, or v1.0
+  assurance claims;
+- release notes and launch materials still carry their draft marker and
+  unfilled production fields; and
+- generated inventories are current for the exact staged candidate.
+
+Any candidate-code or release-document change after qualification and before
+tagging invalidates the candidate and requires qualification of the new exact
+commit. Local pre-tag builds are disposable checks. The tag workflow's retained
+wheel, source distribution, and SHA-256 manifest are the build-once publication
+set and must not be rebuilt for production promotion.
+
+## v0.4.0.post2 release-candidate checklist
+
+This section is a preparation checklist, not evidence that v0.4.0.post2 is published.
+
+- [ ] Version `0.4.0.post2` and tag `v0.4.0.post2` were confirmed unoccupied.
+- [ ] Final candidate version is `0.4.0.post2` in the package, CLI, and metadata;
+      the tag invariant remains `tag == "v" + exact package version`.
+- [ ] The failed `v0.4.0` identity and workflow are preserved exactly, and no
+      failed-workflow artifact is reused.
+- [ ] The retired unpublished `v0.4.0.post1` identity, retained artifact set,
+      TestPyPI staging, and cancelled pre-lease production evidence are
+      preserved exactly; no post1 artifact is reused.
+- [ ] Exact candidate commit and tree are recorded from dependency-complete
+      protected `main`.
 - [ ] Primary README path is
-      `python -m pip install "metriplane==0.3.0"` followed by
+      `python -m pip install "metriplane==0.4.0.post2"` followed by
       `metriplane demo --open`.
+- [ ] Pinned Ruff lint and format, strict mypy, tracked Python compilation,
+      strict documentation, and generated-inventory currentness checks pass.
+- [ ] Complete source qualification and the focused MP2-002 and MP2-013 checks
+      pass on the exact candidate.
 - [ ] Linux Release Gates pass on Python 3.12 and 3.13.
 - [ ] The bundled camera-free demo passes on macOS with Python 3.12 and 3.13.
-- [x] WSL2 wording is bounded to the recorded Ubuntu 24.04/Python 3.12.3
-      installed-wheel camera-free and headless owner run; automatic browser
-      opening is not claimed.
-- [x] Native Windows wording is limited to one owner-reported bundled-demo
-      completion; broader platform support is not advertised.
+- [ ] Any WSL2 or native-Windows wording is backed by a fresh v0.4.0.post2 candidate
+      record; historical v0.3.0 observations are not relabeled.
 - [ ] Wheel and source distribution pass independent clean installations.
+- [ ] The canonical bundled example, complete documented
+      evidence-to-regression workflow, deterministic repeat, and one declared
+      negative case pass in their declared clean environments.
 - [ ] The exact artifact SHA-256 manifest is recorded from the workflow run.
 - [ ] Frozen v0.2.0 evidence and research-integrity checks pass.
-- [x] Human-comprehension results remain an accurate zero-tester pending record;
-      the owner explicitly deferred this non-blocking check to post-release
-      adoption follow-up without claiming that human validation passed.
+- [ ] Frozen source-specific v0.3.0 fixture/proof identities remain unchanged;
+      v0.4.0.post2 compatibility evaluation uses explicit disposable projections.
+- [ ] The release notes identify the reduced Truth Recovery scope, all deferred
+      Assurance Hardening work, and every actual limitation without expanding
+      support claims.
 - [ ] Final release-candidate pull request has explicit owner approval.
 - [ ] Zenodo automatic archiving is confirmed disabled before GitHub release.
 
-The prepared v0.3.0 migration, release, and launch drafts live under
-[`docs/releases/`](releases/). Fill their explicit placeholders only from the
-actual approved release and registry results.
+The prepared v0.4.0.post2 migration note, draft release notes, and draft launch
+materials live under [`docs/releases/`](releases/). Fill their explicit
+placeholders only from the actual approved release, retained build-once
+artifacts, successful tag and production runs, and final registry readback.
+
+The v0.3.0 release files and the recorded v0.3.0 human-comprehension,
+WSL2, and native-Windows facts remain historical evidence. Do not update them to
+describe v0.4.0.post2.
+
+### Post-publication documentation reconciliation
+
+The immutable tag necessarily contains the explicitly marked draft release
+notes and launch checklist: production workflow IDs, retained artifact hashes,
+registry readback, and the GitHub release URL do not exist when the tag is
+created. Build the final GitHub release body directly from that verified live
+evidence.
+
+After publication succeeds, use a separate documentation-only pull request on
+protected `main` to fill the v0.4.0.post2 release-note and launch-material fields,
+remove their draft notices, and record the completed checklist. This follow-up
+does not modify the tag, rebuild artifacts, or invalidate the already published
+candidate. Run only the documentation, generated-inventory currentness, and
+clean-worktree gates appropriate to that follow-up.

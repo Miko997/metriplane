@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -51,6 +53,124 @@ REQUIRED_WORKFLOWS = {
     "documentation": ("Documentation / required", "Documentation"),
     "security": ("Security / required", "CodeQL"),
 }
+
+RUN_STATUSES = frozenset({"completed", "in_progress", "pending", "queued", "requested", "waiting"})
+RUN_CONCLUSIONS = frozenset(
+    {
+        "action_required",
+        "cancelled",
+        "failure",
+        "neutral",
+        "skipped",
+        "stale",
+        "startup_failure",
+        "success",
+        "timed_out",
+    }
+)
+
+
+def _validate_run_result(run: dict[str, Any], *, workflow: str) -> tuple[str, str | None]:
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    if not isinstance(status, str) or status not in RUN_STATUSES:
+        raise ObservationError(f"{workflow}: provider run status is invalid")
+    if conclusion is not None and (
+        not isinstance(conclusion, str) or conclusion not in RUN_CONCLUSIONS
+    ):
+        raise ObservationError(f"{workflow}: provider run conclusion is invalid")
+    if (status == "completed") != (conclusion is not None):
+        raise ObservationError(f"{workflow}: provider run status and conclusion disagree")
+    return status, conclusion
+
+
+def provider_run_order(run: dict[str, Any], *, workflow: str) -> tuple[datetime, int, int]:
+    """Return validated provider chronology and exact attempt identity."""
+    run_id = run.get("id")
+    attempt = run.get("run_attempt")
+    updated_at = run.get("updated_at")
+    if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+        raise ObservationError(f"{workflow}: provider run ID is invalid")
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt <= 0:
+        raise ObservationError(f"{workflow}: provider run attempt is invalid")
+    if not isinstance(updated_at, str):
+        raise ObservationError(f"{workflow}: provider run update time is invalid")
+    try:
+        parsed = datetime.fromisoformat(updated_at)
+    except ValueError as exc:
+        raise ObservationError(f"{workflow}: provider run update time is invalid") from exc
+    if parsed.tzinfo is None:
+        raise ObservationError(f"{workflow}: provider run update time has no timezone")
+    _validate_run_result(run, workflow=workflow)
+    return parsed.astimezone(UTC), run_id, attempt
+
+
+def select_latest_provider_run(runs: list[dict[str, Any]], *, workflow: str) -> dict[str, Any]:
+    """Select one unambiguous latest attempt and reject repeated identities."""
+    ordered: list[tuple[datetime, dict[str, Any]]] = []
+    identities: set[tuple[int, int]] = set()
+    attempts_by_run_id: dict[int, list[tuple[int, datetime]]] = {}
+    for run in runs:
+        updated_at, run_id, attempt = provider_run_order(run, workflow=workflow)
+        identity = (run_id, attempt)
+        if identity in identities:
+            raise ObservationError(f"{workflow}: provider repeated a run attempt identity")
+        identities.add(identity)
+        attempts_by_run_id.setdefault(run_id, []).append((attempt, updated_at))
+        ordered.append((updated_at, run))
+    for attempts in attempts_by_run_id.values():
+        attempts.sort()
+        for (_lower_attempt, lower_updated_at), (_higher_attempt, higher_updated_at) in pairwise(
+            attempts
+        ):
+            if higher_updated_at <= lower_updated_at:
+                raise ObservationError(f"{workflow}: provider run attempt chronology is invalid")
+    latest_at = max(updated_at for updated_at, _run in ordered)
+    latest = [run for updated_at, run in ordered if updated_at == latest_at]
+    if len(latest) != 1:
+        raise ObservationError(f"{workflow}: latest provider run chronology is ambiguous")
+    return latest[0]
+
+
+def _governed_provider_runs(
+    runs: list[dict[str, Any]], *, workflow: str, sha: str
+) -> list[dict[str, Any]]:
+    """Return exact push runs plus every attempt sharing their stable run IDs."""
+    expected_scope = {
+        "event": "push",
+        "head_branch": "main",
+        "head_sha": sha,
+        "name": workflow,
+    }
+    exact = [
+        run
+        for run in runs
+        if all(run.get(field) == expected for field, expected in expected_scope.items())
+    ]
+    governed_ids = {
+        run_id
+        for run in exact
+        if isinstance((run_id := run.get("id")), int)
+        and not isinstance(run_id, bool)
+        and run_id > 0
+    }
+    governed = [
+        run
+        for run in runs
+        if run in exact
+        or (
+            isinstance((run_id := run.get("id")), int)
+            and not isinstance(run_id, bool)
+            and run_id in governed_ids
+        )
+    ]
+    for run in governed:
+        for field, expected in expected_scope.items():
+            if run.get(field) != expected:
+                raise ObservationError(
+                    f"{workflow}: provider run field {field!r} does not bind protected main"
+                )
+    return governed
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -101,6 +221,7 @@ def _selected_run(
         value = provider_run.get(field)
         if not isinstance(value, expected_type) or isinstance(value, bool):
             raise ObservationError(f"{workflow}: provider run field {field!r} is invalid")
+    _validate_run_result(provider_run, workflow=workflow)
     if provider_run["head_branch"] != "main" or provider_run["head_sha"] != sha:
         raise ObservationError(f"{workflow}: provider run does not bind exact protected main SHA")
     conclusion = provider_run.get("conclusion")
@@ -150,22 +271,11 @@ def select_runs(
 
     for key in ("documentation", "security"):
         terminal, workflow = REQUIRED_WORKFLOWS[key]
-        candidates = [
-            item
-            for item in workflow_runs
-            if item.get("name") == workflow
-            and item.get("event") == "push"
-            and item.get("head_branch") == "main"
-            and item.get("head_sha") == sha
-            and isinstance(item.get("id"), int)
-            and not isinstance(item.get("id"), bool)
-            and isinstance(item.get("run_attempt"), int)
-            and not isinstance(item.get("run_attempt"), bool)
-        ]
+        candidates = _governed_provider_runs(workflow_runs, workflow=workflow, sha=sha)
         if not candidates:
             ready = False
             continue
-        latest = max(candidates, key=lambda item: (item["id"], item["run_attempt"]))
+        latest = select_latest_provider_run(candidates, workflow=workflow)
         run = _selected_run(
             key=key,
             terminal=terminal,

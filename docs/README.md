@@ -18,7 +18,14 @@ a 35.0-second delay, verifies the saved evidence, and passes the generated
 repeatable check.
 
 ```bash
-python -m pip install "metriplane==0.3.0"
+python -m pip install "metriplane==0.4.1"
+metriplane demo --open
+```
+
+The same release is also available from conda-forge:
+
+```bash
+conda install conda-forge::metriplane
 metriplane demo --open
 ```
 
@@ -28,7 +35,7 @@ example inputs and use the supported recorded-run interface.
 
 ## Start here
 
-- [Quickstart](user-guide/quickstart.md): install v0.3.0 and open the first
+- [Quickstart](user-guide/quickstart.md): install v0.4.1 and open the first
   Incident Report.
 - [What Metriplane does](user-guide/what-metriplane-does.md): understand the
   problem, result, terms, and limits in ordinary language.
@@ -76,6 +83,8 @@ Metriplane is open-source robotics incident replay and regression testing for
 bounded workcells. It analyzes recorded state; it does **not** control machinery,
 certify safety or quality, or prove that physical measurements were accurate.
 
-The package quickstart is for v0.3.0. See
-[Research artifacts](user-guide/research-artifacts.md) for the separate frozen
-v0.2.0 and v0.1.3 research boundaries.
+The package quickstart is for v0.4.1 Assurance Hardening of the reduced Truth
+Recovery product. It has no DOI and does not establish a new research
+measurement boundary. See
+[Research artifacts](user-guide/research-artifacts.md) for the prior v0.3.0
+software release and the separate frozen v0.2.0 and v0.1.3 research boundaries.

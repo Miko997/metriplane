@@ -6,7 +6,7 @@
     "default_branch": {"minLength": 1, "type": "string"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
     "schema_version": {"const": 1},
-    "selected_mode": {"enum": ["enforced_merge_queue", "serialized_strict_up_to_date"]},
+    "selected_mode": {"enum": ["enforced_merge_queue", "app_brokered_strict_up_to_date", "serialized_strict_up_to_date"]},
     "source_digests": {
       "additionalProperties": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
       "minProperties": 3,

@@ -31,7 +31,9 @@ def main(argv: list[str] | None = None) -> int:
 
     handler = partial(SimpleHTTPRequestHandler, directory=args.directory)
     with LocalHTTPServer((args.bind, args.port), handler) as server:
-        print(f"Serving Metriplane dashboard on http://{args.bind}:{server.server_port}/", flush=True)
+        print(
+            f"Serving Metriplane dashboard on http://{args.bind}:{server.server_port}/", flush=True
+        )
         try:
             server.serve_forever()
         except KeyboardInterrupt:

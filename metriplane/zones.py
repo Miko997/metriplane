@@ -14,6 +14,7 @@ import yaml
 @dataclass(frozen=True, slots=True)
 class Zone:
     """A named polygon zone in world XY units (usually meters)."""
+
     name: str
     polygon: tuple[tuple[float, float], ...]  # (x,y) vertices, len>=3
 
@@ -21,6 +22,7 @@ class Zone:
 @dataclass(frozen=True, slots=True)
 class ZoneMap:
     """Collection of zones + convenience lookup."""
+
     units: str
     zones: tuple[Zone, ...]
 
@@ -37,13 +39,17 @@ def _as_float_xy(p: Any) -> tuple[float, float]:
     return (float(p[0]), float(p[1]))
 
 
-def _point_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float, eps: float = 1e-9) -> bool:
+def _point_on_segment(
+    px: float, py: float, ax: float, ay: float, bx: float, by: float, eps: float = 1e-9
+) -> bool:
     # collinearity check via cross product
     cross = (px - ax) * (by - ay) - (py - ay) * (bx - ax)
     if abs(cross) > eps:
         return False
     # within bounding box
-    if (min(ax, bx) - eps) <= px <= (max(ax, bx) + eps) and (min(ay, by) - eps) <= py <= (max(ay, by) + eps):
+    if (min(ax, bx) - eps) <= px <= (max(ax, bx) + eps) and (min(ay, by) - eps) <= py <= (
+        max(ay, by) + eps
+    ):
         return True
     return False
 
@@ -71,7 +77,9 @@ def point_in_polygon(x: float, y: float, poly: Sequence[tuple[float, float]]) ->
         xi, yi = poly[i]
         xj, yj = poly[j]
 
-        intersects = ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / ((yj - yi) + 1e-12) + xi)
+        intersects = ((yi > y) != (yj > y)) and (
+            x < (xj - xi) * (y - yi) / ((yj - yi) + 1e-12) + xi
+        )
         if intersects:
             inside = not inside
         j = i

@@ -49,20 +49,22 @@ def _stable_sort_frame_inplace(frame: Dict[str, Any]) -> None:
     # R1 stable ordering requirement (objects must be stably sorted). :contentReference[oaicite:3]{index=3}
     objs = frame.get("objects")
     if isinstance(objs, list):
+
         def key(o: Any) -> str:
             if not isinstance(o, dict):
                 return ""
             return str(o.get("id", ""))
+
         objs.sort(key=key)
 
 
 @dataclass(frozen=True)
 class EngineConfig:
     input_path: Path
-    clock: ClockMode = "replay"          # "replay" | "fixed"
-    dt_ms: Optional[int] = None          # required if clock="fixed"
+    clock: ClockMode = "replay"  # "replay" | "fixed"
+    dt_ms: Optional[int] = None  # required if clock="fixed"
     run_id: str = "replay"
-    speed: Optional[float] = None        # compatibility only; file output is unpaced
+    speed: Optional[float] = None  # compatibility only; file output is unpaced
     output_max_frames: Optional[int] = None  # helpful for quick debug
 
 
@@ -94,8 +96,7 @@ def _load_frames_with_rel_ts(path: Path) -> List[Tuple[int, Dict[str, Any]]]:
         ts_ns = _get_record_ts_ns(rec)
         if previous_ts_ns is not None and ts_ns < previous_ts_ns:
             raise ValueError(
-                f"Non-monotonic timestamps in input: {path} "
-                f"({ts_ns} follows {previous_ts_ns})"
+                f"Non-monotonic timestamps in input: {path} ({ts_ns} follows {previous_ts_ns})"
             )
         if ts0 is None:
             ts0 = ts_ns
@@ -137,7 +138,7 @@ def iter_replay_outputs(cfg: EngineConfig) -> Iterator[Dict[str, Any]]:
     if cfg.dt_ms is None:
         raise ValueError("dt_ms is required when clock='fixed'")
     dt_ns = ms_to_ns(cfg.dt_ms)
-    clock = FixedStepClock(dt_ns=dt_ns, current_ns=0)
+    fixed_clock = FixedStepClock(dt_ns=dt_ns, current_ns=0)
 
     end_ns = frames[-1][0]
     idx = 0
@@ -146,7 +147,7 @@ def iter_replay_outputs(cfg: EngineConfig) -> Iterator[Dict[str, Any]]:
 
     # Emit at ts=0, dt, 2dt, ... until we pass end_ns.
     while True:
-        ts_sim_ns = clock.now_ns()
+        ts_sim_ns = fixed_clock.now_ns()
 
         # Advance idx to include frames <= current tick.
         while idx < len(frames) and frames[idx][0] <= ts_sim_ns:
@@ -170,7 +171,7 @@ def iter_replay_outputs(cfg: EngineConfig) -> Iterator[Dict[str, Any]]:
         if ts_sim_ns >= end_ns:
             return
 
-        clock.tick()
+        fixed_clock.tick()
 
 
 def write_outputs_jsonl(out_path: Path, outputs: Iterable[Dict[str, Any]]) -> None:

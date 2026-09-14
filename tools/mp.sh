@@ -25,9 +25,27 @@ ROOT="${METRIPLANE_REPO_ROOT:-$(find_repo_root)}"
 
 # ---- defaults (override via env) ----
 METRIPLANE_VENV="${METRIPLANE_VENV:-$ROOT/.venv}"
-RUNS="${RUNS:-$ROOT/runs}"
 CONFIG="${CONFIG:-configs/fusion_health_300fps.yaml}"
 CUDA_ENV_SH="${CUDA_ENV_SH:-$ROOT/tools/env/vt_cuda13_env.sh}"
+
+if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]; then
+  PATHS_PYTHON="python3"
+  if [[ -x "$METRIPLANE_VENV/bin/python" ]]; then
+    PATHS_PYTHON="$METRIPLANE_VENV/bin/python"
+  elif [[ -x "$METRIPLANE_VENV/Scripts/python.exe" ]]; then
+    PATHS_PYTHON="$METRIPLANE_VENV/Scripts/python.exe"
+  fi
+  RUNS="$(cd "$ROOT" && "$PATHS_PYTHON" -c '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
+fi
 
 METRICS_HOST="${METRICS_HOST:-127.0.0.1}"
 METRICS_PORT="${METRICS_PORT:-8000}"

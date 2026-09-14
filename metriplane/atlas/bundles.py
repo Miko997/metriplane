@@ -62,7 +62,10 @@ OPTIONAL_EXPORT_SOURCE_FILES = (
     "configs/contracts.yaml",
     "configs/work_orders.csv",
     EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+    "requirement_assessment.json",
 )
+
+REQUIREMENT_ASSESSMENT_PATH = "requirement_assessment.json"
 
 MAX_ZIP_MEMBERS = 1024
 MAX_ZIP_MEMBER_BYTES = 128 * 1024 * 1024
@@ -351,6 +354,16 @@ def export_bundle(
     if manifest_path.exists():
         run_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     external_provenance = _external_source_provenance_for_export(run, run_manifest)
+    has_assessment = (
+        (run / REQUIREMENT_ASSESSMENT_PATH).exists()
+        or run_manifest.get("requirement_assessment_sha256") is not None
+        or "requirement_assessment" in run_manifest.get("artifacts", {})
+    )
+    assessment = None
+    if has_assessment:
+        from metriplane.atlas.run_assessment import read_run_assessment
+
+        assessment = read_run_assessment(run)
     incident = next((item for item in _load_incidents(run) if item.incident_id == incident_id), None)
     if incident is None:
         raise ValueError(f"incident not found: {incident_id}")
@@ -406,6 +419,11 @@ def export_bundle(
         with (stage_bundle / "state_segment.jsonl").open("w", encoding="utf-8") as handle:
             for row in state_segment_rows:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
+        include_assessment = assessment is not None and (
+            sha256_file(stage_bundle / "state_segment.jsonl")
+            == assessment["evidence_sha256"]["state_segment.jsonl"]
+        )
+        assessment_omitted = has_assessment and not include_assessment
         shutil.copyfile(run / "reality_graph.json", stage_bundle / "reality_graph_excerpt.json")
         shutil.copyfile(run / "process_trace.json", stage_bundle / "process_trace_excerpt.json")
         (stage_bundle / "configs").mkdir(exist_ok=True)
@@ -415,8 +433,22 @@ def export_bundle(
                 shutil.copyfile(src, stage_bundle / "configs" / name)
         (stage_bundle / "reports").mkdir(exist_ok=True)
         shutil.copyfile(run / "cell_truth_report.md", stage_bundle / "reports" / "cell_truth_report.md")
+        if assessment_omitted:
+            with (stage_bundle / "reports" / "cell_truth_report.md").open("a", encoding="utf-8") as handle:
+                handle.write(
+                    "\n## Custom exported segment\n\n"
+                    "The report above describes the complete source run. This bundle "
+                    "contains a custom recorded-state segment, so the full-run "
+                    "requirement_assessment.json is omitted. Its requirement outcomes "
+                    "and completion times do not assess this custom segment.\n"
+                )
         (stage_bundle / "generated").mkdir(exist_ok=True)
         (stage_bundle / "provenance").mkdir(exist_ok=True)
+        if include_assessment:
+            shutil.copyfile(
+                run / REQUIREMENT_ASSESSMENT_PATH,
+                stage_bundle / REQUIREMENT_ASSESSMENT_PATH,
+            )
         if external_provenance is not None:
             shutil.copyfile(
                 run / EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
@@ -424,7 +456,12 @@ def export_bundle(
             )
         (stage_bundle / "limitations.md").write_text(
             "# Limitations\n\n"
-            + "".join(f"- {statement}\n" for statement in ATLAS_LIMITATION_STATEMENTS),
+            + "".join(f"- {statement}\n" for statement in ATLAS_LIMITATION_STATEMENTS)
+            + (
+                "- Custom exported segment: full-run requirement assessment omitted; "
+                "the copied source report does not assess this segment.\n"
+                if assessment_omitted else ""
+            ),
             encoding="utf-8",
         )
         (stage_bundle / "replay_command.sh").write_text(
@@ -439,6 +476,8 @@ def export_bundle(
             encoding="utf-8",
         )
         required_files = list(REQUIRED_BUNDLE_FILES)
+        if include_assessment:
+            required_files.append(REQUIREMENT_ASSESSMENT_PATH)
         bundled_external_provenance = None
         if external_provenance is not None:
             required_files.append(EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH)
@@ -557,6 +596,45 @@ def _read_checksum_inventory(path: Path) -> tuple[dict[str, str], list[str]]:
     return recorded, errors
 
 
+def _verify_bundled_assessment(root: Path, manifest: BundleManifest) -> list[str]:
+    path = root / REQUIREMENT_ASSESSMENT_PATH
+    if not path.exists():
+        return []
+    from metriplane.atlas.assessment import RequirementAssessment
+    from metriplane.atlas.run_assessment import RUN_ASSESSMENT_SCHEMA
+
+    errors: list[str] = []
+    if REQUIREMENT_ASSESSMENT_PATH not in manifest.required_files:
+        errors.append("bundled requirement assessment is not listed in required_files")
+    payload = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_pairs,
+        parse_constant=_reject_nonfinite_json_constant,
+    )
+    if not isinstance(payload, dict) or payload.get("schema_version") != RUN_ASSESSMENT_SCHEMA:
+        return [*errors, "unsupported bundled requirement assessment schema"]
+    assessment = RequirementAssessment.model_validate(payload["process_assessment"])
+    if assessment.run_id != manifest.run_id:
+        errors.append("bundled requirement assessment run_id does not match manifest")
+    evidence = payload.get("evidence_sha256", {})
+    # A bundle retains the full state and configs but only an incident-specific
+    # event excerpt. Check the source bindings that are actually present here.
+    for name in (
+        "state_segment.jsonl", "configs/assets.yaml", "configs/workspace.yaml",
+        "configs/process.yaml", "configs/contracts.yaml", "configs/work_orders.csv",
+    ):
+        retained = root / name
+        actual = sha256_file(retained) if retained.is_file() else None
+        expected = evidence.get(name)
+        required = name in {
+            "state_segment.jsonl", "configs/assets.yaml", "configs/workspace.yaml",
+            "configs/process.yaml",
+        }
+        if (required and actual is None) or expected != actual:
+            errors.append(f"bundled requirement assessment state/config binding mismatch: {name}")
+    return errors
+
+
 def verify_bundle(bundle_path: str | Path) -> dict:
     bundle = Path(bundle_path)
     errors: list[str] = []
@@ -596,6 +674,8 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                     path = root / rel
                     if rel in inventory and sha256_file(path) != digest:
                         errors.append(f"checksum mismatch: {rel}")
+
+                errors.extend(_verify_bundled_assessment(root, manifest))
 
                 external_reference = manifest.external_source_provenance
                 external_present = EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH in inventory

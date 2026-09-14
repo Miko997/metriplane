@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import subprocess
@@ -29,6 +30,18 @@ WORKFLOW_PATH = REPOSITORY_ROOT / ".github/workflows/external-source-family-matr
 EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
 EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
 EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+# MET-162 reopens only these current implementation paths. Archived fixtures,
+# source contracts, proof records and every other Atlas path remain frozen.
+MET162_REOPENED_ATLAS_PATHS = (
+    "metriplane/atlas/assessment.py",
+    "metriplane/atlas/bundles.py",
+    "metriplane/atlas/improvement.py",
+    "metriplane/atlas/models.py",
+    "metriplane/atlas/process_model.py",
+    "metriplane/atlas/reports.py",
+    "metriplane/atlas/run_assessment.py",
+    "metriplane/atlas/runtime.py",
+)
 
 
 def _git_object_exists(revision: str) -> bool:
@@ -244,6 +257,7 @@ def test_prior_frozen_proof_paths_are_not_changed_by_this_branch() -> None:
         "schemas/metriplane.external_source_contract.v1.schema.json",
         "metriplane/atlas",
         f":(exclude){EVIDENCE_LAKE_PATH}",
+        *(f":(exclude){path}" for path in MET162_REOPENED_ATLAS_PATHS),
     )
     # This test compares the working candidate to the explicitly frozen baseline.
     result = subprocess.run(
@@ -261,6 +275,37 @@ def test_prior_frozen_proof_paths_are_not_changed_by_this_branch() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+    # Reopening the reporting and assessment boundary does not authorize
+    # changing the legacy event/incident decision methods. update() gains the
+    # additive observer; all pre-existing helpers retain their original AST.
+    evaluator_path = "metriplane/atlas/process_model.py"
+    frozen_evaluator = subprocess.run(
+        ["git", "show", f"5606b956e9309802570cfa46857714722fd70187:{evaluator_path}"],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert frozen_evaluator.returncode == 0, frozen_evaluator.stderr
+
+    def evaluator_methods(source: str) -> dict[str, str]:
+        evaluator = next(
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.ClassDef) and node.name == "ProcessEvaluator"
+        )
+        return {
+            node.name: ast.dump(node, include_attributes=False)
+            for node in evaluator.body
+            if isinstance(node, ast.FunctionDef) and node.name != "update"
+        }
+
+    frozen_methods = evaluator_methods(frozen_evaluator.stdout)
+    current_methods = evaluator_methods((REPOSITORY_ROOT / evaluator_path).read_text("utf-8"))
+    assert frozen_methods
+    for name, frozen_method in frozen_methods.items():
+        assert current_methods.get(name) == frozen_method, name
 
     frozen_source = subprocess.run(
         [

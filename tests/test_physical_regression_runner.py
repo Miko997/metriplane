@@ -80,7 +80,8 @@ def test_cli_output_flag(tmp_path, bundle_copy):
 
 def test_cli_returns_one_on_failure(bundle_copy):
     (bundle_copy / "expected.yaml").write_text(
-        "expected:\n  incidents:\n    - type: t\n      rule_id: nonexistent\n")
+        "expected:\n  incidents:\n    - type: t\n      rule_id: nonexistent\n"
+    )
     rc = main_test([str(bundle_copy), "--no-write-reports"])
     assert rc == 1
 
@@ -175,9 +176,7 @@ def test_consistently_rewritten_alert_ids_do_not_reproduce(
     incident_path.write_text(json.dumps(incidents), encoding="utf-8")
     alerts_path = bundle_copy / "alerts.jsonl"
     alerts = [
-        json.loads(line)
-        for line in alerts_path.read_text(encoding="utf-8").splitlines()
-        if line
+        json.loads(line) for line in alerts_path.read_text(encoding="utf-8").splitlines() if line
     ]
     for alert, fake_id in zip(alerts, fake_ids, strict=True):
         alert["alert_id"] = fake_id

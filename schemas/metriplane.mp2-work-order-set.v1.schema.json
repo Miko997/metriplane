@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.mp2-work-order-set.v1.schema.json",
+  "title": "Metriplane MP2 work-order catalog",
+  "type": "object",
+  "required": ["schema_version", "packet_revision", "catalog_level_invariants", "tasks"],
+  "properties": {
+    "schema_version": {"const": "metriplane.mp2-work-order-set.v1"},
+    "packet_revision": {"type": "string", "minLength": 1},
+    "catalog_level_invariants": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "tasks": {
+      "type": "array",
+      "minItems": 93,
+      "maxItems": 93,
+      "items": {
+        "type": "object",
+        "required": ["task_id", "linear_issue", "first_required_release", "authoritative_blocked_by", "ownership", "task_specific_acceptance_predicates", "manual_external_irreversible_actions", "downstream_handoff"],
+        "properties": {
+          "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+          "linear_issue": {"type": "string", "pattern": "^MET-[0-9]+$"},
+          "first_required_release": {"enum": ["v0.4", "v0.5", "v0.6", "v0.7", "v0.8", "v0.9", "v1.0", "post-v1.0"]},
+          "authoritative_blocked_by": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^MP2-[0-9]{3}$"}},
+          "ownership": {"type": "object"},
+          "task_specific_acceptance_predicates": {"type": "array", "minItems": 2},
+          "manual_external_irreversible_actions": {"type": "array", "minItems": 1},
+          "downstream_handoff": {"type": "object"}
+        }
+      }
+    }
+  }
+}

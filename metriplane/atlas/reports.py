@@ -7,6 +7,7 @@ import html
 import unicodedata
 from pathlib import Path
 
+from metriplane.atlas.assessment import RequirementAssessment
 from metriplane.atlas.models import (
     ATLAS_LIMITATION_STATEMENTS,
     AtlasDeviation,
@@ -80,6 +81,72 @@ def _one_line_untrusted(value: str, *, limit: int = 240) -> str:
     return rendered[: limit - 1].rstrip() + "…"
 
 
+def _assessment_lines(assessment: RequirementAssessment) -> list[str]:
+    payload = assessment.model_dump(mode="json")
+
+    def cell(value: object) -> str:
+        return _one_line_untrusted(str(value)).replace("|", "/")
+
+    def seconds(value: object) -> str:
+        return "—" if value is None else f"{float(value):.6g} s"
+
+    lines = [
+        "",
+        "### Requirement outcomes",
+        "",
+        f"Overall recorded outcome: `{cell(payload['outcome'])}`.",
+        "",
+        "Satisfied means the step completed under the sampled detection policy; "
+        "violated means a deviation was emitted, even if the step later completed. "
+        "Unresolved means the recording ended before an activated step completed. "
+        "Not exercised means the step was never activated.",
+        "",
+        "A missing requirement is checked at recorded samples. Completion is checked "
+        "first, so a first observed arrival after the threshold can complete without "
+        "a deviation. This is not a continuous-time deadline guarantee. "
+        "Policy: `legacy_sampled_missing_v1`.",
+        "",
+        "| step | outcome | activated | completed | observed wait | last evaluated |",
+        "|---|---|---:|---:|---:|---:|",
+    ]
+    for step in payload["steps"]:
+        wait = seconds(step.get("observed_wait_s"))
+        lower_bound = step.get("observed_wait_lower_bound_s")
+        if step.get("observed_wait_s") is None and lower_bound is not None:
+            wait = f"at least {seconds(lower_bound)} (unfinished)"
+        lines.append(
+            f"| {cell(step['step_id'])} | {cell(step['outcome'])} | "
+            f"{seconds(step.get('trigger_ts'))} | {seconds(step.get('completion_ts'))} | "
+            f"{wait} | {seconds(step.get('last_evaluated_ts'))} |"
+        )
+    lines.extend([
+        "",
+        "Observed wait measures activation to observed completion. An unfinished "
+        "interval is a lower bound, and an unexercised step has no measured wait. "
+        "The legacy `metrics.json` / `wait_time_s` values measure recorded deviation "
+        "durations; they are not total observed waiting time.",
+        "",
+    ])
+    for step in payload["steps"]:
+        for note in step.get("coverage_notes", []):
+            lines.append(f"- `{cell(step['step_id'])}`: {cell(note)}.")
+        for episode in step.get("missing_episodes", []):
+            lines.append(
+                f"- `{cell(step['step_id'])}` missing `{cell(episode['asset_id'])}`: "
+                f"started {seconds(episode.get('start_ts'))}; "
+                f"threshold time {seconds(episode.get('deadline_ts'))}; "
+                f"deviation observed {seconds(episode.get('detection_ts'))}."
+            )
+    lines.extend([
+        "",
+        "These outcomes cover the recorded samples only. Missing observations and "
+        "unfinished or unexercised requirements must be reviewed before comparing runs. "
+        "Zero incidents alone does not establish compliance or an improvement.",
+        "Full outcome, timing and comparison context: `requirement_assessment.json`.",
+    ])
+    return lines
+
+
 def render_markdown(
     manifest: AtlasRunManifest,
     events: list[AtlasEvent],
@@ -87,6 +154,8 @@ def render_markdown(
     incidents: list[AtlasIncident],
     metrics: FlowMetrics,
     actions: list[ImprovementAction],
+    *,
+    assessment: RequirementAssessment | None = None,
 ) -> str:
     lines: list[str] = [
         "# Incident Report",
@@ -119,6 +188,9 @@ def render_markdown(
         for action in actions:
             lines.append(f"- Suggested follow-up: {action.title}. {action.rationale}")
 
+    if assessment is not None:
+        lines.extend(_assessment_lines(assessment))
+
     lines.extend(
         [
             "",
@@ -141,7 +213,7 @@ def render_markdown(
                 f"{', '.join(f'`{event_id}`' for event_id in deviation.event_ids) or '-'} |"
             )
     else:
-        lines.append("| No process rule was broken | info | - | - | - |")
+        lines.append("| No deviation was emitted from the recorded samples | info | - | - | - |")
 
     lines.extend(
         [
@@ -270,6 +342,8 @@ def render_html(markdown_text: str) -> str:
             body.append(f"<h1>{_render_inline(line[2:])}</h1>")
         elif line.startswith("## "):
             body.append(f"<h2>{_render_inline(line[3:])}</h2>")
+        elif line.startswith("### "):
+            body.append(f"<h3>{_render_inline(line[4:])}</h3>")
         elif line.startswith("- "):
             body.append(f"<p class=\"bullet\">{_render_inline(line[2:])}</p>")
         elif line.startswith("|"):
@@ -305,7 +379,7 @@ def render_html(markdown_text: str) -> str:
     body { margin: 0; padding: 40px 24px; background: var(--bg); color: var(--text);
            font: 14px/1.55 Inter, system-ui, sans-serif; }
     main { max-width: 1180px; margin: 0 auto; }
-    h1, h2 { color: #ffffff; letter-spacing: 0; }
+    h1, h2, h3 { color: #ffffff; letter-spacing: 0; }
     h1 { font-size: clamp(30px, 4vw, 46px); line-height: 1.05; margin: 0 0 28px; }
     h2 { margin: 32px 0 14px; border-top: 1px solid var(--line); padding-top: 22px; }
     p { margin: 8px 0; background: var(--panel); border: 1px solid var(--line);

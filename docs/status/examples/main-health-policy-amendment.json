@@ -1,0 +1,8 @@
+{
+  "amended_rule": "repair_requires_non_author",
+  "authorization_mode": "single-maintainer-owner-emergency",
+  "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+  "reason": "single-maintainer-no-independent-collaborator",
+  "schema_version": 1,
+  "scope": "incident-only"
+}

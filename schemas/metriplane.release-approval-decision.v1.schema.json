@@ -1,0 +1,547 @@
+{
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$defs": {
+    "contradiction_invocation": {
+      "additionalProperties": false,
+      "properties": {
+        "intent": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "kind": {
+          "const": "original_failed_invocation"
+        },
+        "original_evidence": {
+          "items": {
+            "$ref": "#/$defs/raw_file"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "terminal": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "kind",
+        "intent",
+        "terminal",
+        "original_evidence"
+      ],
+      "type": "object"
+    },
+    "contradiction_record": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "original_release_record"
+        },
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "record_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "record_type": {
+          "enum": [
+            "release-publication-observations",
+            "release-publication-reconciliation",
+            "release-cell-result",
+            "release-warning-summary",
+            "release-environment-observation"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "record_type",
+        "record_digest",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "lkg_invalidation_data": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_kind": {
+          "const": "non_author_lkg_invalidation"
+        },
+        "author_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "authority_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "conflicts": {
+          "const": []
+        },
+        "contradiction_evidence": {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/contradiction_record"
+              },
+              {
+                "$ref": "#/$defs/contradiction_invocation"
+              }
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "contradiction_kind": {
+          "enum": [
+            "published_artifact_mismatch",
+            "published_product_failure",
+            "published_security_failure"
+          ]
+        },
+        "current_lkg_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "decision": {
+          "const": "INVALIDATED"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "provider_attestation_keyring_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reason": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "reviewer_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "signing_method": {
+          "const": "provider-attestation-v1"
+        }
+      },
+      "required": [
+        "approval_kind",
+        "decision",
+        "author_id",
+        "reviewer_id",
+        "milestone",
+        "candidate_digest",
+        "current_lkg_digest",
+        "reason",
+        "contradiction_kind",
+        "contradiction_evidence",
+        "conflicts",
+        "issued_at",
+        "expires_at",
+        "authority_policy_digest",
+        "provider_attestation_keyring_digest",
+        "signing_method"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ordinary_release_approval_data": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_kind": {
+          "const": "non_author_release_decision"
+        },
+        "author_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "authority_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "conflicts": {
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "decision": {
+          "enum": [
+            "APPROVED",
+            "REJECTED"
+          ]
+        },
+        "expires_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "provider_attestation_keyring_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "qualification_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reviewer_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "rubric_result_digest": {
+          "$ref": "#/$defs/nullable_digest"
+        },
+        "signing_method": {
+          "const": "provider-attestation-v1"
+        }
+      },
+      "required": [
+        "approval_kind",
+        "authority_policy_digest",
+        "author_id",
+        "candidate_digest",
+        "conflicts",
+        "decision",
+        "expires_at",
+        "issued_at",
+        "milestone",
+        "qualification_digest",
+        "reviewer_id",
+        "rubric_result_digest",
+        "signing_method"
+      ],
+      "type": "object"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-approval-decision.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "provider_attestation_keyring_digest"
+            ]
+          },
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "data": {
+            "properties": {
+              "approval_kind": {
+                "const": "non_author_lkg_invalidation"
+              }
+            },
+            "required": [
+              "approval_kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "INVALIDATED"
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-approval-decision. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ordinary_release_approval_data"
+        },
+        {
+          "$ref": "#/$defs/lkg_invalidation_data"
+        }
+      ]
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-approval-decision"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "enum": [
+        "BLOCKED",
+        "CANCELLED",
+        "FAIL",
+        "INVALIDATED",
+        "OPEN",
+        "PASS",
+        "READY",
+        "SKIPPED"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-approval-decision record",
+  "type": "object",
+  "x-metriplane-live-required": [
+    "provider_attestation_keyring_digest"
+  ],
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes",
+    "Invalidation is accepted only through the exact lkg_invalidation_data subtype; reject legacy five-field bare data and mixed/extra approval shapes.",
+    "Use existing signature_subject_digest/decision envelope and ProviderAttestationVerifier with independently expected current/historical role and pinned keyring/policy; the author cannot approve their own invalidation.",
+    "current_lkg_digest=C(complete original LKG transition receipt) and candidate_digest is its independently recomputed original candidate data identity.",
+    "All contradiction evidence is original completed upstream output or failed invocation. No final conflict envelope/receipt that itself requires this invalidation is an upstream signing subject.",
+    "An action requires decision time validity at the actual CAS; historical replay verifies the original transition occurred in that window. Expiration does not undo a committed invalidation fence."
+  ]
+}

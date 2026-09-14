@@ -6,6 +6,7 @@
 The adapters live in the standalone integrations/ros2 package; we load the module by
 path so the core suite covers them without putting ROS on the import path.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -14,8 +15,10 @@ from pathlib import Path
 
 import pytest
 
-_ADAPTERS = (Path(__file__).resolve().parents[1]
-             / "integrations/ros2/metriplane_ros/metriplane_ros/msg_adapters.py")
+_ADAPTERS = (
+    Path(__file__).resolve().parents[1]
+    / "integrations/ros2/metriplane_ros/metriplane_ros/msg_adapters.py"
+)
 
 
 @pytest.fixture(scope="module")
@@ -53,4 +56,5 @@ def test_incidents(adapters):
 def test_object_summary_prefers_fused(adapters):
     frame = {"fused": [{"id": "7", "pos_world": [1.0, 2.0, 0.0], "zone": "main"}]}
     assert adapters.extract_object_summary(frame) == [
-        {"id": "7", "x": 1.0, "y": 2.0, "zone": "main"}]
+        {"id": "7", "x": 1.0, "y": 2.0, "zone": "main"}
+    ]

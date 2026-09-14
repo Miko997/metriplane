@@ -9,7 +9,19 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
 # Match your transcript defaults.
-export RUNS="${RUNS:-~/metriplane-runs}"
+if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]; then
+  RUNS="$(python -c '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
+fi
+export RUNS
 export CONFIG="${CONFIG:-configs/fusion_health_300fps.yaml}"
 
 mkdir -p "$RUNS"

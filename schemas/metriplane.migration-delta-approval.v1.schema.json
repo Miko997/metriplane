@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.migration-delta-approval.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewer_id", "subject_digest", "signature"],
+  "properties": {
+    "schema_version": {"const": "metriplane.migration-delta-approval.v1"},
+    "reviewer_id": {"type": "string", "minLength": 1},
+    "subject_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "actor_id", "signature"],
+      "properties": {
+        "provider": {"enum": ["github", "linear"]},
+        "actor_id": {"type": "string", "minLength": 1},
+        "signature": {"type": "string", "pattern": "^[0-9a-f]{128}$"}
+      }
+    }
+  }
+}

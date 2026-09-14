@@ -437,3 +437,6 @@ class AtlasRunManifest(BaseModel):
     artifacts: dict[str, str]
     limitations: list[str] = Field(default_factory=lambda: list(ATLAS_LIMITATIONS))
     external_source_provenance: ExternalSourceProvenanceReference | None = None
+    requirement_assessment_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )

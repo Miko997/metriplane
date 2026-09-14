@@ -9,7 +9,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Tuple
 
 from metriplane.compute.cpu_numpy import CpuNumpyBackend
 from metriplane.compute.gpu_cupy import GpuCupyBackend, GpuUnavailable
@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
             st = _diff_stats(cpu, gpu)
             if st.samples > 0:
                 total_samples += st.samples
-                se_cm2 += (st.rmse_cm ** 2) * float(st.samples)
+                se_cm2 += (st.rmse_cm**2) * float(st.samples)
                 max_abs_cm = max(max_abs_cm, st.max_abs_diff_cm)
 
             frames_used += 1
@@ -230,7 +230,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         rmse_cm = 0.0
 
-    passed = (rmse_cm <= float(args.tolerance_rmse_cm)) and (max_abs_cm <= float(args.tolerance_max_cm))
+    passed = (rmse_cm <= float(args.tolerance_rmse_cm)) and (
+        max_abs_cm <= float(args.tolerance_max_cm)
+    )
 
     row = {
         "session_jsonl": str(inp),

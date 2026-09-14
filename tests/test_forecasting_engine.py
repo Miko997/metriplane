@@ -16,9 +16,10 @@ from metriplane.zones import Zone, ZoneMap
 REGISTRY = load_registry("configs/objects.example.yaml")
 
 # exit_lane spans x in [2,4], y in [-1,1]
-ZONE_MAP = ZoneMap(units="meters", zones=(
-    Zone(name="exit_lane", polygon=((2.0, -1.0), (4.0, -1.0), (4.0, 1.0), (2.0, 1.0))),
-))
+ZONE_MAP = ZoneMap(
+    units="meters",
+    zones=(Zone(name="exit_lane", polygon=((2.0, -1.0), (4.0, -1.0), (4.0, 1.0), (2.0, 1.0))),),
+)
 
 SUBJECTS = {
     "movable": SubjectSpec(object_types=["cart", "pallet"]),
@@ -28,30 +29,54 @@ SUBJECTS = {
 
 def obj(marker, x, y, zone=None, vel=None):
     return ObjectStateModel(
-        id=str(marker), pos_world=(x, y, 0.0),
-        vel_world=(vel[0], vel[1], 0.0) if vel else None, zone=zone)
+        id=str(marker),
+        pos_world=(x, y, 0.0),
+        vel_world=(vel[0], vel[1], 0.0) if vel else None,
+        zone=zone,
+    )
 
 
 def zone_engine():
-    pkg = SpatialContractPackage(contract_id="t", subjects=SUBJECTS, rules=[
-        ContractRuleSpec(id="no_asset_in_exit_lane", type="forbidden_zone",
-                         subject="movable", zones=["exit_lane"])])
-    return ForecastEngine(horizon_s=2.0, step_s=0.2, contract_package=pkg,
-                          registry=REGISTRY, zone_map=ZONE_MAP)
+    pkg = SpatialContractPackage(
+        contract_id="t",
+        subjects=SUBJECTS,
+        rules=[
+            ContractRuleSpec(
+                id="no_asset_in_exit_lane",
+                type="forbidden_zone",
+                subject="movable",
+                zones=["exit_lane"],
+            )
+        ],
+    )
+    return ForecastEngine(
+        horizon_s=2.0, step_s=0.2, contract_package=pkg, registry=REGISTRY, zone_map=ZONE_MAP
+    )
 
 
 def dist_engine():
-    pkg = SpatialContractPackage(contract_id="t", subjects=SUBJECTS, rules=[
-        ContractRuleSpec(id="human_proxy_distance", type="minimum_distance",
-                         subject_a="people", subject_b="movable", distance_m=0.6)])
-    return ForecastEngine(horizon_s=2.0, step_s=0.2, contract_package=pkg,
-                          registry=REGISTRY, zone_map=ZONE_MAP)
+    pkg = SpatialContractPackage(
+        contract_id="t",
+        subjects=SUBJECTS,
+        rules=[
+            ContractRuleSpec(
+                id="human_proxy_distance",
+                type="minimum_distance",
+                subject_a="people",
+                subject_b="movable",
+                distance_m=0.6,
+            )
+        ],
+    )
+    return ForecastEngine(
+        horizon_s=2.0, step_s=0.2, contract_package=pkg, registry=REGISTRY, zone_map=ZONE_MAP
+    )
 
 
 def test_future_forbidden_zone_emitted():
     e = zone_engine()
-    e.update(0.0, [obj(7, 0.0, 0.0)])           # 1 trace point
-    fc = e.update(0.5, [obj(7, 1.0, 0.0)])      # vx=2.0, heading into exit_lane
+    e.update(0.0, [obj(7, 0.0, 0.0)])  # 1 trace point
+    fc = e.update(0.5, [obj(7, 1.0, 0.0)])  # vx=2.0, heading into exit_lane
     assert len(fc) == 1
     f = fc[0]
     assert f.forecast_type == "future_forbidden_zone"
@@ -88,11 +113,16 @@ def test_no_forecast_without_position():
 
 
 def test_zone_forecast_skipped_without_zone_map():
-    pkg = SpatialContractPackage(contract_id="t", subjects=SUBJECTS, rules=[
-        ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable",
-                         zones=["exit_lane"])])
-    e = ForecastEngine(horizon_s=2.0, step_s=0.2, contract_package=pkg,
-                       registry=REGISTRY, zone_map=None)
+    pkg = SpatialContractPackage(
+        contract_id="t",
+        subjects=SUBJECTS,
+        rules=[
+            ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable", zones=["exit_lane"])
+        ],
+    )
+    e = ForecastEngine(
+        horizon_s=2.0, step_s=0.2, contract_package=pkg, registry=REGISTRY, zone_map=None
+    )
     e.update(0.0, [obj(7, 0.0, 0.0)])
     fc = e.update(0.5, [obj(7, 1.0, 0.0)])
     assert fc == []  # no zone geometry → no zone forecast, no crash
@@ -113,11 +143,27 @@ def test_already_close_not_forecast():
 
 
 def test_cooldown_suppresses_repeat():
-    pkg = SpatialContractPackage(contract_id="t", subjects=SUBJECTS, rules=[
-        ContractRuleSpec(id="fz", type="forbidden_zone", subject="movable",
-                         zones=["exit_lane"], cooldown_s=5.0)])
-    e = ForecastEngine(horizon_s=2.0, step_s=0.2, contract_package=pkg,
-                       registry=REGISTRY, zone_map=ZONE_MAP, cooldown_s=5.0)
+    pkg = SpatialContractPackage(
+        contract_id="t",
+        subjects=SUBJECTS,
+        rules=[
+            ContractRuleSpec(
+                id="fz",
+                type="forbidden_zone",
+                subject="movable",
+                zones=["exit_lane"],
+                cooldown_s=5.0,
+            )
+        ],
+    )
+    e = ForecastEngine(
+        horizon_s=2.0,
+        step_s=0.2,
+        contract_package=pkg,
+        registry=REGISTRY,
+        zone_map=ZONE_MAP,
+        cooldown_s=5.0,
+    )
     e.update(0.0, [obj(7, 0.0, 0.0)])
     fc1 = e.update(0.5, [obj(7, 1.0, 0.0)])
     fc2 = e.update(1.0, [obj(7, 1.2, 0.0)])  # within cooldown

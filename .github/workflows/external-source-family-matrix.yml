@@ -207,7 +207,7 @@ jobs:
             echo "WHEEL=$wheel"
           } >> "$GITHUB_ENV"
 
-      - name: Install wheel and copy fixtures outside checkout
+      - name: Install wheel and project fixtures outside checkout
         shell: bash
         run: |
           set -euo pipefail
@@ -217,10 +217,27 @@ jobs:
           "$venv/bin/python" -m pip install --no-cache-dir "$WHEEL"
           "$venv/bin/python" -m pip check
           mkdir -p "$input/maniskill" "$input/robomimic"
-          cp -R examples/external_sources/maniskill_pickcube/incident "$input/maniskill/incident"
-          cp -R examples/external_sources/maniskill_pickcube/control "$input/maniskill/control"
-          cp -R examples/external_sources/robomimic_lowdim/incident "$input/robomimic/incident"
-          cp -R examples/external_sources/robomimic_lowdim/control "$input/robomimic/control"
+          DESTINATION_ROOT="$input" python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from tests.external_sources.version_projection import (
+              materialize_current_version_fixture,
+          )
+
+          repository = Path.cwd()
+          destination = Path(os.environ["DESTINATION_ROOT"])
+          sources = {
+              "maniskill": repository / "examples/external_sources/maniskill_pickcube",
+              "robomimic": repository / "examples/external_sources/robomimic_lowdim",
+          }
+          for family, source in sources.items():
+              for variant in ("incident", "control"):
+                  materialize_current_version_fixture(
+                      source / variant,
+                      destination / family / variant,
+                  )
+          PY
           VENV="$venv" "$venv/bin/python" - <<'PY'
           import os
           from importlib import metadata
@@ -233,7 +250,7 @@ jobs:
           assert installed.isdisjoint(prohibited), sorted(installed & prohibited)
           PY
 
-      - name: Validate and run both frozen source-specific families
+      - name: Validate and run current-version projections of both frozen families
         shell: bash
         run: |
           set -euo pipefail

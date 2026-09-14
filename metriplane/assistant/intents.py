@@ -7,15 +7,17 @@ from metriplane.assistant.models import IntentType
 
 # Ordered: first matching intent wins. Keywords are lowercased substrings.
 _INTENT_KEYWORDS: list[tuple[IntentType, tuple[str, ...]]] = [
-    ("camera_health", ("camera", "cam0", "cam1", "unreliable", "trust",
-                        "calibration", "dropout")),
+    ("camera_health", ("camera", "cam0", "cam1", "unreliable", "trust", "calibration", "dropout")),
     ("rule_explanation", ("rule", "contract", "why did", "which rule", "what rule")),
-    ("zone_occupancy", ("zone", "exit lane", "exit_lane", "dwell", "blocked",
-                        "occupanc")),
-    ("object_history", ("object", "cart", "pallet", "human", "path", "where",
-                        "trace", "speed", "distance travel")),
-    ("incident_search", ("incident", "violation", "happened", "unsafe", "alert",
-                         "when was", "how many")),
+    ("zone_occupancy", ("zone", "exit lane", "exit_lane", "dwell", "blocked", "occupanc")),
+    (
+        "object_history",
+        ("object", "cart", "pallet", "human", "path", "where", "trace", "speed", "distance travel"),
+    ),
+    (
+        "incident_search",
+        ("incident", "violation", "happened", "unsafe", "alert", "when was", "how many"),
+    ),
     ("run_comparison", ("compare", "changed", "before", "after", "difference")),
 ]
 

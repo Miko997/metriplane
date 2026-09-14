@@ -62,9 +62,9 @@ def test_issue_forms_are_structured_and_do_not_invent_repository_state() -> None
         for item in body:
             if item.get("type") == "dropdown":
                 options = item.get("attributes", {}).get("options", [])
-                assert options and all(
-                    isinstance(option, str) and option for option in options
-                ), f"dropdown options must be non-empty strings in {name}"
+                assert options and all(isinstance(option, str) and option for option in options), (
+                    f"dropdown options must be non-empty strings in {name}"
+                )
 
         rendered = (FORMS_DIR / name).read_text(encoding="utf-8").lower()
         assert "private" in rendered
@@ -130,7 +130,8 @@ def test_support_asks_for_reproducible_non_sensitive_information() -> None:
         "metriplane doctor",
         "metriplane demo",
         "smallest synthetic input",
-        "broader native-Windows workflows remain",
+        "No fresh v0.4.1 WSL2 or native-Windows validation is claimed",
+        "Raw or generic ROS 2",
         "v0.2.0",
         "v0.1.3",
     ):

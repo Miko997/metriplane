@@ -1,0 +1,818 @@
+{
+  "$comment": "PROPOSED raw input schema, distinct from release-task-state-policy signed record schema. Additional observed states such as Duplicate remain in snapshot team_statuses; they are not valid release transitions.",
+  "$defs": {
+    "bom_row": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_first_required_release": {
+          "oneOf": [
+            {
+              "enum": [
+                "v0.4",
+                "v0.5",
+                "v0.6",
+                "v0.7",
+                "v0.8",
+                "v0.9",
+                "v1.0",
+                "post-v1.0"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "catalog_task_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/catalog_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inclusion_reasons": {
+          "items": {
+            "enum": [
+              "cumulative_catalog",
+              "prior_roadmap_decision",
+              "current_decision",
+              "context_direct_gate",
+              "blocking_dependency"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "issue": {
+          "$ref": "#/$defs/issue"
+        },
+        "role": {
+          "enum": [
+            "implementation",
+            "release_decision",
+            "context_direct_gate",
+            "transitive_dependency"
+          ]
+        }
+      },
+      "required": [
+        "catalog_task_id",
+        "catalog_first_required_release",
+        "role",
+        "inclusion_reasons",
+        "issue"
+      ],
+      "type": "object"
+    },
+    "catalog_id": {
+      "pattern": "^MP2-[0-9]{3}$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "identifier": {
+      "pattern": "^[A-Z][A-Z0-9]*-[1-9][0-9]*$",
+      "type": "string"
+    },
+    "identity": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "issue_identifier": {
+          "$ref": "#/$defs/identifier"
+        },
+        "project_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "const": "linear"
+        },
+        "team_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "issue_id",
+        "issue_identifier",
+        "provider",
+        "team_id",
+        "project_id"
+      ],
+      "type": "object"
+    },
+    "issue": {
+      "additionalProperties": false,
+      "properties": {
+        "archived_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assignee_ids": {
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "blocked_by": {
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "canceled_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "description": {
+          "type": "string"
+        },
+        "detail_observation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "duplicate_of": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/relation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "index_observation_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "parent": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/relation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "project_milestone": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/milestone_identity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "related_to": {
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "started_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "identity",
+        "title",
+        "description",
+        "project_milestone",
+        "parent",
+        "state",
+        "assignee_ids",
+        "created_at",
+        "updated_at",
+        "archived_at",
+        "completed_at",
+        "started_at",
+        "canceled_at",
+        "blocks",
+        "blocked_by",
+        "related_to",
+        "duplicate_of",
+        "detail_observation_id",
+        "index_observation_ids"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "milestone_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "project_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "project_id"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "observation": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_list_issues"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "fields": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "includeArchived": {
+                    "const": true
+                  },
+                  "limit": {
+                    "const": 250
+                  },
+                  "orderBy": {
+                    "const": "createdAt"
+                  },
+                  "project": {
+                    "$ref": "#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "project",
+                  "includeArchived",
+                  "limit",
+                  "orderBy",
+                  "fields"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_get_issue"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "includeRelations": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "id",
+                  "includeRelations"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_list_issue_statuses"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "team": {
+                    "$ref": "#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "team"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_list_milestones"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "project": {
+                    "$ref": "#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "project"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "arguments": {},
+        "capture_status": {
+          "const": "SUCCESS"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "extracted_json_pointer": {
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "payload_encoding": {
+          "enum": [
+            "native_json",
+            "json_text"
+          ]
+        },
+        "response": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "round": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "tool": {
+          "enum": [
+            "mcp__codex_apps__linear_list_issues",
+            "mcp__codex_apps__linear_get_issue",
+            "mcp__codex_apps__linear_list_issue_statuses",
+            "mcp__codex_apps__linear_list_milestones"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "round",
+        "tool",
+        "arguments",
+        "started_at",
+        "completed_at",
+        "response",
+        "extracted_json_pointer",
+        "capture_status",
+        "payload_encoding"
+      ],
+      "type": "object"
+    },
+    "project_milestones": {
+      "additionalProperties": false,
+      "properties": {
+        "milestones": {
+          "items": {
+            "$ref": "#/$defs/milestone_identity"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "observation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "project_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "project_id",
+        "observation_id",
+        "milestones"
+      ],
+      "type": "object"
+    },
+    "project_scan": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_ids": {
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "page_observation_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "project_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "round": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "terminal_has_next_page": {
+          "const": false
+        }
+      },
+      "required": [
+        "project_id",
+        "round",
+        "page_observation_ids",
+        "issue_ids",
+        "terminal_has_next_page"
+      ],
+      "type": "object"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relation": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "issue_identifier": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "issue_id",
+        "issue_identifier"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "state": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "team_statuses": {
+      "additionalProperties": false,
+      "properties": {
+        "observation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/state"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "team_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "team_id",
+        "observation_id",
+        "states"
+      ],
+      "type": "object"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T.*(?:Z|[+-]\\d{2}:\\d{2})$",
+      "type": "string"
+    },
+    "uuid": {
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-task-state-policy-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "allowed_transitions": {
+      "const": [
+        {
+          "authorized_role": "release_operator",
+          "from": "open_running",
+          "provider_event_required": true,
+          "required_after": "latest_lkg_pointer_envelope_and_index_read_validated",
+          "to": "open_finalizing"
+        },
+        {
+          "authorized_role": "release_operator",
+          "from": "open_finalizing",
+          "provider_event_required": true,
+          "required_after": "applicable_durable_close_root_validated",
+          "to": "closed"
+        }
+      ]
+    },
+    "authority_status": {
+      "enum": [
+        "POLICY_ONLY_NO_LIVE_PROVIDER_RECEIPT",
+        "PROVIDER_BOUND"
+      ]
+    },
+    "cross_system_atomicity": {
+      "const": "not_claimed"
+    },
+    "freshness_windows_seconds": {
+      "additionalProperties": false,
+      "properties": {
+        "prepromotion": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "terminal_commit": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prepromotion",
+        "terminal_commit"
+      ],
+      "type": "object"
+    },
+    "no_other_authorized_transition": {
+      "const": true
+    },
+    "owner": {
+      "const": "MP2-007"
+    },
+    "provider": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "linear"
+        },
+        "team_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "id",
+        "team_id"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "metriplane.release-task-state-policy.v1"
+    },
+    "server_clock_skew_budget_seconds": {
+      "additionalProperties": false,
+      "properties": {
+        "capture": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "terminal_commit": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "capture",
+        "terminal_commit"
+      ],
+      "type": "object"
+    },
+    "workflow_states": {
+      "additionalProperties": false,
+      "properties": {
+        "closed": {
+          "$ref": "#/$defs/state"
+        },
+        "open_finalizing": {
+          "$ref": "#/$defs/state"
+        },
+        "open_running": {
+          "$ref": "#/$defs/state"
+        }
+      },
+      "required": [
+        "closed",
+        "open_finalizing",
+        "open_running"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "owner",
+    "provider",
+    "workflow_states",
+    "allowed_transitions",
+    "authority_status",
+    "cross_system_atomicity",
+    "freshness_windows_seconds",
+    "server_clock_skew_budget_seconds",
+    "no_other_authorized_transition"
+  ],
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "Match exact state ID/name/type against captured team dictionary, not name substring or completedAt.",
+    "open_running/open_finalizing must be distinct started states; closed must be completed. Canceled/duplicate never satisfy completed gate.",
+    "Freshness/scoped policies retain currently governed values and later action-boundary checks; structural numeric validity does not authorize changing a window.",
+    "No policy status or raw checksum authenticates a provider event or human transition."
+  ]
+}

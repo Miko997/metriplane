@@ -11,12 +11,166 @@ All notable changes to Metriplane are documented here.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-12 — Assurance Hardening
+
+### Fixed
+
+- Prevented Atlas before/after comparisons from claiming an improvement when
+  process rules, evaluation context, or observation coverage do not support a
+  like-for-like comparison. Legacy runs without assessment metadata report
+  insufficient evidence, and opposing wait/incident changes report a tradeoff.
+- Added explicit satisfied, violated, unresolved, and not-exercised outcomes to
+  recorded-run reports and a versioned, checksummed requirement assessment.
+  True observed wait is separate from the retained legacy deviation metric;
+  unfinished intervals remain lower bounds. Incident bundles retain the new
+  assessment while old bundles remain readable.
+- Documented the existing sampled missing-state policy, including completion
+  at equality and a first arrival observed after the threshold without a prior
+  sampled deviation. Detector events and regression semantics are preserved.
+
+### Validation
+
+- Added focused failure-path and compatibility tests plus an installed-package
+  before/after reproduction runner for MET-162. These changes do not alter
+  frozen research evidence or claim external adoption.
+- Added a connected, fail-closed release lifecycle from source freeze through
+  candidate identity, target and predecessor resolution, qualification,
+  approval, promotion planning and locking, exact-byte reconciliation,
+  retention, evidence-chain and last-known-good transitions, invalidation, and
+  immutable recovery. The interfaces and failure paths are implemented and
+  tested; live multi-party production custody is owner-deferred to a later
+  assurance milestone for this single-maintainer release.
+- Added governed bidirectional requirement, capability, code, test,
+  documentation, and rubric traceability with deterministic currentness checks.
+- Characterized supported command-line behavior across success and failure,
+  text and JSON output, exit status, and output artifacts without broadening
+  compatibility claims beyond executed evidence.
+- Added task work-order and release-membership enforcement plus signed
+  migration-delta governance for semantic, golden, and test-obligation changes.
+
+### Compatibility
+
+- Existing product commands and the recorded, local, planar, observe-only
+  product boundary remain unchanged. The release-control commands are
+  maintainer interfaces and do not add robot-control authority.
+- Frozen v0.2.0 research evidence, its DOI, and the retained v0.4.0,
+  v0.4.0.post1, and v0.4.0.post2 histories remain unchanged.
+
+## [0.4.0.post2] — 2026-09-06 — Reduced Truth Recovery publication recovery
+
+### Publication recovery
+
+- Reproduces release qualification and build tooling from the repository's
+  canonical lock, including the pinned browser/runtime path, instead of
+  independently resolving governed tools.
+- Uses `0.4.0.post2` / `v0.4.0.post2` as the replacement publication identity and
+  accepts that exact PEP 440 post-release version in current external-fixture
+  manifests without weakening package/version equality.
+- Preserves `v0.4.0` at commit
+  `6a87936b5471c320efa6bcd7f5d1fe5569ca57b9` as history of the failed attempt.
+  Its release qualification failed before registry publication because the tag
+  workflow did not reproduce the locked environment; no 0.4.0 package or GitHub
+  Release was published, and no artifact from that run is reused.
+- Preserves `v0.4.0.post1` at commit
+  `69f3d88c0779ff19962c455637a12701ff043876` as the retired unpublished
+  production candidate. Its locked qualification and TestPyPI staging passed,
+  but production stopped before lease creation or upload when GitHub exposed a
+  narrow future-step status mismatch. The broker repair advanced protected main,
+  so no post1 bytes are reused or published to production.
+
+### Scope and deferred assurance
+
+- This post-release publishes the existing reduced Truth Recovery core scope.
+  It adds no product capability or assurance claim.
+- MP2-007 and MP2-014 through MP2-017 remain deferred to v0.4.1 Assurance
+  Hardening; they are not completed, waived, or implied by this release.
+
+## [0.4.0.post1] — 2026-09-05 — Retired unpublished production candidate
+
+- Locked qualification and exact retained-artifact TestPyPI staging passed.
+- Production workflow `33963231781` stopped before publication-lease creation,
+  fenced blocker execution, final artifact rehash, PyPI upload, or production
+  verification because GitHub represented future publication steps as
+  `pending` at the exact lease-wait boundary.
+- The fail-closed broker repair was merged through protected main before any
+  production upload. That required main advancement retired post1 under the
+  release contract. The annotated tag, retained artifacts and hashes, TestPyPI
+  files, and cancelled-run evidence remain immutable; no post1 package or
+  GitHub Release was published to production.
+
+## [0.4.0] — 2026-09-02 — Failed publication attempt
+
+This immutable tag contains the reduced Truth Recovery candidate described
+below, but its publication qualification failed before registry publication.
+It is not a published package or GitHub Release.
+
+### Added
+
+- Added strict, portable external-fixture validation and recorded-state
+  evaluation through `metriplane external validate` and `metriplane external
+  run`. The repository includes bounded fixtures and adapters for specific
+  ManiSkill, robomimic, ROS 2/MCAP, and MassRobotics inputs; these are not a
+  claim of generic compatibility with those ecosystems.
+- Added an audited baseline and deterministic governed inventories for the
+  command line, UI declarations, public Python surface, maintained resources,
+  configurations, examples, proofs, workflows, claims, and artifact-manifest
+  keys. Stable identifiers, source digests, and no-write currentness checks make
+  drift visible without treating a static census as runtime support evidence.
+- Added fail-closed protected-main health and release-serialization contracts
+  for repository administration. These maintainer controls do not change
+  Metriplane's observe-only product boundary.
+
+### Changed
+
+- Made run and generated-output storage portable across supported host path
+  conventions while retaining explicit no-clobber behavior and binding writes,
+  cleanup, and publication to validated filesystem identities.
+- Pinned the maintained lint, formatting, type-checking, documentation, and test
+  toolchain and made generated functional inventories part of the governed
+  release checks.
+- Preserved source-specific v0.3.0 fixture trees as historical evidence while
+  requiring any v0.4.0 evaluation to use an explicit current-version
+  materialization with a recomputed checksum inventory.
+
+### Fixed
+
+- Closed public-surface discovery gaps for nested manifests, structured return
+  effects, unresolved shapes, and exact binding stability.
+- Hardened local-run lifecycle, reservation, overwrite, cleanup, and generated
+  file-mode handling against ambiguous, stale, replaced, or unsafe paths.
+- Made protected-main admission reconcile exact provider attempts, immutable
+  commits, state generations, repository rules, and owner-request evidence
+  before the broker may merge.
+
 ### Security and integrity
 
 - Split production PyPI promotion from the tag-triggered TestPyPI workflow.
   Production now requires a separate owner-only manual dispatch naming the
   successful tag run, exact version, and explicit confirmation phrase; the
   protected environment remains an additional safeguard.
+- Production publication is serialized by an App-owned release lease. Exact
+  artifacts are built once, verified on TestPyPI, promoted without rebuilding,
+  and checked by hash again after production publication.
+- Frozen v0.2.0 research evidence and source-specific historical proof records
+  remain unchanged.
+
+### Scope and deferred assurance
+
+- The v0.4.0 candidate carries the reduced Truth Recovery core scope. MP2-007 and MP2-014 through
+  MP2-017 remain deferred to v0.4.1 Assurance Hardening; they are not completed,
+  waived, or implied by this release.
+- Static inventory and deterministic replay results do not establish production
+  safety, physical accuracy, generic robotics compatibility, or completion of
+  the v1.0 assurance programme. Metriplane remains recorded, local, bounded,
+  planar, and observe-only.
+- Historical v2.5.x authority packets are not release evidence for v0.4.0 and
+  are neither consumed nor recreated.
+
+### Research scope
+
+- The v0.4.0 candidate does not replace or modify the frozen v0.2.0 SoftwareX artifact, its
+  DOI, checksums, or measurements, and it does not change the TIM evaluated
+  software boundary at v0.1.3. No v0.4.0 DOI is claimed.
 
 ## [0.3.0] — 2026-08-09 — Usability and adoption
 

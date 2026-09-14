@@ -41,6 +41,7 @@ class MqttHeartbeatExporter:
         self._client = None
         try:
             import paho.mqtt.client as mqtt  # type: ignore
+
             self._client = mqtt.Client()
             self._client.connect(broker, port, keepalive=30)
         except Exception as e:

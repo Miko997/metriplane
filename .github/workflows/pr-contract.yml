@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: PR contract
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Current PR metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted base validator only
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Validate fresh metadata with trusted base code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            | jq '{pull_request: .}' > "$RUNNER_TEMP/pr-current.json"
+          gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
+            | jq 'add' > "$RUNNER_TEMP/pr-reviews.json"
+          python -S tools/check_pr_contract.py \
+            --event "$RUNNER_TEMP/pr-current.json" \
+            --reviews-file "$RUNNER_TEMP/pr-reviews.json"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            | jq '{pull_request: .}' > "$RUNNER_TEMP/pr-readback.json"
+          jq -e --slurpfile before "$RUNNER_TEMP/pr-current.json" \
+            '.pull_request.head.sha == $before[0].pull_request.head.sha and
+             .pull_request.body == $before[0].pull_request.body and
+             .pull_request.base.sha == $before[0].pull_request.base.sha and
+             .pull_request.base.sha == env.BASE_SHA and
+             .pull_request.state == "open"' "$RUNNER_TEMP/pr-readback.json"

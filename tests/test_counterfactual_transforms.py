@@ -14,8 +14,11 @@ from metriplane.sentinel.rules import RuleDefinition, RuleSet
 
 def frame(ts, fid, objs):
     return FrameStateModel(
-        source_backend="dummy", ts=ts, frame_id=fid,
-        objects=[ObjectStateModel(id=i, pos_world=(x, y, 0.0)) for i, x, y in objs])
+        source_backend="dummy",
+        ts=ts,
+        frame_id=fid,
+        objects=[ObjectStateModel(id=i, pos_world=(x, y, 0.0)) for i, x, y in objs],
+    )
 
 
 def test_object_removal():
@@ -54,16 +57,14 @@ def test_speed_scaling_ignores_other_objects():
 
 
 def test_apply_rule_threshold():
-    rs = RuleSet(rules=[RuleDefinition(id="r", type="min_distance",
-                                       min_distance_m=0.6)])
+    rs = RuleSet(rules=[RuleDefinition(id="r", type="min_distance", min_distance_m=0.6)])
     new = apply_rule_threshold(rs, "r", "min_distance_m", 0.2)
     assert new.rules[0].min_distance_m == 0.2
     assert rs.rules[0].min_distance_m == 0.6  # original unchanged
 
 
 def test_apply_rule_threshold_unknown_rule():
-    rs = RuleSet(rules=[RuleDefinition(id="r", type="min_distance",
-                                       min_distance_m=0.6)])
+    rs = RuleSet(rules=[RuleDefinition(id="r", type="min_distance", min_distance_m=0.6)])
     try:
         apply_rule_threshold(rs, "ghost", "min_distance_m", 0.2)
         assert False, "expected ValueError"

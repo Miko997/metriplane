@@ -160,14 +160,14 @@ def select_fusion_backend(
         raise RuntimeError(msg)
 
     try:
-        b = GpuCupyBackend(device=int(cfg.device))
-        log.info("compute backend: %s device=%d", b.name, int(cfg.device))
+        gpu_backend = GpuCupyBackend(device=int(cfg.device))
+        log.info("compute backend: %s device=%d", gpu_backend.name, int(cfg.device))
         if health is not None:
             try:
                 health.set_ok("compute.backend")
             except Exception:
                 pass
-        return b
+        return gpu_backend
     except Exception as e:
         msg = f"GPU backend init failed: {type(e).__name__}: {e}"
         if cfg.allow_fallback_to_cpu:

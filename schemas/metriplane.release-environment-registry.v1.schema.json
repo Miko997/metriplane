@@ -1,0 +1,1864 @@
+{
+  "$comment": "PROPOSED_RAW_REGISTRY_INTERFACE_ONLY. Structure never authenticates policy, support, execution or release qualification.",
+  "$defs": {
+    "argument": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "binding"
+            },
+            "name": {
+              "$ref": "#/$defs/runtime_slot"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "attestation_input_bundle": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "bindings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "record": {
+                "$ref": "#/$defs/raw_file"
+              },
+              "record_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "record_type": {
+                "$ref": "#/$defs/attestation_record_type"
+              },
+              "required_role": {
+                "$ref": "#/$defs/attestation_role"
+              },
+              "slot": {
+                "const": "attestation_record"
+              },
+              "unit_id": {
+                "pattern": "^release-unit-sha256-[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "unit_id",
+              "slot",
+              "record_type",
+              "required_role",
+              "record",
+              "record_digest"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cell_id": {
+          "$ref": "#/$defs/id"
+        },
+        "plan_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "schema_version": {
+          "const": "metriplane.release-attestation-inputs.v1"
+        }
+      },
+      "required": [
+        "schema_version",
+        "candidate_digest",
+        "plan_digest",
+        "attempt_id",
+        "cell_id",
+        "bindings"
+      ],
+      "type": "object"
+    },
+    "attestation_record_type": {
+      "pattern": "^release-[a-z][a-z0-9-]+$",
+      "type": "string"
+    },
+    "attestation_role": {
+      "enum": [
+        "release_operator",
+        "non_author_reviewer",
+        "infrastructure_owner",
+        "publisher",
+        "independent_assurance_verifier"
+      ]
+    },
+    "attestation_slot": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_binding": {
+          "const": "VALIDATED_ROLES_AND_INDEPENDENTLY_PINNED_EXISTING_KEYRING_POLICY"
+        },
+        "binding_owner": {
+          "const": "common_invocation"
+        },
+        "expected_record_type": {
+          "$ref": "#/$defs/attestation_record_type"
+        },
+        "kind": {
+          "const": "signed_release_record"
+        },
+        "must_exist_before_execution": {
+          "const": true
+        },
+        "name": {
+          "const": "attestation_record"
+        },
+        "record_schema_source_id": {
+          "$ref": "#/$defs/id"
+        },
+        "required_role": {
+          "$ref": "#/$defs/attestation_role"
+        },
+        "subject_binding": {
+          "const": "EXISTING_RECORD_VALIDATOR_CURRENT_EXECUTION_CONTEXT"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "binding_owner",
+        "must_exist_before_execution",
+        "expected_record_type",
+        "record_schema_source_id",
+        "required_role",
+        "subject_binding",
+        "authority_binding"
+      ],
+      "type": "object"
+    },
+    "authority_link": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "json_pointer": {
+          "pattern": "^(?:|/.*)$",
+          "type": "string"
+        },
+        "source_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "source_id",
+        "json_pointer",
+        "canonical_subject_digest"
+      ],
+      "type": "object"
+    },
+    "authority_source": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "FIXTURE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authority_scope": {
+                "const": "SYNTHETIC_ONLY"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "GOVERNED_SOURCE",
+                  "RETAINED_PR88_DECLARATION"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "git": {
+                "$ref": "#/$defs/git_binding"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "authority_scope": {
+          "enum": [
+            "PLANNING_ONLY",
+            "CURRENT_POLICY",
+            "OBLIGATION_IDENTITY",
+            "REVIEWED_SUPERSESSION",
+            "SYNTHETIC_ONLY"
+          ]
+        },
+        "git": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/git_binding"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "ORIGINAL_PACKET",
+            "RETAINED_PR88_DECLARATION",
+            "GOVERNED_SOURCE",
+            "GOVERNED_OBLIGATION_LEDGER",
+            "APPROVED_SUPERSESSION",
+            "FIXTURE"
+          ]
+        },
+        "raw_file": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "raw_file",
+        "git",
+        "authority_scope"
+      ],
+      "type": "object"
+    },
+    "configuration_authority": {
+      "$comment": "Either C of the original selected JSON value or the exact candidate_source_blob raw configuration reference. This reference alone grants no policy authority: caller-owned field role/path/parser and independently expected original-source identities must be replayed from captured bytes, then source-freeze proves actual candidate membership. Historical git_binding alone and caller-selected source authority are forbidden.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/authority_link"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "const": "candidate_source_blob"
+            },
+            "git_blob": {
+              "$ref": "#/$defs/git_oid"
+            },
+            "git_mode": {
+              "enum": [
+                "100644",
+                "100755"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "repository": {
+              "const": "Miko997/metriplane"
+            },
+            "source_bytes": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "binding",
+            "repository",
+            "path",
+            "git_blob",
+            "git_mode",
+            "source_bytes"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "coverage_mapping": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "known_obligation_ids": {
+              "items": {
+                "$ref": "#/$defs/obligation_id"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "UNRESOLVED"
+            }
+          },
+          "required": [
+            "state",
+            "known_obligation_ids",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "obligation_ids": {
+              "items": {
+                "$ref": "#/$defs/obligation_id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "const": "MAPPED"
+            }
+          },
+          "required": [
+            "state",
+            "obligation_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "criterion_id": {
+      "pattern": "^MP2-[0-9]{3}\\.A[0-9]{2}$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "environment_pair": {
+      "additionalProperties": false,
+      "properties": {
+        "environment_id": {
+          "$ref": "#/$defs/id"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "environment_id",
+        "profile_id"
+      ],
+      "type": "object"
+    },
+    "environment_variable": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/argument"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "execution_recipe": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "required_operation_owner": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "effect_class": {
+                "const": "existing_release_mutation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required_operation_owner": {
+                "$ref": "#/$defs/owner_entry"
+              }
+            }
+          }
+        },
+        {
+          "else": {
+            "properties": {
+              "input_slots": {
+                "not": {
+                  "contains": {
+                    "$ref": "#/$defs/attestation_slot"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "launch": {
+                "properties": {
+                  "kind": {
+                    "const": "supplied_attestation"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input_slots": {
+                "contains": {
+                  "$ref": "#/$defs/attestation_slot"
+                },
+                "maxContains": 1,
+                "minContains": 1
+              },
+              "owner": {
+                "properties": {
+                  "kind": {
+                    "const": "supplied_attestation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "cleanliness": {
+          "additionalProperties": false,
+          "properties": {
+            "process_or_file_leak": {
+              "const": "FAIL"
+            },
+            "unexpected_skip": {
+              "const": "FAIL"
+            },
+            "unexpected_warnings": {
+              "const": "FAIL"
+            },
+            "unexpected_xfail": {
+              "const": "FAIL"
+            },
+            "unrecorded_retry": {
+              "const": "FAIL"
+            }
+          },
+          "required": [
+            "unexpected_warnings",
+            "unexpected_skip",
+            "unexpected_xfail",
+            "unrecorded_retry",
+            "process_or_file_leak"
+          ],
+          "type": "object"
+        },
+        "effect_class": {
+          "enum": [
+            "read_only",
+            "scratch_only",
+            "existing_release_mutation"
+          ]
+        },
+        "expected_outputs": {
+          "items": {
+            "$ref": "#/$defs/output_expectation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expected_process_exits": {
+          "items": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "input_sidecars": {
+          "items": {
+            "$ref": "#/$defs/raw_file"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "input_slots": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "binding_owner": {
+                    "enum": [
+                      "environment_observation",
+                      "common_invocation",
+                      "candidate_identity"
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "executable",
+                      "directory",
+                      "artifact"
+                    ]
+                  },
+                  "must_exist_before_execution": {
+                    "const": true
+                  },
+                  "name": {
+                    "$ref": "#/$defs/runtime_slot"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "binding_owner",
+                  "must_exist_before_execution"
+                ],
+                "type": "object"
+              },
+              {
+                "$ref": "#/$defs/attestation_slot"
+              }
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "launch": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "argv": {
+                  "items": {
+                    "$ref": "#/$defs/argument"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "cwd": {
+                  "enum": [
+                    "checkout_root",
+                    "installed_harness_root",
+                    "candidate_root",
+                    "execution_output_root"
+                  ]
+                },
+                "environment": {
+                  "items": {
+                    "$ref": "#/$defs/environment_variable"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "kind": {
+                  "const": "argv"
+                },
+                "shell": {
+                  "const": false
+                },
+                "unset_environment": {
+                  "items": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "kind",
+                "argv",
+                "cwd",
+                "environment",
+                "unset_environment",
+                "shell"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dispatch_owner": {
+                  "$ref": "#/$defs/owner_entry"
+                },
+                "job_id": {
+                  "$ref": "#/$defs/id"
+                },
+                "kind": {
+                  "const": "workflow_job"
+                },
+                "matrix": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "key": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "value": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "workflow_source": {
+                  "$ref": "#/$defs/source_binding"
+                }
+              },
+              "required": [
+                "kind",
+                "workflow_source",
+                "job_id",
+                "matrix",
+                "dispatch_owner"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "input_slot": {
+                  "const": "attestation_record"
+                },
+                "kind": {
+                  "const": "supplied_attestation"
+                },
+                "required_role": {
+                  "$ref": "#/$defs/attestation_role"
+                },
+                "validator_owner": {
+                  "$ref": "#/$defs/owner_entry"
+                }
+              },
+              "required": [
+                "kind",
+                "input_slot",
+                "validator_owner",
+                "required_role"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/owner_entry"
+        },
+        "required_operation_owner": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/owner_entry"
+            }
+          ]
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/resource_requirement"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "terminal_owner": {
+          "const": "metriplane/release_control.py"
+        },
+        "thresholds": {
+          "items": {
+            "$ref": "#/$defs/threshold"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "timeout_seconds": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner",
+        "launch",
+        "input_slots",
+        "input_sidecars",
+        "resources",
+        "timeout_seconds",
+        "expected_process_exits",
+        "expected_outputs",
+        "thresholds",
+        "cleanliness",
+        "effect_class",
+        "required_operation_owner",
+        "terminal_owner"
+      ],
+      "type": "object"
+    },
+    "executor": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "required_owner_paths": {
+                  "items": {
+                    "$ref": "#/$defs/relative_path"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "state": {
+                  "const": "UNRESOLVED"
+                }
+              },
+              "required": [
+                "state",
+                "required_owner_paths",
+                "reason"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "recipe": {
+                  "$ref": "#/$defs/execution_recipe"
+                },
+                "state": {
+                  "const": "CONFIGURED"
+                }
+              },
+              "required": [
+                "state",
+                "recipe"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "phase": {
+          "$ref": "#/$defs/phase"
+        }
+      },
+      "required": [
+        "id",
+        "phase",
+        "authority",
+        "binding"
+      ],
+      "type": "object"
+    },
+    "family": {
+      "enum": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "BOUNDARY",
+        "DETERMINISM",
+        "FAULT",
+        "INSTALLED",
+        "COMPAT",
+        "SECURITY",
+        "PERFORMANCE",
+        "TRACE",
+        "CLEAN",
+        "PARSER",
+        "SEMANTIC",
+        "UI",
+        "PROFILE",
+        "RELEASE",
+        "EXTERNAL",
+        "DOCS"
+      ]
+    },
+    "git_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "commit": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "repository": {
+          "const": "Miko997/metriplane"
+        },
+        "tree": {
+          "$ref": "#/$defs/git_oid"
+        }
+      },
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "path",
+        "blob"
+      ],
+      "type": "object"
+    },
+    "git_oid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
+      "type": "string"
+    },
+    "implementation_mapping": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "UNRESOLVED"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "executor_ids": {
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "const": "CONFIGURED"
+            }
+          },
+          "required": [
+            "state",
+            "executor_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "obligation_id": {
+      "pattern": "^MP2-[0-9]{3}\\.OBL\\.[A-Z0-9_]+$",
+      "type": "string"
+    },
+    "output_expectation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "media_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "minimum_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "required": {
+          "const": true
+        },
+        "root": {
+          "const": "execution_output_root"
+        },
+        "schema_source_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "validator_owner": {
+          "$ref": "#/$defs/owner_entry"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "path",
+        "media_type",
+        "schema_source_id",
+        "minimum_bytes",
+        "validator_owner",
+        "required"
+      ],
+      "type": "object"
+    },
+    "owner_entry": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pytest_node"
+            },
+            "node_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "node_id",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "python_entry"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "symbol": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "symbol",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "$ref": "#/$defs/id"
+            },
+            "kind": {
+              "const": "workflow_job"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "job_id",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "supplied_attestation"
+            },
+            "required_role": {
+              "$ref": "#/$defs/id"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "validator_source_path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "validator_symbol": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "validator_source_path",
+            "validator_symbol",
+            "source",
+            "required_role"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "phase": {
+      "enum": [
+        "qualification",
+        "publication_reconciliation",
+        "postpublication"
+      ]
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "required_release": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0",
+        "post-v1.0"
+      ]
+    },
+    "resource_requirement": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "state": {
+                  "const": "UNRESOLVED"
+                }
+              },
+              "required": [
+                "state",
+                "reason"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "configuration": {
+                  "$ref": "#/$defs/raw_file"
+                },
+                "state": {
+                  "const": "CONFIGURED"
+                }
+              },
+              "required": [
+                "state",
+                "configuration"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "fixture",
+            "hardware",
+            "service",
+            "credential_channel",
+            "human_authority",
+            "store",
+            "cas"
+          ]
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "profile_id",
+        "authority",
+        "binding"
+      ],
+      "type": "object"
+    },
+    "runtime_slot": {
+      "enum": [
+        "python_executable",
+        "checkout_root",
+        "installed_harness_root",
+        "candidate_root",
+        "invocation_dir",
+        "execution_output_root",
+        "fixture_root",
+        "wheel_path",
+        "sdist_path"
+      ]
+    },
+    "scenario_verdict": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED",
+        "RECOVER",
+        "BURN"
+      ]
+    },
+    "source_binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/git_binding"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "const": "candidate_source_blob"
+            },
+            "git_blob": {
+              "$ref": "#/$defs/git_oid"
+            },
+            "git_mode": {
+              "enum": [
+                "100644",
+                "100755"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "repository": {
+              "const": "Miko997/metriplane"
+            },
+            "source_bytes": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "binding",
+            "repository",
+            "path",
+            "git_blob",
+            "git_mode",
+            "source_bytes"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "task_id": {
+      "pattern": "^MP2-[0-9]{3}$",
+      "type": "string"
+    },
+    "terminal": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    "threshold": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "comparator": {
+          "enum": [
+            "eq",
+            "le",
+            "ge"
+          ]
+        },
+        "metric_id": {
+          "$ref": "#/$defs/id"
+        },
+        "unit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric_id",
+        "comparator",
+        "value",
+        "unit",
+        "authority"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-environment-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authority_sources": {
+      "items": {
+        "$ref": "#/$defs/authority_source"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "environments": {
+      "items": {
+        "$comment": "Missing original fields may be null/empty only under closed UNRESOLVED execution with nonempty reason and not_measured disposition. Known original facts remain unchanged. Current REQUIRED cells remain required before any missing-field filter. CONFIGURED retains the entire original profile/platform/runtime contract. authority_link remains C of an original selected JSON value; TOML/YAML bytes cannot be substituted. configuration_authority permits the existing exact candidate_source_blob byte branch as a distinct source kind, with closed field-specific trusted replay; it does not convert raw YAML/TOML into JSON authority or permit an arbitrary source/configuration override.",
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "declaration": {
+                  "const": "REQUIRED"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "first_required_release": {
+                  "$ref": "#/$defs/milestone"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "declaration": {
+                  "const": "HISTORICAL_PROPOSAL"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "execution": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "reason": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "state": {
+                      "const": "UNRESOLVED"
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "reason"
+                  ],
+                  "type": "object"
+                },
+                "support_disposition": {
+                  "const": "not_measured"
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "platform": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "architecture": {
+                      "enum": [
+                        "x64",
+                        "arm64"
+                      ]
+                    },
+                    "os_family": {
+                      "enum": [
+                        "linux",
+                        "macos",
+                        "windows"
+                      ]
+                    },
+                    "os_release": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "runner_kind": {
+                      "enum": [
+                        "github-hosted",
+                        "self-hosted",
+                        "local",
+                        "external"
+                      ]
+                    },
+                    "runner_labels": {
+                      "items": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "os_family",
+                    "os_release",
+                    "architecture",
+                    "runner_kind",
+                    "runner_labels"
+                  ],
+                  "type": "object"
+                },
+                "profile_id": {
+                  "$ref": "#/$defs/id"
+                },
+                "runtime": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "dependency_extras": {
+                      "items": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "minItems": 0,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "dependency_groups": {
+                      "items": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "implementation": {
+                      "const": "CPython"
+                    },
+                    "lock_source": {
+                      "$ref": "#/$defs/configuration_authority"
+                    },
+                    "python_minor": {
+                      "pattern": "^3\\.[0-9]+$",
+                      "type": "string"
+                    },
+                    "python_patch_policy": {
+                      "const": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT"
+                    },
+                    "toolchain_sources": {
+                      "items": {
+                        "$ref": "#/$defs/configuration_authority"
+                      },
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "implementation",
+                    "python_minor",
+                    "python_patch_policy",
+                    "toolchain_sources",
+                    "lock_source",
+                    "dependency_groups",
+                    "dependency_extras"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "execution": {
+                  "properties": {
+                    "state": {
+                      "const": "UNRESOLVED"
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ]
+                }
+              },
+              "required": [
+                "execution"
+              ]
+            },
+            "then": {
+              "properties": {
+                "support_disposition": {
+                  "const": "not_measured"
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "authority": {
+            "items": {
+              "$ref": "#/$defs/configuration_authority"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "declaration": {
+            "enum": [
+              "REQUIRED",
+              "GOVERNED_OPTIONAL",
+              "HISTORICAL_PROPOSAL"
+            ]
+          },
+          "execution": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "state": {
+                    "const": "UNRESOLVED"
+                  }
+                },
+                "required": [
+                  "state",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "configuration_sources": {
+                    "items": {
+                      "$ref": "#/$defs/configuration_authority"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "executor_ids": {
+                    "items": {
+                      "$ref": "#/$defs/id"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "owner": {
+                    "$ref": "#/$defs/owner_entry"
+                  },
+                  "state": {
+                    "const": "CONFIGURED"
+                  }
+                },
+                "required": [
+                  "state",
+                  "owner",
+                  "configuration_sources",
+                  "executor_ids"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "first_required_release": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/milestone"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "platform": {
+            "additionalProperties": false,
+            "properties": {
+              "architecture": {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "x64",
+                      "arm64"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "os_family": {
+                "enum": [
+                  "linux",
+                  "macos",
+                  "windows"
+                ]
+              },
+              "os_release": {
+                "oneOf": [
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "runner_kind": {
+                "enum": [
+                  "github-hosted",
+                  "self-hosted",
+                  "local",
+                  "external"
+                ]
+              },
+              "runner_labels": {
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "os_family",
+              "os_release",
+              "architecture",
+              "runner_kind",
+              "runner_labels"
+            ],
+            "type": "object"
+          },
+          "profile_id": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtime": {
+            "additionalProperties": false,
+            "properties": {
+              "dependency_extras": {
+                "oneOf": [
+                  {
+                    "items": {
+                      "$ref": "#/$defs/id"
+                    },
+                    "minItems": 0,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dependency_groups": {
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "minItems": 0,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "implementation": {
+                "oneOf": [
+                  {
+                    "const": "CPython"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lock_source": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/configuration_authority"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "python_minor": {
+                "pattern": "^3\\.[0-9]+$",
+                "type": "string"
+              },
+              "python_patch_policy": {
+                "const": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT"
+              },
+              "toolchain_sources": {
+                "items": {
+                  "$ref": "#/$defs/configuration_authority"
+                },
+                "minItems": 0,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "implementation",
+              "python_minor",
+              "python_patch_policy",
+              "toolchain_sources",
+              "lock_source",
+              "dependency_groups",
+              "dependency_extras"
+            ],
+            "type": "object"
+          },
+          "support_disposition": {
+            "enum": [
+              "not_measured",
+              "unsupported",
+              "supported"
+            ]
+          },
+          "terminal_results": {
+            "const": [
+              "PASS",
+              "FAIL",
+              "BLOCKED",
+              "CANCELLED",
+              "SKIPPED"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "profile_id",
+          "declaration",
+          "support_disposition",
+          "first_required_release",
+          "authority",
+          "platform",
+          "runtime",
+          "execution",
+          "terminal_results"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "evidence_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_index_required": {
+          "const": true
+        },
+        "first_attempt_retained": {
+          "const": true
+        },
+        "terminal_coordinator_required": {
+          "const": true
+        },
+        "two_independent_stores_required": {
+          "const": true
+        }
+      },
+      "required": [
+        "attempt_index_required",
+        "first_attempt_retained",
+        "terminal_coordinator_required",
+        "two_independent_stores_required"
+      ],
+      "type": "object"
+    },
+    "executors": {
+      "items": {
+        "$ref": "#/$defs/executor"
+      },
+      "minItems": 0,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "owner": {
+      "const": "MP2-007"
+    },
+    "population_status": {
+      "enum": [
+        "UNRESOLVED",
+        "DECLARED_NOT_QUALIFIED"
+      ]
+    },
+    "schema_version": {
+      "const": "metriplane.release-supported-environments.v3"
+    }
+  },
+  "required": [
+    "schema_version",
+    "owner",
+    "population_status",
+    "authority_sources",
+    "environments",
+    "executors",
+    "evidence_policy"
+  ],
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "E01-E07 in semantic-contract.md; exact original bytes, authority and current source cross-validation required.",
+    "Environment IDs/profile/runtime/platform/executor bindings cannot be changed or support promoted by relabeling a retained proposal.",
+    "CONFIGURED describes a static recipe, not a measured environment or successful attempt."
+  ]
+}

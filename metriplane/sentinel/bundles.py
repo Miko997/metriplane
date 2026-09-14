@@ -27,9 +27,7 @@ from metriplane.trace.store import TraceStore
 # in the session excerpt, to give the replay context around the event.
 EXCERPT_PAD_S = 2.0
 _CHECKSUM_RE = re.compile(r"^([0-9a-fA-F]{64}) ([ *])(.+)$")
-UNSIGNED_DERIVED_SIDECARS = frozenset(
-    {"expected.yaml", "test_result.json", "test_result.md"}
-)
+UNSIGNED_DERIVED_SIDECARS = frozenset({"expected.yaml", "test_result.json", "test_result.md"})
 REQUIRED_BUNDLE_FILES = (
     "incident.json",
     "alerts.jsonl",
@@ -160,10 +158,7 @@ def validate_bundle_evidence(bundle_dir: str | Path) -> list[str]:
 
     if len(incidents) != 1:
         return [
-            (
-                "incident.json must contain exactly one expected incident; "
-                f"found {len(incidents)}"
-            )
+            (f"incident.json must contain exactly one expected incident; found {len(incidents)}")
         ]
     if not frames:
         errors.append("session_excerpt.jsonl must contain at least one frame")
@@ -196,8 +191,9 @@ def validate_bundle_evidence(bundle_dir: str | Path) -> list[str]:
     return errors
 
 
-def _extract_excerpt(session_path: str | Path, start_ts: float, end_ts: float,
-                     out_path: Path) -> int:
+def _extract_excerpt(
+    session_path: str | Path, start_ts: float, end_ts: float, out_path: Path
+) -> int:
     """Write frames whose ts is within [start-pad, end+pad] to out_path as JSONL."""
     lo = start_ts - EXCERPT_PAD_S
     hi = end_ts + EXCERPT_PAD_S
@@ -211,8 +207,9 @@ def _extract_excerpt(session_path: str | Path, start_ts: float, end_ts: float,
     return count
 
 
-def _render_report_md(incident: IncidentRecord, alerts: list[RuleAlert],
-                      excerpt_frames: int) -> str:
+def _render_report_md(
+    incident: IncidentRecord, alerts: list[RuleAlert], excerpt_frames: int
+) -> str:
     lines = [
         f"# Incident {incident.incident_id}",
         "",
@@ -250,9 +247,7 @@ def _render_report_md(incident: IncidentRecord, alerts: list[RuleAlert],
 
 
 def _render_report_html(incident: IncidentRecord, md: str) -> str:
-    body = (
-        md.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    )
+    body = md.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return (
         "<!doctype html>\n"
         '<html lang="en"><head><meta charset="utf-8">\n'
@@ -305,9 +300,7 @@ def create_bundle(
             raise ValueError(f"bundle output would replace source input: {source_path}")
     if bundle.exists() or bundle.is_symlink():
         if not overwrite:
-            raise ValueError(
-                f"refusing to replace existing bundle without --overwrite: {bundle}"
-            )
+            raise ValueError(f"refusing to replace existing bundle without --overwrite: {bundle}")
 
     bundle.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix=f".{bundle.name}-", dir=bundle.parent) as temp_dir:
@@ -327,8 +320,7 @@ def create_bundle(
         had_previous = bundle.exists() or bundle.is_symlink()
         if had_previous and not overwrite:
             raise ValueError(
-                "refusing to replace bundle created while staging "
-                f"without --overwrite: {bundle}"
+                f"refusing to replace bundle created while staging without --overwrite: {bundle}"
             )
         if had_previous:
             os.replace(bundle, backup)
@@ -441,9 +433,7 @@ def verify_bundle(bundle_dir: str | Path) -> tuple[bool, list[str]]:
 
     evidence_errors = validate_bundle_evidence(bundle)
     if evidence_errors:
-        return False, messages + [
-            f"FAIL evidence: {error}" for error in evidence_errors
-        ]
+        return False, messages + [f"FAIL evidence: {error}" for error in evidence_errors]
 
     # 2. reproduce incident
     try:
@@ -465,9 +455,7 @@ def verify_bundle(bundle_dir: str | Path) -> tuple[bool, list[str]]:
         alerts, _ = evaluate_session(bundle / "session_excerpt.jsonl", ruleset, registry)
         incidents = build_incidents(alerts)
     except Exception as exc:
-        return False, messages + [
-            f"FAIL: bundle verification error: {type(exc).__name__}: {exc}"
-        ]
+        return False, messages + [f"FAIL: bundle verification error: {type(exc).__name__}: {exc}"]
 
     if not incidents:
         return False, messages + ["FAIL: no incident reproduced"]
@@ -502,9 +490,6 @@ def verify_bundle(bundle_dir: str | Path) -> tuple[bool, list[str]]:
     else:
         ok = False
         messages.append("FAIL: incident not reproduced with expected semantics")
-        messages.extend(
-            f"FAIL incident mismatch: {mismatch}"
-            for mismatch in best_mismatches
-        )
+        messages.extend(f"FAIL incident mismatch: {mismatch}" for mismatch in best_mismatches)
 
     return ok, messages

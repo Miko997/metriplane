@@ -25,8 +25,7 @@ def test_cpu_weighted_deterministic():
 
 
 def test_avg_of_two_points():
-    obs = {"a": [{"x": 0.0, "y": 0.0, "confidence": 1.0},
-                 {"x": 2.0, "y": 4.0, "confidence": 1.0}]}
+    obs = {"a": [{"x": 0.0, "y": 0.0, "confidence": 1.0}, {"x": 2.0, "y": 4.0, "confidence": 1.0}]}
     out = CpuNumpyBackend().fuse_xy(obs, method="avg")
     assert out["a"] == (1.0, 2.0)
 
@@ -49,8 +48,9 @@ def test_rmse_identical_outputs_is_zero():
 
 
 def test_gpu_matches_cpu_if_available():
-    cupy = pytest.importorskip("cupy")
+    pytest.importorskip("cupy")
     from metriplane.compute.gpu_cupy import GpuCupyBackend
+
     obs = _gen_observations(100, 4, seed=11)
     cpu_out = CpuNumpyBackend().fuse_xy(obs, method="weighted")
     gpu_out = GpuCupyBackend(device=0).fuse_xy(obs, method="weighted")
@@ -62,9 +62,17 @@ def test_gpu_matches_cpu_if_available():
 def test_benchmark_run_cpu_only():
     import argparse
     from benchmarks.gpu_fusion_scaling import run
+
     args = argparse.Namespace(
-        methods=["avg"], n_objects=[1, 50], obs_per_object=[2], iters=5,
-        warmup=2, backend="cpu", require_gpu=False, seed=1234)
+        methods=["avg"],
+        n_objects=[1, 50],
+        obs_per_object=[2],
+        iters=5,
+        warmup=2,
+        backend="cpu",
+        require_gpu=False,
+        seed=1234,
+    )
     rows = run(args)
     assert len(rows) == 2
     assert all(r.backend == "cpu_numpy" for r in rows)

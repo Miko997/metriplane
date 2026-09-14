@@ -17,6 +17,7 @@ from benchmarks.physical_observability.scenarios import (
 
 # --- metrics --------------------------------------------------------------
 
+
 def test_prf_perfect_match():
     pr = precision_recall_f1(["a", "b"], ["a", "b"])
     assert pr["precision"] == 1.0 and pr["recall"] == 1.0 and pr["f1"] == 1.0
@@ -51,6 +52,7 @@ def test_latency_summary_empty():
 
 
 # --- scenarios ------------------------------------------------------------
+
 
 def test_discovers_three_scenarios():
     names = discover_scenarios()

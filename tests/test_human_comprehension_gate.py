@@ -269,8 +269,7 @@ def test_failed_command_rejects_unbounded_or_unredacted_content(
 def test_failed_command_accepts_faithful_redaction_placeholders(tmp_path: Path) -> None:
     calculator = _load_calculator()
     command = (
-        "TOKEN=<REDACTED> metriplane demo --out <PATH> "
-        "--index-url <PRIVATE_URL> --owner <USER>"
+        "TOKEN=<REDACTED> metriplane demo --out <PATH> --index-url <PRIVATE_URL> --owner <USER>"
     )
     path = _write(
         tmp_path / "redacted-command.json",
@@ -301,10 +300,7 @@ def test_time_to_report_must_be_finite_and_nonnegative(
         (
             [
                 *[_tester(index) for index in range(3)],
-                *[
-                    _tester(index, product_understood=False)
-                    for index in range(3, 5)
-                ],
+                *[_tester(index, product_understood=False) for index in range(3, 5)],
             ],
             1,
         ),

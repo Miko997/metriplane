@@ -16,9 +16,15 @@ from metriplane.mapping.planar import load_planar_mapper
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Preview planar mapping: show world XY overlay for ArUco markers.")
-    ap.add_argument("--profile", default=None, help="Profile name (defaults to calib/active_profile.yaml)")
-    ap.add_argument("--calib-root", type=Path, default=Path("calib"), help="Calibration root (default: ./calib)")
+    ap = argparse.ArgumentParser(
+        description="Preview planar mapping: show world XY overlay for ArUco markers."
+    )
+    ap.add_argument(
+        "--profile", default=None, help="Profile name (defaults to calib/active_profile.yaml)"
+    )
+    ap.add_argument(
+        "--calib-root", type=Path, default=Path("calib"), help="Calibration root (default: ./calib)"
+    )
 
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--mapping", type=Path, default=None, help="mapping.yaml (overrides profile)")
@@ -44,7 +50,9 @@ def main() -> int:
     print(f"[preview] intrinsics(candidate)={intr_path if intr_path else '(none)'}")
 
     mapper = load_planar_mapper(mapping_path, intr_path)
-    print(f"[preview] mapping.undistort_points={mapper.mapping.undistort_points} -> runtime_uses_intrinsics={mapper.intrinsics is not None}")
+    print(
+        f"[preview] mapping.undistort_points={mapper.mapping.undistort_points} -> runtime_uses_intrinsics={mapper.intrinsics is not None}"
+    )
 
     cam = USBCamera(index=args.camera)
     backend = ArUcoBackend()
@@ -67,7 +75,7 @@ def main() -> int:
                 print("[preview] recording ->", args.record)
 
             lines = []
-            for (mid, cx, cy) in dets:
+            for mid, cx, cy in dets:
                 xy = mapper.pixel_to_world_xy(cx, cy)
 
                 cv2.circle(vis, (int(cx), int(cy)), 6, (0, 255, 0), -1)

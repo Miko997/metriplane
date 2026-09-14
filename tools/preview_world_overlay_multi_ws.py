@@ -29,7 +29,9 @@ def _parse_bounds(s: str) -> tuple[float, float, float, float]:
     return (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
 
 
-def _world_to_px(x: float, y: float, *, xmin: float, xmax: float, ymin: float, ymax: float, scale: float) -> tuple[int, int]:
+def _world_to_px(
+    x: float, y: float, *, xmin: float, xmax: float, ymin: float, ymax: float, scale: float
+) -> tuple[int, int]:
     px = int((x - xmin) * scale)
     py = int((ymax - y) * scale)
     return (px, py)
@@ -39,7 +41,15 @@ def _blank(h: int, w: int) -> np.ndarray:
     return np.zeros((h, w, 3), dtype=np.uint8)
 
 
-def _draw_grid(img: np.ndarray, xmin: float, xmax: float, ymin: float, ymax: float, scale: float, step_m: float = 0.1) -> None:
+def _draw_grid(
+    img: np.ndarray,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    scale: float,
+    step_m: float = 0.1,
+) -> None:
     h, w = img.shape[:2]
     x = xmin
     while x <= xmax + 1e-9:
@@ -68,7 +78,13 @@ def _fuse_avg(obs: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
     xs = [float(o["x"]) for o in obs]
     ys = [float(o["y"]) for o in obs]
-    return {"x": float(np.mean(xs)), "y": float(np.mean(ys)), "camera_id": "avg", "rmse": None, "px": None}
+    return {
+        "x": float(np.mean(xs)),
+        "y": float(np.mean(ys)),
+        "camera_id": "avg",
+        "rmse": None,
+        "px": None,
+    }
 
 
 def _fuse_weighted(obs: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -88,11 +104,19 @@ def _fuse_weighted(obs: list[dict[str, Any]]) -> dict[str, Any] | None:
     xs = np.array(xs, dtype=np.float64)
     ys = np.array(ys, dtype=np.float64)
     wsum = float(np.sum(ws)) if float(np.sum(ws)) > 0 else 1.0
-    return {"x": float(np.sum(ws * xs) / wsum), "y": float(np.sum(ws * ys) / wsum), "camera_id": "weighted", "rmse": None, "px": None}
+    return {
+        "x": float(np.sum(ws * xs) / wsum),
+        "y": float(np.sum(ws * ys) / wsum),
+        "camera_id": "weighted",
+        "rmse": None,
+        "px": None,
+    }
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Like preview_world_overlay_multi, but ALSO publishes WS frames for Omniverse/ROS2.")
+    ap = argparse.ArgumentParser(
+        description="Like preview_world_overlay_multi, but ALSO publishes WS frames for Omniverse/ROS2."
+    )
     ap.add_argument("--cam0", type=int, default=0)
     ap.add_argument("--cam1", type=int, default=2)
 
@@ -185,7 +209,7 @@ def main() -> int:
                 raw_objs: list[ObjectStateModel] = []
                 rmse = mm.rmse_for(cid)
 
-                for (mid, cx, cy) in dets:
+                for mid, cx, cy in dets:
                     xy = mm.pixel_to_world_xy(cid, float(cx), float(cy))
 
                     cv2.circle(vis, (int(cx), int(cy)), 6, (0, 255, 0), -1)
@@ -195,36 +219,71 @@ def main() -> int:
 
                     xw, yw = xy
                     txt = f"id={mid} x={xw:.2f} y={yw:.2f}"
-                    cv2.putText(vis, txt, (int(cx) + 8, int(cy) - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    cv2.putText(
+                        vis,
+                        txt,
+                        (int(cx) + 8, int(cy) - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 255, 0),
+                        2,
+                    )
 
                     raw_objs.append(
                         ObjectStateModel(
                             id=str(mid),
                             pos_world=(float(xw), float(yw), 0.0),
                             confidence=1.0,
-                            extra={"px": (float(cx), float(cy)), "camera_id": cid, "cam_anchor_rmse": rmse},
+                            extra={
+                                "px": (float(cx), float(cy)),
+                                "camera_id": cid,
+                                "cam_anchor_rmse": rmse,
+                            },
                         )
                     )
 
                     obs_by_id[str(mid)].append(
-                        {"camera_id": cid, "x": float(xw), "y": float(yw), "rmse": rmse, "px": (float(cx), float(cy))}
+                        {
+                            "camera_id": cid,
+                            "x": float(xw),
+                            "y": float(yw),
+                            "rmse": rmse,
+                            "px": (float(cx), float(cy)),
+                        }
                     )
 
                     # topdown draw (cam0 green, cam1 yellow like your working tool)
-                    px, py = _world_to_px(xw, yw, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, scale=scale)
+                    px, py = _world_to_px(
+                        xw, yw, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, scale=scale
+                    )
                     col = (0, 255, 255) if cid == "cam1" else (0, 255, 0)
                     if 0 <= px < w and 0 <= py < h:
                         cv2.circle(top, (px, py), 6, col, -1)
-                        cv2.putText(top, f"{mid}", (px + 6, py - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1)
+                        cv2.putText(
+                            top, f"{mid}", (px + 6, py - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1
+                        )
 
-                cv2.putText(vis, f"{cid}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+                cv2.putText(
+                    vis, f"{cid}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2
+                )
                 cam_vis[cid] = vis
-                raw_models.append(CameraFrameModel(camera_id=cid, ts_cam_read=float(fr.ts_cam_read), objects=raw_objs))
+                raw_models.append(
+                    CameraFrameModel(
+                        camera_id=cid, ts_cam_read=float(fr.ts_cam_read), objects=raw_objs
+                    )
+                )
 
                 cv2.imshow(f"cam_{cid}", vis)
 
-            cv2.putText(top, f"world_topdown  fusion={args.fusion}  fps={fps:.1f}", (10, 28),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            cv2.putText(
+                top,
+                f"world_topdown  fusion={args.fusion}  fps={fps:.1f}",
+                (10, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (255, 255, 255),
+                2,
+            )
             cv2.imshow("world_topdown", top)
 
             # Fuse -> tracked
@@ -245,7 +304,12 @@ def main() -> int:
                         id=str(oid),
                         pos_world=(float(best["x"]), float(best["y"]), 0.0),
                         confidence=1.0,
-                        extra={"fusion": {"method": args.fusion, "sources": [o["camera_id"] for o in obs]}},
+                        extra={
+                            "fusion": {
+                                "method": args.fusion,
+                                "sources": [o["camera_id"] for o in obs],
+                            }
+                        },
                     )
                 )
 
@@ -291,8 +355,12 @@ def main() -> int:
                 if writer is None:
                     args.record_mosaic.parent.mkdir(parents=True, exist_ok=True)
                     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    writer = cv2.VideoWriter(str(args.record_mosaic), fourcc, float(args.record_fps),
-                                             (mosaic.shape[1], mosaic.shape[0]))
+                    writer = cv2.VideoWriter(
+                        str(args.record_mosaic),
+                        fourcc,
+                        float(args.record_fps),
+                        (mosaic.shape[1], mosaic.shape[0]),
+                    )
                     print("[ws_preview] recording mosaic ->", args.record_mosaic)
 
                 writer.write(mosaic)

@@ -208,6 +208,7 @@ dev = [
     { name = "playwright", specifier = "==1.62.0" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "ruff", specifier = "==0.16.2" },
+    { name = "setuptools", specifier = "==82.0.1" },
     { name = "twine", specifier = "==6.2.0" },
     { name = "types-pyyaml", specifier = "==6.0.12.20260724" },
 ]

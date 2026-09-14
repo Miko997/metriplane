@@ -1,0 +1,2642 @@
+{
+  "authority_sources": [
+    {
+      "authority_scope": "PLANNING_ONLY",
+      "git": null,
+      "id": "original-packet09",
+      "kind": "ORIGINAL_PACKET",
+      "raw_file": {
+        "bytes": 47199,
+        "path": "authority/09_RELEASE_READINESS_MAP.json",
+        "sha256": "a748dcfeadd292b5130f30b06174cad0cba92166b14bb2432124cd19b082406a"
+      }
+    },
+    {
+      "authority_scope": "PLANNING_ONLY",
+      "git": {
+        "blob": "8bd4637ae6d2eba740f418588e34bfa62c1c9d06",
+        "commit": "860d5e930f3339fb4471b67740f044e2460cf6cb",
+        "path": "docs/status/release-scenarios.json",
+        "repository": "Miko997/metriplane",
+        "tree": "d2cce65d525e6a0291cabfa4800491bb46f4b343"
+      },
+      "id": "original-pr88-scenarios",
+      "kind": "RETAINED_PR88_DECLARATION",
+      "raw_file": {
+        "bytes": 9743,
+        "path": "authority/pr88/release-scenarios.json",
+        "sha256": "80071607b602d81f3647308843b8ae9d858805dad51a605bf179e42c2e90073d"
+      }
+    }
+  ],
+  "executors": [],
+  "owner": "MP2-007",
+  "phases": [
+    "qualification",
+    "publication_reconciliation",
+    "postpublication"
+  ],
+  "population_status": "UNRESOLVED",
+  "release_slots": [
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v0.4",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "GENESIS_V0_3_0",
+        "BASELINE_INVENTORY",
+        "BASELINE_CHARACTERIZATION",
+        "ROOT_ADAPTER_INTEGRATION_CUMULATIVE",
+        "INSTALLED_CORE",
+        "PROTECTION_AND_MAIN_HEALTH_MUTATIONS",
+        "LOCAL_FAKE_RELEASE"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v0.5",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "INSTALLED_PRODUCT_FAMILY",
+        "UPGRADE",
+        "FAILED_UPGRADE",
+        "DOWNGRADE_NO_MODIFY",
+        "ROLLBACK",
+        "TWO_BUILDER_REPRODUCIBILITY"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v0.6",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "CANONICAL_CONTRACTS",
+        "LEGACY_NEW_DIFFERENTIAL",
+        "CAPSULE_SEPARATE_CANDIDATE",
+        "CAPSULE_FIVE_VERDICTS",
+        "BOUNDED_SOURCE_NEUTRALITY"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v0.7",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "ARTIFACT_PARITY",
+        "CLI_API_SERVICE_UI_PARITY",
+        "ALL_DISCOVERED_ACTIONS",
+        "BROWSER_ACCESSIBILITY",
+        "LIFECYCLE_SHUTDOWN_LEAKS"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v0.8",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "ADAPTER_CONFORMANCE",
+        "ROS_NATIVE_ROWS",
+        "SIMULATOR_NATIVE_ROWS",
+        "GPU_CONTAINER_NATIVE_ROWS",
+        "NAMED_HARDWARE_ROWS",
+        "TRUTHFUL_UNSUPPORTED_NOT_MEASURED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v0.9",
+      "postpublication_scenario_ids": [
+        "ASSURANCE_PACKET_RESTORE"
+      ],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 3,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "PROPERTY_MUTATION_FUZZ",
+        "CHAOS_RECOVERY",
+        "PERFORMANCE_BUDGETS",
+        "REPRODUCIBILITY",
+        "WORKFLOW_PARITY",
+        "PUBLICATION_STATE_REHEARSAL"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "milestone": "v1.0",
+      "postpublication_scenario_ids": [
+        "ONE_HUNDRED_GATE_RECOMPUTE",
+        "FINAL_PACKET_RESTORE"
+      ],
+      "publication_reconciliation_scenario_ids": [
+        "EXACT_BYTE_PUBLICATION"
+      ],
+      "qualification_attempts_required": 3,
+      "qualification_scenario_ids": [
+        "COMPLETE_CURRENT_CUMULATIVE",
+        "THREE_EXTERNAL_EVALUATIONS",
+        "NON_MAINTAINER_RERUN",
+        "USER_INITIATED_FOLLOW_UP"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.8",
+      "id": "ADAPTER_CONFORMANCE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.7",
+      "id": "ALL_DISCOVERED_ACTIONS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.7",
+      "id": "ARTIFACT_PARITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "ASSURANCE_PACKET_RESTORE",
+      "kind": "release_requirement",
+      "phase": "postpublication",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "BASELINE_CHARACTERIZATION",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "BASELINE_INVENTORY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.6",
+      "id": "BOUNDED_SOURCE_NEUTRALITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.7",
+      "id": "BROWSER_ACCESSIBILITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.6",
+      "id": "CANONICAL_CONTRACTS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.6",
+      "id": "CAPSULE_FIVE_VERDICTS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.6",
+      "id": "CAPSULE_SEPARATE_CANDIDATE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "CHAOS_RECOVERY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.7",
+      "id": "CLI_API_SERVICE_UI_PARITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "kind": "cumulative",
+        "rule": "COMPLETE_CURRENT_CUMULATIVE"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "COMPLETE_CURRENT_CUMULATIVE",
+      "kind": "inheritance_selector",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "DOWNGRADE_NO_MODIFY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "EXACT_BYTE_PUBLICATION",
+      "kind": "release_requirement",
+      "phase": "publication_reconciliation",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "FAILED_UPGRADE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "FINAL_PACKET_RESTORE",
+      "kind": "release_requirement",
+      "phase": "postpublication",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "GENESIS_V0_3_0",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.8",
+      "id": "GPU_CONTAINER_NATIVE_ROWS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        },
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        },
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        },
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        },
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "kind": "cumulative",
+        "rule": "ALL_PRIOR_REQUIRED"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "INHERITED_ALL",
+      "kind": "inheritance_selector",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "INSTALLED_CORE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "INSTALLED_PRODUCT_FAMILY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "4ee9c6bf3d089fc907f35f01b5e9b85062714ce142986dc5bebb10a4a4f6c6b9",
+          "json_pointer": "/releases/2",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.6",
+      "id": "LEGACY_NEW_DIFFERENTIAL",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ec40b63fd93c7a23909740296125d3aa84d677ae3fb544b7e770b9b483565b87",
+          "json_pointer": "/releases/3",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.7",
+      "id": "LIFECYCLE_SHUTDOWN_LEAKS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [
+        "roles",
+        "task-state",
+        "staging",
+        "targets",
+        "predecessor",
+        "source-freeze",
+        "candidate",
+        "qualification",
+        "approval",
+        "prepromotion",
+        "promotion",
+        "reconciliation",
+        "retention",
+        "closed"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "kind": "group",
+        "scenario_ids": [
+          "complete-fake-release",
+          "missing-role-signature",
+          "stale-task-state",
+          "staging-cancelled",
+          "target-occupation-burn",
+          "missing-predecessor",
+          "source-freeze-drift",
+          "candidate-rebuild",
+          "qualification-failed",
+          "required-cell-skipped",
+          "hard-runner-loss",
+          "runner-service-retry",
+          "self-approval",
+          "synthetic-live-approval",
+          "stale-prepromotion-controls",
+          "concurrent-writer",
+          "capability-limited-tag-burn",
+          "partial-publication",
+          "artifact-mismatch",
+          "kill-after-cas",
+          "external-store-outage",
+          "signed-lkg-invalidation"
+        ]
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "LOCAL_FAKE_RELEASE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.8",
+      "id": "NAMED_HARDWARE_ROWS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "NON_MAINTAINER_RERUN",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "ONE_HUNDRED_GATE_RECOMPUTE",
+      "kind": "release_requirement",
+      "phase": "postpublication",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "PERFORMANCE_BUDGETS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "PROPERTY_MUTATION_FUZZ",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "PROTECTION_AND_MAIN_HEALTH_MUTATIONS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "PUBLICATION_STATE_REHEARSAL",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "REPRODUCIBILITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "ROLLBACK",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7c599a00f6f01a3c0ae0b0c455f5014e0b055434da399091d453f347638f65d",
+          "json_pointer": "/releases/0",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "ROOT_ADAPTER_INTEGRATION_CUMULATIVE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.8",
+      "id": "ROS_NATIVE_ROWS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.8",
+      "id": "SIMULATOR_NATIVE_ROWS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "THREE_EXTERNAL_EVALUATIONS",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "51932ba541bc18fcfcce14b53ccbc1630e10b0b0fa16c6537774c455fb432566",
+          "json_pointer": "/releases/4",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.8",
+      "id": "TRUTHFUL_UNSUPPORTED_NOT_MEASURED",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "TWO_BUILDER_REPRODUCIBILITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d94f1d5f9bc0350ce56a6232291e61eac727a1b471522ab17b041d79c26baa22",
+          "json_pointer": "/releases/1",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.5",
+      "id": "UPGRADE",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ee2e7bf0ab34f0446645d44d9a187cf7ffd7d9da224bcc78c1a3122a173c3d70",
+          "json_pointer": "/releases/6",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v1.0",
+      "id": "USER_INITIATED_FOLLOW_UP",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fcfc221433bf9fa26b2edfbf6f40a8846b3df58d729ba1e35b0dc7c865cf44cb",
+          "json_pointer": "/releases/5",
+          "source_id": "original-packet09"
+        }
+      ],
+      "covers_stages": [],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original roadmap requirement has no complete current execution recipe or mapping.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": null,
+        "scope": "production_operation",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.9",
+      "id": "WORKFLOW_PARITY",
+      "kind": "release_requirement",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original roadmap root and phase are retained; exact current obligation, environment and stage mappings remain required. Empty mappings confer no coverage.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "c7d33853176287e4efa6fffaf33ad93830d45c90438c6187d432ce031793f22f",
+          "json_pointer": "/scenarios/18",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "reconciliation"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "published-byte-mismatch",
+        "scope": "isolated_fault_subject",
+        "verdict": "FAIL"
+      },
+      "first_required_release": "v0.4",
+      "id": "artifact-mismatch",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_owner_release_identity"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "a95999a3467386bab36c225cf0e755b108a05bc51f841bf2636d4717cfabe944",
+          "json_pointer": "/scenarios/7",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "candidate"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "artifact-rebuilt-after-candidate-identity",
+        "scope": "isolated_fault_subject",
+        "verdict": "FAIL"
+      },
+      "first_required_release": "v0.4",
+      "id": "candidate-rebuild",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_candidate_full_restart"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "aca1ca40dcd79d49fe7eac248d143ef45015d387ae24cc27280ed173051662d7",
+          "json_pointer": "/scenarios/16",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "promotion"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "unauthorized-tag-created-in-capability-limited-mode",
+        "scope": "isolated_fault_subject",
+        "verdict": "BURN"
+      },
+      "first_required_release": "v0.4",
+      "id": "capability-limited-tag-burn",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_owner_release_identity"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "2922f038243d14938f9bd2c5c4c9ad3500a816eff5522c3406ef8f7d1564305c",
+          "json_pointer": "/scenarios/0",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "roles",
+        "task-state",
+        "staging",
+        "targets",
+        "predecessor",
+        "source-freeze",
+        "candidate",
+        "qualification",
+        "approval",
+        "prepromotion",
+        "promotion",
+        "reconciliation",
+        "retention",
+        "closed"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "none",
+        "scope": "isolated_fault_subject",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "complete-fake-release",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "77bdded7f40f39800db446f412e5ca8784f64087160747a20102bf6e97fc5ae3",
+          "json_pointer": "/scenarios/15",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "promotion"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "fenced-cas-concurrent-writer",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "concurrent-writer",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "a19bfadf66dd5ed5f30cbb8673b2111ad626233493e12d1e0b3c8feee141d1a1",
+          "json_pointer": "/scenarios/20",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "retention"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "external-store-or-index-unavailable",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "external-store-outage",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "9abf72dcf1f48a4003b37f76f1176849896c6a88d620c95ab63dfdee5f2c4c59",
+          "json_pointer": "/scenarios/10",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "qualification"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "hard-runner-loss-without-terminal-record",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "hard-runner-loss",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "58ebd4d0051e351fd97abb8fb4fa8f18b0e398d10facaa5db6db32dacc7eafae",
+          "json_pointer": "/scenarios/19",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "retention"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "kill-after-cas-before-receipt",
+        "scope": "isolated_fault_subject",
+        "verdict": "RECOVER"
+      },
+      "first_required_release": "v0.4",
+      "id": "kill-after-cas",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "existing_fenced_operation_reconstruction"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "9b2b37ead137fce0b3ac7c9ea2a53ee88bb3f8fed6f243167588d9210bde66e3",
+          "json_pointer": "/scenarios/5",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "predecessor"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "missing-actual-prior-lkg-or-closed-decision",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "missing-predecessor",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "feabc6a51d5f5257292ccfc8f5a68dce5cd13ea165e125019ff1dac1e9505089",
+          "json_pointer": "/scenarios/1",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "roles"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "missing-provider-backed-role-signature",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "missing-role-signature",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "8634621ca463d952f2fd3f4cdc90a27742fbe2049cef25ef68c8a2567e418514",
+          "json_pointer": "/scenarios/17",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "reconciliation"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "partial-publication",
+        "scope": "isolated_fault_subject",
+        "verdict": "BURN"
+      },
+      "first_required_release": "v0.4",
+      "id": "partial-publication",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_owner_release_identity"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "10cc4a6e07e76447dca9abb7b165a8deae432451732da4e2e03a068a0f5636d0",
+          "json_pointer": "/scenarios/8",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "qualification"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "product-test-failure",
+        "scope": "isolated_fault_subject",
+        "verdict": "FAIL"
+      },
+      "first_required_release": "v0.4",
+      "id": "qualification-failed",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_candidate_full_restart"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "fd9330ac99693e726f3dc54d5d0cd49086454babc2a7eac89de60a9431245bf8",
+          "json_pointer": "/scenarios/9",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "qualification"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "required-cell-reported-skip",
+        "scope": "isolated_fault_subject",
+        "verdict": "SKIPPED"
+      },
+      "first_required_release": "v0.4",
+      "id": "required-cell-skipped",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "f0bd4818d5521366bef4f53b9f7de13bc94946a8079a50ed2dbf16524adbf705",
+          "json_pointer": "/scenarios/11",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "qualification"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "independently-classified-runner-service-failure",
+        "scope": "isolated_fault_subject",
+        "verdict": "RECOVER"
+      },
+      "first_required_release": "v0.4",
+      "id": "runner-service-retry",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "ff009b93a45df5be51cde0617d3197b961d0251df229d229f9a47a91fd0b89bb",
+          "json_pointer": "/scenarios/12",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "approval"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "author-and-reviewer-identity-equal",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "self-approval",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "05cc261f5398a91c94364edc5a82b624d99ee254d45fe8777335f1e8b22d775a",
+          "json_pointer": "/scenarios/21",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "closed"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "later-product-contradiction-fenced-by-signed-invalidation",
+        "scope": "isolated_fault_subject",
+        "verdict": "PASS"
+      },
+      "first_required_release": "v0.4",
+      "id": "signed-lkg-invalidation",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "no_automatic_retry"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "9549a10e2e43efffdc8de835b44f7408736b6db27a507af8a1bbcb5d4782a8ae",
+          "json_pointer": "/scenarios/6",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "source-freeze"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "source-or-registry-identity-drift",
+        "scope": "isolated_fault_subject",
+        "verdict": "FAIL"
+      },
+      "first_required_release": "v0.4",
+      "id": "source-freeze-drift",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_candidate_full_restart"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "7721d2a22aa47110c368cddb98bcd75ecc400c4c35649cc9dd88896ad5f6005c",
+          "json_pointer": "/scenarios/3",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "staging"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "operator-cancellation-before-tag",
+        "scope": "isolated_fault_subject",
+        "verdict": "CANCELLED"
+      },
+      "first_required_release": "v0.4",
+      "id": "staging-cancelled",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "43b29910fac0fb42b9fe3f2d76236ce4412c844b378ea3dce53d3272960f1b4b",
+          "json_pointer": "/scenarios/14",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "prepromotion"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "stale-main-health-or-task-state",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "stale-prepromotion-controls",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "064e73beadfb4783923c65ef261d9b42456296e3f7be5446fd09d1bc717741f9",
+          "json_pointer": "/scenarios/2",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "task-state"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "stale-or-wrong-provider-task-state",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "stale-task-state",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "64618e3896769e2ad92c1a8349c140ed757894ef2b513625af3725b300f93b92",
+          "json_pointer": "/scenarios/13",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "approval"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "synthetic-identity-used-for-live-approval",
+        "scope": "isolated_fault_subject",
+        "verdict": "BLOCKED"
+      },
+      "first_required_release": "v0.4",
+      "id": "synthetic-live-approval",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "fresh_invocation_preserve_all_attempts"
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "3920cf86e60cbbf56ea68dc4bc03f4b10c5900b05339c8ce0eff24d684e30bb5",
+          "json_pointer": "/scenarios/4",
+          "source_id": "original-pr88-scenarios"
+        }
+      ],
+      "covers_stages": [
+        "targets"
+      ],
+      "environment_pairs": [],
+      "expansion": {
+        "implementation": {
+          "reason": "Original isolated rehearsal requirement retained. The old test_node_id is not a current implementation; exact current test, recipe, environment and obligation mappings remain required.",
+          "state": "UNRESOLVED"
+        },
+        "kind": "leaf"
+      },
+      "expected_subject": {
+        "fault_id": "occupied-target-with-mismatched-bytes",
+        "scope": "isolated_fault_subject",
+        "verdict": "BURN"
+      },
+      "first_required_release": "v0.4",
+      "id": "target-occupation-burn",
+      "kind": "fault_rehearsal",
+      "phase": "qualification",
+      "prerequisite_scenario_ids": [],
+      "qualification_unit_terminal_on_verified_expectation": "PASS",
+      "required_obligations": {
+        "known_obligation_ids": [],
+        "reason": "Original isolated rehearsal has no complete current obligation or environment mapping. Original phase is the simulated subject phase; qualification never invokes real publication or retention mutations.",
+        "state": "UNRESOLVED"
+      },
+      "retry_policy": "new_owner_release_identity"
+    }
+  ],
+  "schema_version": "metriplane.release-scenarios.v3",
+  "stages": [
+    "roles",
+    "task-state",
+    "staging",
+    "targets",
+    "predecessor",
+    "source-freeze",
+    "candidate",
+    "qualification",
+    "approval",
+    "prepromotion",
+    "promotion",
+    "reconciliation",
+    "retention",
+    "closed"
+  ],
+  "terminal_results": [
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "CANCELLED",
+    "SKIPPED",
+    "RECOVER",
+    "BURN"
+  ]
+}

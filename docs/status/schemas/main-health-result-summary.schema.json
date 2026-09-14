@@ -14,6 +14,62 @@
       "minItems": 1,
       "type": "array"
     },
+    "provider_stall": {
+      "additionalProperties": false,
+      "properties": {
+        "first_observed_at": {"format": "date-time", "type": "string"},
+        "main_sha": {"const": "3fd763816c9493475083adcd1299d2eed0daa0b2"},
+        "minimum_age_seconds": {"const": 3600},
+        "observation_interval_seconds": {"maximum": 60, "minimum": 1, "type": "integer"},
+        "repository": {"const": "Miko997/metriplane"},
+        "runs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "conclusion": {"type": "null"},
+              "created_at": {"format": "date-time", "type": "string"},
+              "event": {"const": "push"},
+              "head_branch": {"const": "main"},
+              "head_sha": {"const": "3fd763816c9493475083adcd1299d2eed0daa0b2"},
+              "job_count": {"const": 0},
+              "key": {"enum": ["ci", "maniskill", "massrobotics", "robomimic"]},
+              "run_attempt": {"const": 1},
+              "run_id": {"enum": [34749333980, 34749334015, 34749334201, 34749334271]},
+              "run_started_at": {"format": "date-time", "type": "string"},
+              "status": {"const": "queued"},
+              "updated_at": {"format": "date-time", "type": "string"},
+              "workflow": {
+                "enum": [
+                  "Bounded MassRobotics AMR Offline Replay",
+                  "CI",
+                  "ManiSkill PickCube Proof",
+                  "robomimic Low-Dimensional Fixture"
+                ]
+              }
+            },
+            "required": [
+              "conclusion", "created_at", "event", "head_branch", "head_sha",
+              "job_count", "key", "run_attempt", "run_id", "run_started_at",
+              "status", "updated_at", "workflow"
+            ],
+            "type": "object"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        },
+        "schema_version": {"const": 1},
+        "second_observed_at": {"format": "date-time", "type": "string"},
+        "state_commit": {"const": "6e25a9a9cdc13f36f743a10b9c5d3a4306c124c4"},
+        "state_generation": {"const": 68}
+      },
+      "required": [
+        "first_observed_at", "main_sha", "minimum_age_seconds",
+        "observation_interval_seconds", "repository", "runs", "schema_version",
+        "second_observed_at", "state_commit", "state_generation"
+      ],
+      "type": "object"
+    },
     "recorded_at": {"format": "date-time", "type": "string"},
     "run_id": {"minLength": 1, "type": "string"},
     "schema_version": {"const": 1},

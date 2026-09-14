@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.task-assignment.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "subject", "subject_digest", "signature"],
+  "properties": {
+    "schema_version": {"const": "metriplane.task-assignment.v1"},
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "linear_issue", "base_sha", "actor_id", "authority"],
+      "properties": {
+        "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+        "linear_issue": {"type": "string", "pattern": "^MET-[0-9]+$"},
+        "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "actor_id": {"type": "string", "minLength": 1},
+        "authority": {"type": "string", "minLength": 1}
+      }
+    },
+    "subject_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "actor_id", "signature"],
+      "properties": {
+        "provider": {"enum": ["github", "linear"]},
+        "actor_id": {"type": "string", "minLength": 1},
+        "signature": {"type": "string", "pattern": "^[0-9a-f]{128}$"}
+      }
+    }
+  }
+}

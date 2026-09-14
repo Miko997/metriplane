@@ -59,7 +59,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Fusion jitter + coverage benchmark (JSONL).")
     ap.add_argument("jsonl", type=Path)
     ap.add_argument("--out", type=Path, default=Path("evidence/experiments/fusion_jitter_001.csv"))
-    ap.add_argument("--test-points", type=Path, default=None, help="Optional YAML with expected world points by id")
+    ap.add_argument(
+        "--test-points",
+        type=Path,
+        default=None,
+        help="Optional YAML with expected world points by id",
+    )
     args = ap.parse_args()
 
     frames = read_jsonl(args.jsonl)

@@ -5,6 +5,7 @@
 import json
 import sys
 
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: session_health_summary.py <run_dir/session.jsonl>")
@@ -85,7 +86,9 @@ def main() -> int:
         dets0_pct = (cam_stats[cid]["dets0"] / present * 100.0) if present else 0.0
         stale_pct = (cam_stats[cid]["stale"] / present * 100.0) if present else 0.0
 
-        print(f"{cid}: present_frames={present} missing_frames={missing} missing_pct={missing_pct:.1f}%")
+        print(
+            f"{cid}: present_frames={present} missing_frames={missing} missing_pct={missing_pct:.1f}%"
+        )
         print(
             f"{cid}: age_s_max={cam_stats[cid]['age_max']:.3f} "
             f"dets0_frames={cam_stats[cid]['dets0']} dets0_pct={dets0_pct:.1f}% "
@@ -96,6 +99,7 @@ def main() -> int:
             print(f"{cid}: first_missing_at_s={cam_stats[cid]['first_missing_at']:.2f}s")
 
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

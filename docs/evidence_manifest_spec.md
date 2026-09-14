@@ -513,10 +513,10 @@ done
 # tools/export_manifest_latex.py
 import csv
 
-with open('evidence/manifest.csv') as f:
+with open("evidence/manifest.csv") as f:
     reader = csv.DictReader(f)
     for row in reader:
-        if row['category'] == 'determinism':
+        if row["category"] == "determinism":
             print(f"\\texttt{{{row['demo_id']}}} & {row['status']} & {row['metric_value']} \\\\")
 ```
 

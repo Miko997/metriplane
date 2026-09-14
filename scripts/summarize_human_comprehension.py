@@ -106,14 +106,14 @@ def _validate_candidate_metadata(payload: dict[str, Any], tester_count: int) -> 
         or len(version) > 64
         or CANDIDATE_VERSION.fullmatch(version) is None
     ):
-        raise ValueError("candidate_version must be a release-like version of at most 64 characters")
+        raise ValueError(
+            "candidate_version must be a release-like version of at most 64 characters"
+        )
     if not isinstance(materials, dict) or set(materials) != {
         "product_page",
         "installation_instructions",
     }:
-        raise ValueError(
-            "materials must contain only product_page and installation_instructions"
-        )
+        raise ValueError("materials must contain only product_page and installation_instructions")
     product_page = materials["product_page"]
     installation_instructions = materials["installation_instructions"]
     if not isinstance(product_page, str) or product_page not in PRODUCT_PAGES:
@@ -185,13 +185,9 @@ def _validate_tester(raw: Any, index: int, seen_ids: set[str]) -> dict[str, Any]
 
     elapsed = raw["time_to_report_seconds"]
     if elapsed is not None and (
-        type(elapsed) not in (int, float)
-        or not math.isfinite(float(elapsed))
-        or elapsed < 0
+        type(elapsed) not in (int, float) or not math.isfinite(float(elapsed)) or elapsed < 0
     ):
-        raise ValueError(
-            f"testers[{index}].time_to_report_seconds must be non-negative or null"
-        )
+        raise ValueError(f"testers[{index}].time_to_report_seconds must be non-negative or null")
     if raw["report_found"] and elapsed is None:
         raise ValueError(
             f"testers[{index}].time_to_report_seconds is required when report_found is true"
@@ -268,8 +264,7 @@ def summarize(results: dict[str, Any]) -> tuple[list[str], int]:
     reports_found = sum(tester["report_found"] for tester in testers)
     understood = sum(tester["product_understood"] for tester in testers)
     independent = sum(
-        tester["report_found"] and not tester["intervention_required"]
-        for tester in testers
+        tester["report_found"] and not tester["intervention_required"] for tester in testers
     )
     times = [
         float(tester["time_to_report_seconds"])
@@ -299,10 +294,7 @@ def summarize(results: dict[str, Any]) -> tuple[list[str], int]:
         f"HUMAN COMPREHENSION GATE: {'PASS' if passed else 'FAIL'}",
         f"Candidate commit: {results['candidate_commit']}",
         f"Candidate version: {results['candidate_version']}",
-        (
-            "Materials: "
-            f"{materials['product_page']} + {materials['installation_instructions']}"
-        ),
+        (f"Materials: {materials['product_page']} + {materials['installation_instructions']}"),
         f"Tester count: {total}",
         f"Demo-command find rate: {_percentage(command_found, total)}",
         f"Report-found rate: {_percentage(reports_found, total)}",
@@ -315,9 +307,7 @@ def summarize(results: dict[str, Any]) -> tuple[list[str], int]:
         ),
         "Gates:",
     ]
-    lines.extend(
-        f"- {'PASS' if result else 'FAIL'}  {name}" for name, result in gates.items()
-    )
+    lines.extend(f"- {'PASS' if result else 'FAIL'}  {name}" for name, result in gates.items())
     return lines, 0 if passed else 1
 
 

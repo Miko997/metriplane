@@ -51,7 +51,7 @@ _last_seen: Dict[str, float] = {}
 
 # Story state
 pallet_state = "none"  # none | on_robot | dropped
-box_state = "none"     # none | on_robot | at_dock
+box_state = "none"  # none | on_robot | at_dock
 
 
 # ---------------------------
@@ -320,7 +320,9 @@ async def ws_loop() -> None:
         import websockets  # type: ignore
     except Exception as e:
         print("[M6 story] ERROR: websockets not available in Kit:", e)
-        print("[M6 story] Enable omni.kit.pipapi and install websockets, or use a Kit build with websockets.")
+        print(
+            "[M6 story] Enable omni.kit.pipapi and install websockets, or use a Kit build with websockets."
+        )
         return
 
     print(f"[M6 story] Connecting to {WS_URL} ...")

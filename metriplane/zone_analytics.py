@@ -30,6 +30,7 @@ class ZoneAnalytics:
     Real streams often do: zoneA -> None -> zoneB (briefly outside zone polygon).
     We therefore count transitions across a short "gap" via _pending_exit.
     """
+
     zone_map: ZoneMap
 
     # If an object exits zone A -> None, then later enters zone B, count A->B
@@ -74,7 +75,9 @@ class ZoneAnalytics:
             if float(t_exit) < cutoff:
                 self._pending_exit.pop(oid, None)
 
-    def update(self, ts: float, objects: List[ObjectStateModel]) -> tuple[List[ObjectStateModel], List[ZoneEventModel]]:
+    def update(
+        self, ts: float, objects: List[ObjectStateModel]
+    ) -> tuple[List[ObjectStateModel], List[ZoneEventModel]]:
         """
         Update analytics with the *current tracked objects list*.
         Returns:
@@ -108,7 +111,9 @@ class ZoneAnalytics:
             prev_zone = self._last_zone.get(oid)
             if prev_zone is not None:
                 # exit event
-                events_now.append(ZoneEventModel(type="zone_exit", object_id=oid, zone=str(prev_zone), ts=ts_f))
+                events_now.append(
+                    ZoneEventModel(type="zone_exit", object_id=oid, zone=str(prev_zone), ts=ts_f)
+                )
                 self._events.append(events_now[-1])
 
                 # dwell close
@@ -129,7 +134,9 @@ class ZoneAnalytics:
 
             # exiting old zone
             if prev_zone is not None:
-                events_now.append(ZoneEventModel(type="zone_exit", object_id=oid, zone=str(prev_zone), ts=ts_f))
+                events_now.append(
+                    ZoneEventModel(type="zone_exit", object_id=oid, zone=str(prev_zone), ts=ts_f)
+                )
                 self._events.append(events_now[-1])
                 self._accumulate_exit(oid, str(prev_zone), ts_f)
 
@@ -142,7 +149,9 @@ class ZoneAnalytics:
 
             # entering new zone
             if new_zone is not None:
-                events_now.append(ZoneEventModel(type="zone_enter", object_id=oid, zone=str(new_zone), ts=ts_f))
+                events_now.append(
+                    ZoneEventModel(type="zone_enter", object_id=oid, zone=str(new_zone), ts=ts_f)
+                )
                 self._events.append(events_now[-1])
                 self._enter_ts[oid] = ts_f
 
@@ -157,7 +166,9 @@ class ZoneAnalytics:
                 pending = self._pending_exit.get(oid)
                 if pending is not None:
                     from_zone, ts_exit = pending
-                    if (ts_f - float(ts_exit)) <= float(self.transition_window_s) and from_zone != str(new_zone):
+                    if (ts_f - float(ts_exit)) <= float(
+                        self.transition_window_s
+                    ) and from_zone != str(new_zone):
                         k = (str(from_zone), str(new_zone))
                         self._transitions[k] = int(self._transitions.get(k, 0)) + 1
                     # once we re-enter any zone, clear pending
@@ -193,7 +204,14 @@ class ZoneAnalytics:
             w = csv.DictWriter(f, fieldnames=["ts", "type", "object_id", "zone"])
             w.writeheader()
             for e in self._events:
-                w.writerow({"ts": float(e.ts), "type": str(e.type), "object_id": str(e.object_id), "zone": str(e.zone)})
+                w.writerow(
+                    {
+                        "ts": float(e.ts),
+                        "type": str(e.type),
+                        "object_id": str(e.object_id),
+                        "zone": str(e.zone),
+                    }
+                )
         paths["events"] = p_events
 
         # Dwell per object-zone
@@ -201,7 +219,9 @@ class ZoneAnalytics:
         with p_dwell.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=["object_id", "zone", "dwell_s"])
             w.writeheader()
-            for (oid, zone), dwell in sorted(self._dwell_s.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+            for (oid, zone), dwell in sorted(
+                self._dwell_s.items(), key=lambda kv: (kv[0][0], kv[0][1])
+            ):
                 w.writerow({"object_id": oid, "zone": zone, "dwell_s": float(dwell)})
         paths["dwell"] = p_dwell
 
@@ -223,7 +243,9 @@ class ZoneAnalytics:
         with p_trans.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=["from_zone", "to_zone", "count"])
             w.writeheader()
-            for (fz, tz), c in sorted(self._transitions.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+            for (fz, tz), c in sorted(
+                self._transitions.items(), key=lambda kv: (kv[0][0], kv[0][1])
+            ):
                 w.writerow({"from_zone": fz, "to_zone": tz, "count": int(c)})
         paths["transitions"] = p_trans
 

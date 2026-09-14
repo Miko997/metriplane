@@ -1,5 +1,7 @@
 {
-  "claims_actor_exclusivity": false,
+  "broker_integration_id": 4722589,
+  "claims_actor_exclusivity": true,
+  "exclusivity_boundary": "unchanged hosted settings and uncompromised host-only App credential",
   "repository": "Miko997/metriplane",
   "required_terminals": [
     "Metriplane / required",
@@ -8,6 +10,7 @@
     "Main health / required"
   ],
   "schema_version": 1,
-  "selected_mode": "serialized_strict_up_to_date",
-  "settings_activation": "owner-applied after each terminal has produced a real successful check"
+  "selected_mode": "app_brokered_strict_up_to_date",
+  "settings_activation": "pending independent approval, credential rotation, and same-plan live proof",
+  "trusted_admin_boundary": true
 }

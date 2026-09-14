@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 import matplotlib
+
 matplotlib.use("Agg")  # headless-safe
 import matplotlib.pyplot as plt
 
@@ -46,9 +47,9 @@ def main() -> int:
         raise SystemExit(
             f"CSV not found: {args.in_csv}\n\n"
             "Tip: pass the full path, e.g.\n"
-            "  python tools/plot_compute_backend_comparison.py --in-csv \"$RUN_DIR/compute_backend_comparison.csv\" --out-dir \"$RUN_DIR\"\n"
+            '  python tools/plot_compute_backend_comparison.py --in-csv "$RUN_DIR/compute_backend_comparison.csv" --out-dir "$RUN_DIR"\n'
             "or:\n"
-            "  cd \"$RUN_DIR\" && python /path/to/tools/plot_compute_backend_comparison.py\n"
+            '  cd "$RUN_DIR" && python /path/to/tools/plot_compute_backend_comparison.py\n'
         )
 
     df = pd.read_csv(args.in_csv)

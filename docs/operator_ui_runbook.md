@@ -44,8 +44,8 @@ By default, no active run is started. Use the guided setup flow for camera-backe
 
 Browser opens automatically to `http://127.0.0.1:8088/web/dashboard/operator.html`.
 
-State file: `~/.cache/metriplane/launcher-state.json`  
-Logs: `~/metriplane-runs/_launcher/<timestamp>/`
+State file: `launcher-state.json` in the active platform state directory
+Logs: `_launcher/<timestamp>/` in the active platform runs directory
 
 ---
 
@@ -225,7 +225,7 @@ Build a YAML config for your Metriplane session:
 - Click **■ Stop** to cancel the run.
 - **Latest Run Directory** shows the output path and session file status.
 
-**Run output** is written to `~/metriplane-runs/<run_id>/`:
+**Run output** is written to `<platform-runs-dir>/<run_id>/` (the UI displays the resolved path):
 - `session.jsonl` — frame-by-frame recording
 - `meta.json` — run metadata (run_id, git commit, config hash)
 
@@ -279,7 +279,7 @@ The runner service at `:9000` exposes these operator endpoints:
 - All endpoints validate inputs. Profile names must match `[a-zA-Z0-9][a-zA-Z0-9_-]*`.
 - New profiles are prefixed `local_` to avoid overwriting shipped profiles.
 - Generated configs go to `configs/local/` only.
-- Session files and evidence are in `~/metriplane-runs/` and `evidence/experiments/` only.
+- Session files and evidence are in the active platform runs directory and `evidence/experiments/` only.
 - Camera paths are validated: must be `/dev/video*`, `/dev/v4l/by-id/*`, or integer `0-99`.
 - No `shell=True` is used anywhere. All commands are pre-validated argument lists.
 - Localhost-only: runner binds to `127.0.0.1:9000`.
@@ -318,7 +318,7 @@ python -m metriplane.runner.service --help
 - Try running from CLI to see CV2 output
 
 **Zones report fails**:
-- Session JSONL must be under `~/metriplane-runs/`
+- Session JSONL must be under the active platform runs directory shown by the UI
 - Ensure the run was configured with `record_jsonl: true`
 
 **GPU backend fails**:

@@ -96,7 +96,13 @@ curl http://localhost:8000/health | jq
 
 ### 4. JSONL Recording
 
-**Location**: `~/metriplane-runs/<run_id>/session.jsonl`  
+**Location**: `<runs-dir>/<run_id>/session.jsonl`
+
+Platform-aware commands default `<runs-dir>` to the platform data directory's `metriplane/runs`
+child (for example, `$XDG_DATA_HOME/metriplane/runs` on Linux). The legacy `metriplane-run` console
+script, `python -m metriplane.run`, and `python -m metriplane.run_fusion` retain `/data/runs` in
+Docker and `./runs` on a host. An explicit `--runs-dir` or config `runs_dir` overrides either
+default.
 **Format**: Newline-delimited JSON (one `FrameStateModel` per line)  
 **Use Case**: Deterministic replay, offline analysis, dataset creation
 
@@ -205,23 +211,25 @@ import asyncio
 import websockets
 import json
 
+
 async def metriplane_client():
     uri = "ws://localhost:8765"
-    
+
     async with websockets.connect(uri) as websocket:
         print(f"Connected to {uri}")
-        
+
         while True:
             # Receive frame
             frame_json = await websocket.recv()
             frame = json.loads(frame_json)
-            
+
             # Process frame
             for obj in frame.get("objects", []):
                 print(f"Object {obj['id']}: ({obj['x_m']:.2f}, {obj['y_m']:.2f})")
-            
+
             for event in frame.get("events", []):
                 print(f"Event: {event['event_type']} - {event['zone_id']}")
+
 
 # Run
 asyncio.run(metriplane_client())

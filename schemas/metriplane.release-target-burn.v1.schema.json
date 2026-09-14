@@ -1,0 +1,460 @@
+{
+  "$comment": "Prospective S3A supplied-input/schema projection. No native implementation, live approval or release qualification is claimed.",
+  "$defs": {
+    "canonical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "historical_release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "record_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-target-burn.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-target-burn. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "new_burn"
+              }
+            },
+            "required": [
+              "disposition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_targets": {
+                "minItems": 1
+              },
+              "burn_id": {
+                "$ref": "#/$defs/digest"
+              },
+              "indexing_required": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "no_new_burn"
+              }
+            },
+            "required": [
+              "disposition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "burn_id": {
+                "type": "null"
+              },
+              "indexing_required": {
+                "const": false
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "affected_targets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "target_id": {
+                "enum": [
+                  "github-release",
+                  "pypi",
+                  "testpypi"
+                ]
+              },
+              "target_state_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "version": {
+                "$ref": "#/$defs/canonical_package_version"
+              }
+            },
+            "required": [
+              "target_id",
+              "version",
+              "target_state_digest"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "burn_id": {
+          "$ref": "#/$defs/nullable_digest"
+        },
+        "burn_lineage_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "disposition": {
+          "enum": [
+            "new_burn",
+            "no_new_burn"
+          ]
+        },
+        "indexing_required": {
+          "type": "boolean"
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "observation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reason": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "resolved_package_version": {
+          "$ref": "#/$defs/release_tag"
+        },
+        "resolved_release_tag": {
+          "$ref": "#/$defs/release_tag"
+        }
+      },
+      "required": [
+        "burn_id",
+        "burn_lineage_digest",
+        "disposition",
+        "indexing_required",
+        "invocation_root_locator",
+        "milestone",
+        "observation_digest",
+        "producer_intent_digest",
+        "reason",
+        "resolved_package_version",
+        "resolved_release_tag",
+        "affected_targets"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-target-burn"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "const": []
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-target-burn record",
+  "type": "object",
+  "x-metriplane-origin": {
+    "kind": "CLI_PRODUCED_RECORD",
+    "producer": "record_release_target_burn.py",
+    "production_implementation": false,
+    "stage": "record-release-target-burn",
+    "terminal_digest_in_output": false
+  },
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes",
+    "affected_targets equals the complete sorted projection of all occupied/partial target/version rows from the independently replayed original observation record; each target_state_digest is C(the complete original target/version row)",
+    "affected_targets is uniquely keyed and sorted by (target_id, normalized version); exact duplicates and same-key/different-digest rows reject",
+    "the newly affected subset is the affected target/version pairs absent from the complete independently replayed original burn lineage; unknown/unproven observations or lineage never establish an empty subset",
+    "new_burn iff the newly affected subset is nonempty; no_new_burn may have an empty array or nonempty already-indexed conflicts; burn_id and indexing_required retain their original disposition rules",
+    "resolved_package_version and resolved_release_tag preserve the selected legacy v-prefixed resolution fields; affected_targets.version identifies the actually occupied version and never inherits a later selected patch",
+    "burn_id is C(all data except only burn_id) for new_burn; no future retention receipt, index receipt, terminal or lineage backfill appears in this record"
+  ],
+  "x-metriplane-semantic-contract": "semantic-contract.md; full current controller integration and original native proof replay required; structure alone is insufficient"
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.task-work-order.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "materialization_id", "task_id", "linear_issue", "base_sha", "verdict", "input_digests", "assignment", "dependencies", "linear_relation_digest", "commands", "resolution", "catalog_row"],
+  "properties": {
+    "schema_version": {"const": "metriplane.task-work-order.v1"},
+    "materialization_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+    "linear_issue": {"type": "string", "pattern": "^MET-[0-9]+$"},
+    "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "verdict": {"const": "READY"},
+    "input_digests": {"type": "object", "minProperties": 6, "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+    "assignment": {"type": "object"},
+    "dependencies": {"type": "array"},
+    "linear_relation_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "commands": {"type": "array", "minItems": 1},
+    "resolution": {"type": "object"},
+    "catalog_row": {"type": "object"}
+  }
+}

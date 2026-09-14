@@ -48,7 +48,9 @@ async def main_async(url: str, n: int, timeout_s: float) -> int:
             got.append(obj)
 
     first = got[0]
-    print(f"[ws_smoke] OK messages={len(got)} first_frame_id={first.get('frame_id')} keys={sorted(list(first.keys()))}")
+    print(
+        f"[ws_smoke] OK messages={len(got)} first_frame_id={first.get('frame_id')} keys={sorted(list(first.keys()))}"
+    )
     return 0
 
 

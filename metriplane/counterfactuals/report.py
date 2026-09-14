@@ -21,8 +21,7 @@ def render_md(report: CounterfactualReport) -> str:
     lines = [
         f"# Counterfactual report: {report.incident_id}",
         "",
-        f"Original incident: `{o['rule_id']}` ({o['severity']}) "
-        f"objects={', '.join(o['objects'])}",
+        f"Original incident: `{o['rule_id']}` ({o['severity']}) objects={', '.join(o['objects'])}",
         "",
         "## Cases",
         "",

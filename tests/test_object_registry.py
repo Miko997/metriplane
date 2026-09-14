@@ -7,7 +7,6 @@ import pytest
 
 from metriplane.sentinel.cli_registry import main_objects
 from metriplane.sentinel.registry import (
-    ObjectRegistryConfig,
     load_registry,
     validate_registry,
 )

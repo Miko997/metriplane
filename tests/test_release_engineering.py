@@ -8,14 +8,23 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-pypi.yml"
+STAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "stage-pypi.yml"
 RELEASING = ROOT / "docs" / "releasing.md"
 RELEASES = ROOT / "docs" / "releases"
 CHANGELOG = ROOT / "CHANGELOG.md"
 SUPPORTED_ENVIRONMENTS = ROOT / "docs" / "SUPPORTED_ENVIRONMENTS.md"
 WSL2_VALIDATION = ROOT / "docs" / "validation" / "wsl2-v0.3.0-owner-run.md"
+V040_MIGRATION = RELEASES / "v0.4.0-migration.md"
+V040_NOTES = RELEASES / "v0.4.0-release-notes.md"
+V040_LAUNCH = RELEASES / "v0.4.0-launch-materials.md"
+V041_MIGRATION = RELEASES / "v0.4.1-migration.md"
+V041_NOTES = RELEASES / "v0.4.1-release-notes.md"
+V041_LAUNCH = RELEASES / "v0.4.1-launch-materials.md"
+V041_SCOPE = RELEASES / "v0.4.1-assurance-scope.md"
+V050_SCOPE = RELEASES / "v0.5.0-single-maintainer-review-policy.md"
+RELEASE_READINESS = ROOT / "docs" / "status" / "release-readiness.json"
 
 
 def _workflow() -> tuple[dict[str, object], str]:
@@ -23,30 +32,109 @@ def _workflow() -> tuple[dict[str, object], str]:
     return yaml.safe_load(text), text
 
 
+def _stage_workflow() -> tuple[dict[str, object], str]:
+    text = STAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    return yaml.safe_load(text), text
+
+
 def test_tag_publication_stops_after_verified_testpypi() -> None:
     workflow, text = _workflow()
+    stage_workflow, stage_text = _stage_workflow()
     jobs = workflow["jobs"]
+    stage_jobs = stage_workflow["jobs"]
 
     assert jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
     assert jobs["gates"]["needs"] == "provenance"
-    assert jobs["build"]["needs"] == ["provenance", "gates"]
-    assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
+    assert jobs["gates"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+    }
+    assert jobs["gates"]["with"] == {"enforce-release-decision": True}
+    assert jobs["import-staged-artifacts"]["needs"] == ["provenance", "gates"]
+    assert jobs["publish-testpypi"]["needs"] == [
+        "provenance",
+        "import-staged-artifacts",
+    ]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
     for name in (
         "provenance",
         "gates",
-        "build",
+        "import-staged-artifacts",
         "publish-testpypi",
         "verify-testpypi",
     ):
         assert "github.event_name == 'push'" in jobs[name]["if"]
 
-    assert text.count("python -m build --outdir release-artifacts/dist") == 1
-    assert "python -m twine check --strict release-artifacts/dist/*" in text
-    assert "Install and smoke-test the source distribution independently" in text
+    assert stage_jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
+    assert stage_jobs["gates"]["needs"] == "provenance"
+    assert stage_jobs["gates"]["with"] == {"enforce-release-decision": True}
+    build = stage_jobs["build"]
+    build_steps = build["steps"]
+    build_step_names = [step["name"] for step in build_steps if "name" in step]
+    assert len(build_step_names) == len(set(build_step_names))
+    named_steps = {step["name"]: step for step in build_steps if "name" in step}
+    setup_uv_steps = [
+        step for step in build_steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")
+    ]
+    assert len(setup_uv_steps) == 1
+    setup_uv = setup_uv_steps[0]
+    assert build["env"]["UV_NO_CONFIG"] == "1"
+    assert setup_uv["uses"] == ("astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9")
+    assert setup_uv["with"] == {"version": "0.12.0", "enable-cache": False}
+    assert named_steps["Sync locked release environment"]["run"].splitlines() == [
+        "uv --no-config lock --check",
+        "uv --no-config sync --frozen --all-groups",
+        "uv --no-config pip check",
+    ]
+    toolchain_proof = named_steps["Prove exact release toolchain"]["run"]
+    for fragment in (
+        "uv --version",
+        'project["tool"]["uv"]["required-version"]',
+        'project["dependency-groups"]["dev"]',
+        "metadata.version(name)",
+        'project["build-system"]["requires"]',
+        "governed[normalized] = actual",
+        "governed.get(name.lower())",
+    ):
+        assert fragment in toolchain_proof
+    assert named_steps["Install Chromium for complete release qualification"]["run"] == (
+        "uv --no-config run --frozen python -m playwright install chromium --with-deps"
+    )
+    assert named_steps["Run the complete test suite"]["run"] == (
+        "uv --no-config run --frozen python -m pytest -q"
+    )
+
+    build_run = named_steps["Build, inspect, and fingerprint distributions"]["run"]
+    assert build_run.count("uv --no-config run --frozen python -m build") == 1
+    assert build_run.count("--no-isolation") == 1
+    assert "--installer" not in build_run
+    assert "uv --no-config run --frozen python -m twine check --strict" in build_run
+    assert build_run.count("uv --no-config run --frozen python tools/release_artifacts.py") == 3
+    wheel_smoke_index = next(
+        index
+        for index, step in enumerate(build_steps)
+        if step.get("name") == "Smoke-test the wheel outside the checkout"
+    )
+    qualification_text = "\n".join(
+        str(step.get("run", "")) for step in build_steps[:wheel_smoke_index]
+    )
+    assert "pip install" not in qualification_text
+    assert "python -m pip install . pytest setuptools build twine" not in stage_text
+    assert "python -m twine check --strict release-artifacts/dist/*" in stage_text
+    assert "Install and smoke-test the source distribution independently" in stage_text
     assert text.count("packages-dir: release-artifacts/dist/") == 2
-    assert "retention-days: 90" in text
-    assert "skip-existing" not in text
+    assert "retention-days: 90" in stage_text
+    assert "skip-existing" not in stage_text
+
+    imported = jobs["import-staged-artifacts"]
+    imported_text = str(imported)
+    assert imported["permissions"] == {"actions": "read", "contents": "read"}
+    assert "stage-pypi.yml/runs" in imported_text
+    assert "exactly one successful exact-source staging run" in imported_text
+    assert "BUILD_IDENTITY.json" in imported_text
+    assert "run-id: ${{ steps.source.outputs.run_id }}" in text
+    assert "github-token: ${{ github.token }}" in text
+    assert "python -m build" not in text
 
 
 def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
@@ -63,7 +151,8 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     preflight = jobs["verify-production-artifacts"]
     publish = jobs["publish-pypi"]
     verify = jobs["verify-pypi"]
-    for job in (request, preflight, publish, verify):
+    reconcile = jobs["reconcile-production-lease"]
+    for job in (request, preflight, publish, verify, reconcile):
         assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert preflight["needs"] == "validate-production-request"
     assert "environment" not in preflight
@@ -74,6 +163,31 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     assert verify["needs"] == ["validate-production-request", "publish-pypi"]
     assert publish["environment"]["name"] == "pypi"
     assert publish["permissions"]["id-token"] == "write"
+    assert publish["permissions"]["checks"] == "read"
+    assert publish["permissions"]["contents"] == "read"
+    assert "contents: write" not in text
+    assert request["permissions"]["pull-requests"] == "read"
+    assert publish["permissions"]["pull-requests"] == "read"
+    assert reconcile["needs"] == [
+        "validate-production-request",
+        "publish-pypi",
+        "verify-pypi",
+    ]
+    assert reconcile["permissions"] == {"checks": "read", "contents": "read"}
+    assert text.count("uv run python tools/check_blockers.py") == 2
+    assert text.count("--require-merged-approval") == 2
+    assert text.count('--validated-sha "$RELEASE_COMMIT"') == 2
+
+    request_names = [step.get("name") for step in request["steps"]]
+    publish_names = [step.get("name") for step in publish["steps"]]
+    assert request_names[-1] == "Revalidate release blockers at production dispatch"
+    publish_index = publish_names.index("Publish the verified distributions to PyPI")
+    assert publish_names[publish_index - 4 : publish_index] == [
+        "Wait for the App-owned main-update lease",
+        "Revalidate release blockers while main updates are fenced",
+        "Reassert the lease and exact main immediately before publish",
+        "Rehash the exact artifact set immediately before publish",
+    ]
 
     required = (
         'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
@@ -92,8 +206,39 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         "github-token: ${{ github.token }}",
         "--repository https://test.pypi.org",
         "--repository https://pypi.org",
+        "acquire-publish-lease",
+        "assert-publish-lease",
+        "reconcile-publish-lease",
+        "PUBLISH_RESULT",
+        "VERIFY_RESULT",
     )
     assert all(fragment in text for fragment in required)
+
+
+def test_canonical_artifact_staging_is_owner_only_exact_main_and_nonpublishing() -> None:
+    workflow, text = _stage_workflow()
+    trigger = workflow.get("on", workflow.get(True))
+    inputs = trigger["workflow_dispatch"]["inputs"]
+
+    assert set(trigger) == {"workflow_dispatch"}
+    assert set(inputs) == {"version", "confirmation"}
+    assert all(item["required"] is True for item in inputs.values())
+    assert set(workflow["jobs"]) == {"provenance", "gates", "build"}
+    assert 'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"' in text
+    assert 'test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"' in text
+    assert 'test "$GITHUB_REF" = "refs/heads/main"' in text
+    assert 'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"' in text
+    assert "stage metriplane ${RELEASE_VERSION} canonical artifacts" in text
+    assert "refs/heads/release-leases/*" in text
+    assert "releases/tags/v{version}" in text
+    assert "https://pypi.org" in text
+    assert "https://test.pypi.org" in text
+    assert "BUILD_IDENTITY.json" in text
+    assert text.index("Record immutable staged-artifact identity") < text.index(
+        "Upload the immutable release-artifact set"
+    )
+    assert "id-token: write" not in text
+    assert "gh-action-pypi-publish" not in text
 
 
 def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
@@ -107,19 +252,20 @@ def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     ):
         uses = [step.get("uses", "") for step in jobs[name]["steps"]]
         checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
-        download = next(
-            i for i, value in enumerate(uses) if "actions/download-artifact@" in value
-        )
+        download = next(i for i, value in enumerate(uses) if "actions/download-artifact@" in value)
         assert checkout < download, name
 
 
 def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     _, text = _workflow()
+    _, stage_text = _stage_workflow()
+    combined = text + stage_text
 
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
-        "git merge-base --is-ancestor \"$tag_commit\" origin/main",
+        'test "$tag_commit" = "$(git rev-parse origin/main)"',
+        'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",
@@ -127,9 +273,14 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
         "SHA256SUMS",
         "--repository https://test.pypi.org",
     )
-    assert all(fragment in text for fragment in required)
+    assert all(fragment in combined for fragment in required)
+    assert 'test "$RELEASE_COMMIT" = "$(git rev-parse origin/main)"' not in text
+    assert text.count("acquire-publish-lease") == 1
+    assert text.count("assert-publish-lease") == 1
+    assert text.count("reconcile-publish-lease") == 1
     assert text.count("verify-registry") == 4
-    assert text.count("sha256sum --check ../SHA256SUMS") == 1
+    assert text.count("sha256sum --check ../SHA256SUMS") == 3
+    assert "find . -maxdepth 1 -type f -printf '%f\\n'" in text
 
 
 def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
@@ -144,8 +295,26 @@ def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
     assert "publish metriplane <version> to production" in text
     assert "Do not merge the final candidate" in text
     assert 'test -z "$(git status --porcelain)"' in text
-    assert "Zenodo's GitHub\nintegration will **not** automatically archive v0.3.0" in text
-    assert "The frozen v0.2.0 DOI\nmust not be attached to v0.3.0" in text
+    assert ("Zenodo's GitHub\nintegration will **not** automatically archive v0.4.0.post2") in text
+    assert "The frozen v0.2.0 DOI\nmust not be attached to v0.4.0.post2" in text
+    assert text.count("6a87936b5471c320efa6bcd7f5d1fe5569ca57b9") == 1
+    assert text.count("failed workflow `33695500256`") == 1
+    for command in (
+        "uv --no-config lock --check",
+        "uv --no-config sync --frozen --all-groups",
+        "uv --no-config pip check",
+        "uv --no-config run --frozen python -m playwright install chromium --with-deps",
+        "uv --no-config run --frozen python -m pytest -q",
+        "--no-isolation",
+    ):
+        assert command in text
+    source_section = text.split("## Validate the candidate locally", maxsplit=1)[1].split(
+        "Test the wheel outside the checkout", maxsplit=1
+    )[0]
+    assert "pip install" not in source_section
+    assert "python -m pip install -e . pytest setuptools build twine" not in text
+    assert "--no-install-project" not in text
+    assert "--no-build-isolation" not in text
 
 
 def test_v030_release_copy_and_draft_materials_are_separated() -> None:
@@ -179,23 +348,92 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     )
     assert all(topic in migration for topic in required_migration_topics)
 
-    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index(
-        "## Install and run"
-    )
+    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index("## Install and run")
     for result in ("six events", "one incident", "35.0 seconds", "verified", "passed"):
         assert result in notes
     assert "No unfamiliar-user comprehension study was completed before release" in notes
     assert "no passing human-validation claim is made" in notes
 
 
+def test_v040_postpublication_materials_record_exact_release_and_incident() -> None:
+    index = (RELEASES / "README.md").read_text(encoding="utf-8")
+    migration = V040_MIGRATION.read_text(encoding="utf-8")
+    notes = V040_NOTES.read_text(encoding="utf-8")
+    launch = V040_LAUNCH.read_text(encoding="utf-8")
+
+    assert index.index("v0.4.0-migration.md") < index.index("v0.3.0-migration.md")
+    assert index.index("v0.4.0-release-notes.md") < index.index("v0.3.0-release-notes.md")
+    assert index.index("v0.4.0-launch-materials.md") < index.index("v0.3.0-launch-materials.md")
+
+    assert "# v0.4.0.post2 migration and behavior changes" in migration
+    assert "DRAFT — UNPUBLISHED" not in migration
+    assert 'python -m pip install "metriplane==0.4.0.post2"' in migration
+    migration_headings = (
+        "## Primary user path",
+        "## External fixture version boundary",
+        "## Supported Python and environments",
+        "## Deferred assurance work",
+        "## Research-version boundary",
+    )
+    assert all(heading in migration for heading in migration_headings)
+
+    assert "# Metriplane v0.4.0.post2 release notes" in notes
+    assert "DRAFT — UNPUBLISHED" not in notes
+    assert "v0.4.0.post2 DOI: none" in notes
+    normalized_notes = " ".join(notes.split())
+    assert "production run `33963231781` stopped before lease creation" in normalized_notes
+    assert "retiring post1 unpublished" in normalized_notes
+    assert "Post2 adds no product capability or assurance claim" in normalized_notes
+    assert "98ad98c57198aaa78bbf8e9d94c699cd02c72da7" in notes
+    assert "23178d0e9e9d571a198dc692b3d74fbbfe1eed2b" in notes
+    assert "34043220748" in notes
+    assert "34045289769" in notes
+    assert "101519549031" in notes
+    assert "publication-successful but not\nglobally green" in notes
+    for placeholder in (
+        "<fill-after-production-verification>",
+        "<fill-from-approved-final-main>",
+        "<fill-from-retained-build-once-manifest>",
+    ):
+        assert placeholder not in notes
+    notes_headings = (
+        "## Install and run",
+        "## Reduced Truth Recovery core",
+        "## Qualification",
+        "## Supported environments",
+        "## Known limitations and deferred work",
+        "## Research boundary",
+        "## Publication reconciliation incident",
+    )
+    assert all(heading in notes for heading in notes_headings)
+
+    assert "# v0.4.0.post2 launch and finalization record" in launch
+    assert "DRAFT — UNPUBLISHED" not in launch
+    assert "metriplane-0.4.0.post2-py3-none-any.whl" in launch
+    assert "metriplane-0.4.0.post2.tar.gz" in launch
+    assert "v0.4.0.post2 DOI: none" in launch
+    assert "## Zenodo stop gate" in launch
+    assert "no Zenodo release hook" in launch
+    checklist = [line for line in launch.splitlines() if line.startswith("- [")]
+    assert checklist
+    assert all(line.startswith("- [x]") for line in checklist)
+
+    for text in (migration, notes, launch):
+        assert "reduced Truth Recovery core" in " ".join(text.split())
+        assert "MP2-007" in text
+        for task in ("MP2-014", "MP2-015", "MP2-016", "MP2-017"):
+            assert task in text
+
+
 def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
     environments = SUPPORTED_ENVIRONMENTS.read_text(encoding="utf-8")
     validation = WSL2_VALIDATION.read_text(encoding="utf-8")
 
-    assert "926 passed, 1 optional GPU test skipped" in environments
-    assert "925 passed, 2 optional browser/GPU tests skipped" in environments
-    assert "815 passed" not in environments
-    assert "814 passed" not in environments
+    assert "No fresh exact-v0.4.1 candidate run is recorded" in environments
+    assert "No v0.4.1 WSL2 support claim is made" in environments
+    assert "No v0.4.1 native-Windows support claim is made" in environments
+    assert "926 passed" not in environments
+    assert "925 passed" not in environments
 
     for expected in (
         "75bb31e801410df5f94ea60514fc1177811a999a",
@@ -247,22 +485,197 @@ def test_citation_paths_do_not_mix_release_and_research_versions() -> None:
     assert "10.5281/zenodo.20736619" in guide
     assert "10.2139/ssrn.7166858" in guide
     assert "v0.1.3" in guide
-    assert "Exact v0.3.0 software release" in guide
-    assert "exact `v0.3.0` GitHub software release" in guide
+    assert "Exact v0.4.0.post2 software release" in guide
+    assert "Metriplane v0.4.0.post2 is the replacement publication identity" in guide
+    assert "Parkkinen, Miko. *Metriplane v0.4.0.post2* [Computer software]." in guide
+    assert "releases/tag/v0.4.0.post2" in guide
+    assert "No v0.4.0.post2 DOI exists. Do not use the v0.2.0 DOI for v0.4.0.post2." in guide
+    assert "Prior v0.3.0 software release" in guide
+    assert "prior usability and adoption software release" in guide
     assert "releases/tag/v0.3.0" in guide
     assert "<release year>" not in guide
     assert "Do not use the v0.2.0 DOI for v0.3.0" in guide
 
 
-def test_v030_release_sets_the_package_version() -> None:
+def test_v041_release_candidate_sets_the_package_version() -> None:
     import metriplane
 
-    assert metriplane.__version__ == "0.3.0"
+    assert metriplane.__version__ == "0.4.1"
+
+
+def test_v041_postpublication_materials_record_exact_release() -> None:
+    index = (RELEASES / "README.md").read_text(encoding="utf-8")
+    migration = V041_MIGRATION.read_text(encoding="utf-8")
+    notes = V041_NOTES.read_text(encoding="utf-8")
+    launch = V041_LAUNCH.read_text(encoding="utf-8")
+
+    assert index.index("v0.4.1-migration.md") < index.index("v0.4.0-migration.md")
+    assert index.index("v0.4.1-release-notes.md") < index.index("v0.4.0-release-notes.md")
+    assert index.index("v0.4.1-launch-materials.md") < index.index("v0.4.0-launch-materials.md")
+    assert "DRAFT — UNPUBLISHED" not in migration
+    assert "DRAFT — UNPUBLISHED" not in notes
+    assert "DRAFT — UNPUBLISHED" not in launch
+    assert "`0.4.1`" in migration
+    assert "`v0.4.1`" in launch
+    assert "306279aae7ebddd403e06b83659b590eb981b25f" in notes
+    assert "86c8d6263278020f1727aec0a28f716fdd6922e96c038ad3aac687cdacd776a2" in notes
+    assert "Production publication and verification" in launch
+    assert "No v0.4.1 DOI is planned" in launch
+    for text in (migration, notes, launch):
+        assert "0.4.0.post2" in text
+        assert "v0.2.0" in text
+        assert "10.5281/zenodo.20736619" in text
+
+
+def test_v041_zero_cost_scope_is_explicit_and_deferred_without_false_pass() -> None:
+    scope = V041_SCOPE.read_text(encoding="utf-8")
+    readiness = json.loads(RELEASE_READINESS.read_text(encoding="utf-8"))
+    decision = readiness["v0_4_1_owner_scope"]
+
+    assert decision["profile"] == "zero_cost_single_maintainer_v0_4_1"
+    assert decision["budget_usd"] == 0
+    assert decision["claim_boundary"] == {
+        "live_multi_party_production_custody": ("DEFERRED_BY_OWNER_TO_LATER_ASSURANCE_MILESTONE"),
+        "software_assurance": "PENDING_FINAL_CANDIDATE_PROOF",
+    }
+    assert {
+        task for row in decision["deferred_live_assurance"] for task in row["destination_task_ids"]
+    } == {"MP2-207", "MP2-209", "MP2-210", "MP2-223", "MP2-225"}
+    criterion_ids = [row["criterion_id"] for row in decision["criterion_classification"]]
+    assert len(criterion_ids) == len(set(criterion_ids))
+    assert set(criterion_ids) == {
+        "MET-162",
+        "MET-163",
+        *(f"MP2-007.A{index:02d}" for index in range(1, 14)),
+        *(f"MP2-014.A{index:02d}" for index in range(1, 3)),
+        *(f"MP2-015.A{index:02d}" for index in range(1, 3)),
+        *(f"MP2-016.A{index:02d}" for index in range(1, 9)),
+        *(f"MP2-017.A{index:02d}" for index in range(1, 3)),
+    }
+    assert {row["classification"] for row in decision["criterion_classification"]} == {
+        "A",
+        "B",
+        "C",
+    }
+    assert not any(row["classification"] == "D" for row in decision["criterion_classification"])
+    assert decision["mandatory_assurance"] == sorted(decision["mandatory_assurance"])
+    assert all(
+        row["destination_task_ids"] == sorted(set(row["destination_task_ids"]))
+        for row in decision["deferred_live_assurance"]
+    )
+    blocker_codes = {row["code"] for row in readiness["blockers"]}
+    assert "LIVE_NON_AUTHOR_APPROVAL_REQUIRED" not in blocker_codes
+    assert "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED" not in blocker_codes
+
+    for expected in (
+        "`SOFTWARE_ASSURANCE`",
+        "`LIVE_MULTI_PARTY_PRODUCTION_CUSTODY`",
+        "DEFERRED_BY_OWNER_TO_LATER_ASSURANCE_MILESTONE",
+        "MP2-207",
+        "MP2-209",
+        "MP2-210",
+        "MP2-223",
+        "MP2-225",
+    ):
+        assert expected in scope
+    for path in (V041_MIGRATION, V041_NOTES, V041_LAUNCH):
+        assert "v0.4.1-assurance-scope.md" in path.read_text(encoding="utf-8")
+
+
+def test_v050_single_maintainer_scope_defers_only_human_independence() -> None:
+    scope = V050_SCOPE.read_text(encoding="utf-8")
+    readiness = json.loads(RELEASE_READINESS.read_text(encoding="utf-8"))
+    decision = readiness["v0_5_owner_scope"]
+
+    assert decision["profile"] == "zero_cost_single_maintainer_v0_5_0"
+    assert decision["budget_eur"] == 0
+    assert decision["applies_to_task_ids"] == [
+        "MP2-020",
+        "MP2-021",
+        "MP2-022",
+        "MP2-023",
+        "MP2-024",
+        "MP2-025",
+        "MP2-026",
+        "MP2-027",
+        "MP2-028",
+        "MP2-029",
+        "MP2-030",
+        "MP2-031",
+        "MP2-040",
+        "MP2-041",
+        "MP2-042",
+        "MP2-043",
+        "MP2-044",
+        "MP2-045",
+        "MP2-046",
+        "MP2-047",
+        "MP2-048",
+        "MP2-049",
+    ]
+    assert decision["delegation_contract"] == {
+        "contract_owner": "MP2-016",
+        "executor_id": "01a096e0-4e21-7a11-9f0f-fb303387c5c0",
+        "grantor": "Miko Parkkinen",
+        "production_authority": "BLOCKED_NEEDS_OWNER",
+        "production_keyring_path": "docs/status/task-delegation-authority.json",
+        "work_order_schema": "metriplane.task-work-order.v2",
+    }
+    assert decision["readiness"] == {
+        "policy": "OWNER_APPROVED",
+        "release": "BLOCKED_NOT_READY",
+        "tagging_or_publication_authorized": False,
+    }
+    assert decision["human_review"] == {
+        "automated_execution_evidence_required": True,
+        "classification": "NOT_APPLICABLE_FOR_V0_5",
+        "deferred_to_task_ids": ["MP2-207", "MP2-210", "MP2-223", "MP2-225"],
+        "independent_review_occurred": False,
+        "owner_architecture_decision_allowed": True,
+        "removed_requirements": [
+            "backup_non_author_reviewer",
+            "independent_human_candidate_or_qualification_approval",
+            "mandatory_second_human_READY_review",
+            "reviewer_key_or_signature_used_only_to_prove_human_independence",
+        ],
+        "represented_as_pass": False,
+    }
+    assert set(decision["mandatory_technical_controls"]) == {
+        "branch_protection_required_CI_and_broker_admission",
+        "exact_byte_publication_readback_and_reconciliation",
+        "immutable_retention_chain_LKG_index_invalidation_and_recovery",
+        "installed_product_upgrade_failure_and_rollback_testing",
+        "negative_and_fail_closed_fixtures",
+        "OIDC_backed_machine_attestation_and_signature_verification",
+        "provenance_qualification_and_reproducibility",
+        "publisher_operator_and_infrastructure_authority",
+        "subject_issuer_workflow_ref_event_commit_and_artifact_digest_validation",
+    }
+    for required in (
+        "OIDC-backed machine attestation",
+        "subject, issuer, workflow",
+        "ref/event, commit and artifact-digest",
+        "fail closed",
+        "exact-byte publication",
+        "reconciliation",
+        "recovery",
+        "never `PASS`",
+        "MP2-207",
+        "MP2-210",
+        "MP2-223",
+        "MP2-225",
+    ):
+        assert required in scope
 
 
 def test_changelog_is_dated_and_complete() -> None:
     text = CHANGELOG.read_text(encoding="utf-8")
 
+    assert "## [0.4.0.post2] — 2026-09-06 — Reduced Truth Recovery publication recovery" in text
+    assert "## [0.4.0.post1] — 2026-09-05 — Retired unpublished production candidate" in text
+    assert "Production workflow `33963231781` stopped before publication-lease creation" in text
+    assert "## [0.4.0] — 2026-09-02 — Failed publication attempt" in text
+    assert "no 0.4.0 package or GitHub\n  Release was published" in text
     assert "## [0.3.0] — 2026-08-09 — Usability and adoption" in text
     assert "## [Unreleased]" in text
     assert "owner-only manual dispatch" in text
@@ -289,14 +702,18 @@ def test_release_copy_preserves_research_version_boundaries() -> None:
 
     for path in paths:
         text = path.read_text(encoding="utf-8")
+        assert "v0.4.0.post2" in text
         assert "v0.3.0" in text
         assert "v0.2.0" in text
         assert "v0.1.3" in text
 
     artifacts = paths[0].read_text(encoding="utf-8")
     research = paths[-1].read_text(encoding="utf-8")
+    assert "Reduced Truth Recovery core software release: `v0.4.0.post2`" in artifacts
+    assert "No DOI is claimed for v0.4.0.post2" in artifacts
     assert "Usability and adoption software release: `v0.3.0`" in artifacts
     assert "No DOI is claimed for v0.3.0" in artifacts
+    assert "No v0.4.0.post2 DOI exists" in research
     assert "No v0.3.0 DOI exists" in research
     assert "v0.3.0 output produced the SoftwareX or TIM\nmeasurements" in research
 
@@ -307,6 +724,7 @@ def test_durable_release_docs_do_not_encode_transient_pr_state() -> None:
         ROOT / "ROADMAP.md",
         ROOT / "docs" / "eval" / "evidence_index.md",
         ROOT / "docs" / "eval" / "evidence_matrix.md",
+        V040_MIGRATION,
         ROOT / "docs" / "releases" / "v0.3.0-migration.md",
         ROOT / "docs" / "user-guide" / "citing.md",
         ROOT / "docs" / "user-guide" / "research-artifacts.md",

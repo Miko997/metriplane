@@ -24,6 +24,7 @@ Direction = Literal["left_to_right", "right_to_left", "top_to_bottom", "bottom_t
 
 class SubjectSpec(BaseModel):
     """A named group of objects, matched by id, type, tags, or current zone."""
+
     object_ids: list[str] = Field(default_factory=list)
     object_types: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
@@ -63,26 +64,40 @@ class ContractRuleSpec(BaseModel):
                 raise ValueError(f"rule {self.id}: forbidden_zone requires subject and zones")
         elif self.type == "minimum_distance":
             if not self.subject_a or not self.subject_b:
-                raise ValueError(f"rule {self.id}: minimum_distance requires subject_a and subject_b")
+                raise ValueError(
+                    f"rule {self.id}: minimum_distance requires subject_a and subject_b"
+                )
             if self.distance_m is None or self.distance_m < 0:
-                raise ValueError(f"rule {self.id}: minimum_distance requires non-negative distance_m")
+                raise ValueError(
+                    f"rule {self.id}: minimum_distance requires non-negative distance_m"
+                )
         elif self.type == "zone_occupancy_duration":
             if not self.subject or not self.zones:
-                raise ValueError(f"rule {self.id}: zone_occupancy_duration requires subject and zones")
+                raise ValueError(
+                    f"rule {self.id}: zone_occupancy_duration requires subject and zones"
+                )
             if self.max_duration_s is None or self.max_duration_s < 0:
-                raise ValueError(f"rule {self.id}: zone_occupancy_duration requires non-negative max_duration_s")
+                raise ValueError(
+                    f"rule {self.id}: zone_occupancy_duration requires non-negative max_duration_s"
+                )
         elif self.type == "speed_limit":
             if not self.subject or self.max_speed_mps is None:
                 raise ValueError(f"rule {self.id}: speed_limit requires subject and max_speed_mps")
         elif self.type == "missing_object":
             if not self.subject or self.missing_after_s is None:
-                raise ValueError(f"rule {self.id}: missing_object requires subject and missing_after_s")
+                raise ValueError(
+                    f"rule {self.id}: missing_object requires subject and missing_after_s"
+                )
         elif self.type == "forbidden_direction":
             if not self.subject or not self.zones or self.allowed_direction is None:
-                raise ValueError(f"rule {self.id}: forbidden_direction requires subject, zones, allowed_direction")
+                raise ValueError(
+                    f"rule {self.id}: forbidden_direction requires subject, zones, allowed_direction"
+                )
         elif self.type == "zone_capacity":
             if not self.subject or not self.zones or self.max_count is None:
-                raise ValueError(f"rule {self.id}: zone_capacity requires subject, zones, max_count")
+                raise ValueError(
+                    f"rule {self.id}: zone_capacity requires subject, zones, max_count"
+                )
         return self
 
 

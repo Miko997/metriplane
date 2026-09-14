@@ -51,12 +51,17 @@ runtime — failures are caught and logged.
 from metriplane.fleet.agent import FleetAgent, FleetAgentConfig
 
 agent = FleetAgent(
-    FleetAgentConfig(node_id="cam_node_01", output_path="runs/r1/fleet_heartbeat.jsonl",
-                     run_id="r1", git_commit="abc123"),
-    metrics_provider=lambda: {"health_overall": "OK", "fps": 30.0})
-agent.start()   # background thread
+    FleetAgentConfig(
+        node_id="cam_node_01",
+        output_path="runs/r1/fleet_heartbeat.jsonl",
+        run_id="r1",
+        git_commit="abc123",
+    ),
+    metrics_provider=lambda: {"health_overall": "OK", "fps": 30.0},
+)
+agent.start()  # background thread
 ...
-agent.stop()    # joins and closes exporter
+agent.stop()  # joins and closes exporter
 ```
 
 ## Exporters

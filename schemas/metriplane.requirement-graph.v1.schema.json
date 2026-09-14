@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.requirement-graph.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "owner", "source_digests", "nodes", "edges", "summary"],
+  "properties": {
+    "schema_version": {"const": "metriplane.requirement-graph.v1"},
+    "owner": {"const": "MP2-014"},
+    "source_digests": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "minProperties": 2
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "label", "first_release", "change_releases", "status"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["requirement", "capability", "code", "test", "doc", "rubric"]},
+          "label": {"type": "string", "minLength": 1},
+          "first_release": {"type": "string", "minLength": 1},
+          "change_releases": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "status": {"enum": ["active", "unresolved"]}
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "relation"],
+        "properties": {
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1},
+          "relation": {"enum": ["requires", "satisfied_by", "implemented_by", "verified_by", "documented_by", "assessed_by"]}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_count", "edge_count", "orphan_count", "dangling_edge_count", "unresolved_node_count"],
+      "properties": {
+        "node_count": {"type": "integer", "minimum": 1},
+        "edge_count": {"type": "integer", "minimum": 1},
+        "orphan_count": {"const": 0},
+        "dangling_edge_count": {"const": 0},
+        "unresolved_node_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

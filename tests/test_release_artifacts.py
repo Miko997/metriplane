@@ -6,21 +6,103 @@ from __future__ import annotations
 import io
 import tarfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+import tools.release_artifacts as release_tool
 from tools.release_artifacts import (
-    ReleaseArtifactError,
     _REQUIRED_SDIST_PATHS,
+    PUBLISH_BROKER_APP_ID,
+    PUBLISH_BROKER_APP_SLUG,
+    PUBLISH_LEASE_CHECK_NAME,
+    ReleaseArtifactError,
+    _publish_lease,
+    acquire_publish_lease,
+    assert_publish_lease,
     create_manifest,
     inspect_sdist,
     read_manifest,
+    reconcile_publish_lease,
     verify_manifest,
     verify_registry_payload,
 )
 
-
 VERSION = "0.3.0"
+REPOSITORY = "Miko997/metriplane"
+RELEASE_SHA = "a" * 40
+
+
+class _LeaseApi:
+    def __init__(
+        self,
+        *,
+        complete_after_active_checks: int | None = None,
+        drift_after_first_main_read: bool = False,
+        wrong_app: bool = False,
+    ) -> None:
+        self.complete_after_active_checks = complete_after_active_checks
+        self.drift_after_first_main_read = drift_after_first_main_read
+        self.wrong_app = wrong_app
+        self.check_reads = 0
+        self.main_reads = 0
+        self.calls: list[str] = []
+
+    @property
+    def completed(self) -> bool:
+        return (
+            self.complete_after_active_checks is not None
+            and self.check_reads > self.complete_after_active_checks
+        )
+
+    def __call__(
+        self,
+        repository: str,
+        path: str,
+        token: str,
+    ) -> Any:
+        assert repository == REPOSITORY
+        assert token == "test-token"
+        self.calls.append(path)
+        lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+        if path == "git/ref/heads/main":
+            self.main_reads += 1
+            sha = (
+                "f" * 40
+                if self.drift_after_first_main_read and self.main_reads > 1
+                else RELEASE_SHA
+            )
+            return {
+                "object": {"sha": sha, "type": "commit"},
+                "ref": "refs/heads/main",
+            }
+        if path == release_tool._lease_ref_api_path(lease):
+            return {
+                "object": {"sha": RELEASE_SHA, "type": "commit"},
+                "ref": lease.ref,
+            }
+        if path == f"git/matching-refs/{lease.ref.removeprefix('refs/')}":
+            return [] if self.completed else [{"ref": lease.ref}]
+        if path.startswith(f"commits/{RELEASE_SHA}/check-runs?"):
+            self.check_reads += 1
+            return {
+                "check_runs": [
+                    {
+                        "app": {
+                            "id": 1 if self.wrong_app else PUBLISH_BROKER_APP_ID,
+                            "slug": PUBLISH_BROKER_APP_SLUG,
+                        },
+                        "conclusion": "success" if self.completed else None,
+                        "external_id": lease.external_id,
+                        "head_sha": RELEASE_SHA,
+                        "id": 456,
+                        "name": PUBLISH_LEASE_CHECK_NAME,
+                        "status": "completed" if self.completed else "in_progress",
+                    }
+                ],
+                "total_count": 1,
+            }
+        raise AssertionError(f"unexpected API request: GET {path}")
 
 
 def _artifact_set(tmp_path: Path) -> tuple[Path, Path]:
@@ -29,6 +111,148 @@ def _artifact_set(tmp_path: Path) -> tuple[Path, Path]:
     (dist / f"metriplane-{VERSION}-py3-none-any.whl").write_bytes(b"wheel")
     (dist / f"metriplane-{VERSION}.tar.gz").write_bytes(b"sdist")
     return dist, tmp_path / "SHA256SUMS"
+
+
+def test_publish_lease_identity_is_exact() -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+
+    assert lease.ref == "refs/heads/release-leases/pypi-123-2"
+    assert lease.external_id == f"metriplane-publish-lease.v1:123:2:{RELEASE_SHA}"
+    assert release_tool._lease_ref_api_path(lease).startswith("git/ref/heads/")
+    with pytest.raises(ReleaseArtifactError, match="repository identity"):
+        _publish_lease("not-a-repository", RELEASE_SHA, "123", "2")
+    with pytest.raises(ReleaseArtifactError, match="positive integer"):
+        _publish_lease(REPOSITORY, RELEASE_SHA, "0", "2")
+
+
+def test_publish_lease_requires_app_ack_and_stable_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+    api = _LeaseApi()
+    monkeypatch.setattr(release_tool, "_github_request", api)
+
+    check_id = acquire_publish_lease(
+        lease,
+        "test-token",
+        attempts=1,
+        delay_seconds=0,
+    )
+
+    assert check_id == 456
+    assert assert_publish_lease(lease, "test-token") == 456
+    assert "git/refs" not in api.calls
+
+
+def test_publish_lease_rejects_wrong_app_and_post_ack_main_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+    wrong_app = _LeaseApi(wrong_app=True)
+    monkeypatch.setattr(release_tool, "_github_request", wrong_app)
+    with pytest.raises(ReleaseArtifactError, match="acknowledgment identity"):
+        acquire_publish_lease(
+            lease,
+            "test-token",
+            attempts=1,
+            delay_seconds=0,
+        )
+
+    drift = _LeaseApi(drift_after_first_main_read=True)
+    monkeypatch.setattr(release_tool, "_github_request", drift)
+    with pytest.raises(ReleaseArtifactError, match="refs/heads/main"):
+        acquire_publish_lease(
+            lease,
+            "test-token",
+            attempts=1,
+            delay_seconds=0,
+        )
+    assert all(not path.startswith("git/matching-refs/") for path in drift.calls)
+
+
+def test_publish_lease_is_released_only_after_exact_main_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+    api = _LeaseApi(complete_after_active_checks=3)
+    monkeypatch.setattr(release_tool, "_github_request", api)
+
+    check_id = reconcile_publish_lease(
+        lease,
+        "test-token",
+        attempts=1,
+        delay_seconds=0,
+    )
+
+    assert check_id == 456
+    absent_index = next(
+        index for index, path in enumerate(api.calls) if path.startswith("git/matching-refs/")
+    )
+    main_index = max(index for index, path in enumerate(api.calls) if path == "git/ref/heads/main")
+    assert main_index < absent_index
+
+    drift = _LeaseApi(drift_after_first_main_read=True)
+    drift.main_reads = 1
+    monkeypatch.setattr(release_tool, "_github_request", drift)
+    with pytest.raises(ReleaseArtifactError, match="refs/heads/main"):
+        reconcile_publish_lease(
+            lease,
+            "test-token",
+            attempts=1,
+            delay_seconds=0,
+        )
+    assert all(not path.startswith("git/matching-refs/") for path in drift.calls)
+
+
+def test_publish_lease_requires_the_app_terminal_before_resuming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+    api = _LeaseApi()
+    monkeypatch.setattr(release_tool, "_github_request", api)
+
+    with pytest.raises(ReleaseArtifactError, match="state 'completed'"):
+        reconcile_publish_lease(
+            lease,
+            "test-token",
+            attempts=1,
+            delay_seconds=0,
+        )
+    assert all(not path.startswith("git/matching-refs/") for path in api.calls)
+
+
+def test_publish_lease_accepts_an_already_published_exact_app_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+    api = _LeaseApi(complete_after_active_checks=0)
+    monkeypatch.setattr(release_tool, "_github_request", api)
+
+    check_id = reconcile_publish_lease(
+        lease,
+        "test-token",
+        attempts=1,
+        delay_seconds=0,
+    )
+
+    assert check_id == 456
+    assert any(path.startswith("git/matching-refs/") for path in api.calls)
+
+
+def test_publish_lease_accepts_the_same_app_terminal_during_observer_assertion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease = _publish_lease(REPOSITORY, RELEASE_SHA, "123", "2")
+    api = _LeaseApi(complete_after_active_checks=1)
+    monkeypatch.setattr(release_tool, "_github_request", api)
+
+    check_id = reconcile_publish_lease(
+        lease,
+        "test-token",
+        attempts=1,
+        delay_seconds=0,
+    )
+
+    assert check_id == 456
+    assert any(path.startswith("git/matching-refs/") for path in api.calls)
 
 
 def test_manifest_fingerprints_exactly_one_wheel_and_sdist(tmp_path: Path) -> None:

@@ -39,7 +39,11 @@ def _iter_objects(obj: dict):
                 oid = it.get("id", it.get("marker_id", it.get("tag_id", it.get("aruco_id"))))
                 x = it.get("x", it.get("pos_x", it.get("world_x")))
                 y = it.get("y", it.get("pos_y", it.get("world_y")))
-                if isinstance(oid, (int, str)) and isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                if (
+                    isinstance(oid, (int, str))
+                    and isinstance(x, (int, float))
+                    and isinstance(y, (int, float))
+                ):
                     yield str(oid), float(x), float(y)
 
         # dict mapping id -> dict(x,y)
@@ -57,7 +61,12 @@ def main() -> int:
     ap.add_argument("--in", dest="inp", type=Path, required=True)
     ap.add_argument("--csv", type=Path, required=True)
     ap.add_argument("--summary", type=Path, required=True)
-    ap.add_argument("--anchors", type=str, default="", help="comma-separated anchor ids to ignore (e.g. 0,1,2,3)")
+    ap.add_argument(
+        "--anchors",
+        type=str,
+        default="",
+        help="comma-separated anchor ids to ignore (e.g. 0,1,2,3)",
+    )
     args = ap.parse_args()
 
     anchors = set([s.strip() for s in args.anchors.split(",") if s.strip()])
@@ -98,7 +107,11 @@ def main() -> int:
     # timing / fps
     ts_list = [t for t, _ in rows]
     ts_sorted = sorted(ts_list)
-    dts = [ts_sorted[i + 1] - ts_sorted[i] for i in range(len(ts_sorted) - 1) if (ts_sorted[i + 1] - ts_sorted[i]) > 0]
+    dts = [
+        ts_sorted[i + 1] - ts_sorted[i]
+        for i in range(len(ts_sorted) - 1)
+        if (ts_sorted[i + 1] - ts_sorted[i]) > 0
+    ]
     fps_est = (1.0 / median(dts)) if dts else 0.0
 
     # expected object count = max seen

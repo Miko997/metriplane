@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -26,7 +27,7 @@ class ExpectationResult:
         return self.false_positives == 0 and self.missed == 0
 
 
-def load_expectations(path: str | Path) -> dict:
+def load_expectations(path: str | Path) -> dict[str, Any]:
     """Load an expected-events YAML file.
 
     Expected format:
@@ -41,7 +42,7 @@ def load_expectations(path: str | Path) -> dict:
     return data
 
 
-def compare(events: list[ContractEvent], expected: dict) -> ExpectationResult:
+def compare(events: list[ContractEvent], expected: dict[str, Any]) -> ExpectationResult:
     """Group events into incidents and compare against expected rule set."""
     alerts = [e.to_rule_alert() for e in events]
     incidents = build_incidents(alerts)

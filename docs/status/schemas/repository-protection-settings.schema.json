@@ -1,16 +1,45 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "actor_exclusivity_enforced": {"const": true}
+        },
+        "required": ["actor_exclusivity_enforced"]
+      },
+      "then": {
+        "required": ["activation_state", "broker_integration_id", "human_bypass_actors", "required_status_check_integrations", "trusted_admin_boundary"]
+      }
+    }
+  ],
   "properties": {
+    "activation_state": {"enum": ["planned", "active"]},
     "actor_exclusivity_enforced": {"type": "boolean"},
+    "broker_integration_id": {"const": 4722589},
     "captured_at": {"format": "date-time", "type": "string"},
     "default_branch": {"minLength": 1, "type": "string"},
     "deletion_blocked": {"type": "boolean"},
     "merge_queue_enabled": {"type": "boolean"},
     "non_fast_forward_blocked": {"type": "boolean"},
     "pull_request_required": {"type": "boolean"},
+    "human_bypass_actors": {"maxItems": 0, "type": "array"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
     "required_status_checks": {"items": {"minLength": 1, "type": "string"}, "type": "array", "uniqueItems": true},
+    "required_status_check_integrations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {"minLength": 1, "type": "string"},
+          "integration_id": {"minimum": 1, "type": "integer"}
+        },
+        "required": ["context", "integration_id"],
+        "type": "object"
+      },
+      "minItems": 4,
+      "type": "array"
+    },
     "ruleset_enforcement": {"enum": ["active", "evaluate", "disabled"]},
     "ruleset_id": {"minimum": 1, "type": "integer"},
     "schema_version": {"const": 1},
@@ -19,7 +48,8 @@
       "minProperties": 3,
       "type": "object"
     },
-    "strict_up_to_date": {"type": "boolean"}
+    "strict_up_to_date": {"type": "boolean"},
+    "trusted_admin_boundary": {"const": true}
   },
   "required": ["actor_exclusivity_enforced", "captured_at", "default_branch", "deletion_blocked", "merge_queue_enabled", "non_fast_forward_blocked", "pull_request_required", "repository", "required_status_checks", "ruleset_enforcement", "ruleset_id", "schema_version", "source_digests", "strict_up_to_date"],
   "type": "object"

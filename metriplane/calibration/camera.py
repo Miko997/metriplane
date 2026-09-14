@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Tuple
 
-import cv2  # type: ignore
-import numpy as np  # type: ignore
+import cv2
+import numpy as np
 import yaml
 
 
@@ -20,12 +20,15 @@ class CameraIntrinsics:
     camera_matrix: 3x3
     dist_coeffs: (N,) where N is typically 5 or 8
     """
+
     camera_matrix: np.ndarray
     dist_coeffs: np.ndarray
     image_width: int | None = None
     image_height: int | None = None
 
-    def undistort_points_px(self, pts_px: Iterable[Tuple[float, float]]) -> list[tuple[float, float]]:
+    def undistort_points_px(
+        self, pts_px: Iterable[Tuple[float, float]]
+    ) -> list[tuple[float, float]]:
         """
         Undistort pixel points and return in pixel coordinates (same scale as input).
 

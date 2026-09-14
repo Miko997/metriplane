@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +17,23 @@ EXACT_TERMINALS = [
     "Security / required",
     "Main health / required",
 ]
+EXACT_INTEGRATIONS = [
+    {"context": "Metriplane / required", "integration_id": 15368},
+    {"context": "Documentation / required", "integration_id": 15368},
+    {"context": "Security / required", "integration_id": 15368},
+    {"context": "Main health / required", "integration_id": 4722589},
+]
+SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
 class ProtectionError(ValueError):
     """Captured protection or merge evidence is incomplete or contradictory."""
+
+
+def _require_sha(value: Any, label: str) -> str:
+    if not isinstance(value, str) or SHA.fullmatch(value) is None:
+        raise ProtectionError(f"{label} is not an exact 40-hex SHA")
+    return value
 
 
 def validate_capture(
@@ -37,12 +51,17 @@ def validate_capture(
     if capability["captured_at"] != settings["captured_at"]:
         raise ProtectionError("capability and settings capture times differ")
     mode = capability["selected_mode"]
-    expected_mode = (
-        "enforced_merge_queue"
-        if capability["supports_merge_queue"]
-        else "serialized_strict_up_to_date"
-    )
-    if mode != expected_mode or mode != policy["selected_mode"]:
+    if mode not in {
+        "app_brokered_strict_up_to_date",
+        "enforced_merge_queue",
+        "serialized_strict_up_to_date",
+    }:
+        raise ProtectionError("selected mode is not governed")
+    if (capability["supports_merge_queue"] is True and mode != "enforced_merge_queue") or (
+        capability["supports_merge_queue"] is False and mode == "enforced_merge_queue"
+    ):
+        raise ProtectionError("selected mode contradicts captured merge-queue capability")
+    if mode != policy["selected_mode"]:
         raise ProtectionError("selected mode contradicts captured capability or policy")
     if settings["ruleset_enforcement"] != "active":
         raise ProtectionError("default-branch ruleset is not active")
@@ -54,10 +73,27 @@ def validate_capture(
     ):
         if settings[field] is not True:
             raise ProtectionError(f"required protection is disabled: {field}")
-    if mode == "serialized_strict_up_to_date" and (
-        policy["claims_actor_exclusivity"] or settings["actor_exclusivity_enforced"]
-    ):
-        raise ProtectionError("limited mode cannot claim actor-exclusive merge or tags")
+    if mode == "serialized_strict_up_to_date":
+        if policy["claims_actor_exclusivity"] or settings["actor_exclusivity_enforced"]:
+            raise ProtectionError("limited mode cannot claim actor-exclusive merge or tags")
+    elif mode == "app_brokered_strict_up_to_date":
+        if (
+            policy.get("broker_integration_id") != 4722589
+            or settings.get("broker_integration_id") != 4722589
+            or policy.get("claims_actor_exclusivity") is not True
+            or settings.get("actor_exclusivity_enforced") is not True
+            or policy.get("trusted_admin_boundary") is not True
+            or settings.get("trusted_admin_boundary") is not True
+            or settings.get("human_bypass_actors") != []
+            or settings.get("required_status_check_integrations") != EXACT_INTEGRATIONS
+        ):
+            raise ProtectionError("App-broker mode identity or exclusivity boundary is invalid")
+        if policy.get("exclusivity_boundary") != (
+            "unchanged hosted settings and uncompromised host-only App credential"
+        ):
+            raise ProtectionError("App-broker exclusivity scope is not explicit")
+        if settings.get("activation_state") not in {"planned", "active"}:
+            raise ProtectionError("App-broker activation state is invalid")
     if policy["required_terminals"] != EXACT_TERMINALS:
         raise ProtectionError("policy terminal set is not the exact MP2-004 set")
     if sorted(settings["required_status_checks"]) != sorted(policy["required_terminals"]):
@@ -67,7 +103,12 @@ def validate_capture(
         "repository": capability["repository"],
         "schema_version": 1,
         "selected_mode": mode,
-        "verdict": "PASS",
+        "verdict": (
+            "PLANNED"
+            if mode == "app_brokered_strict_up_to_date"
+            and settings["activation_state"] == "planned"
+            else "PASS"
+        ),
     }
 
 
@@ -83,33 +124,77 @@ def validate_merge_proof(
     required_checks = policy["required_terminals"]
     if required_checks != EXACT_TERMINALS:
         raise ProtectionError("merge proof policy does not name the exact MP2-004 terminals")
-    merge_sha = pull_request["merge_commit_sha"]
-    head_sha = pull_request["head"]["sha"]
+    merge_sha = _require_sha(pull_request["merge_commit_sha"], "pull request merge SHA")
+    base_sha = _require_sha(pull_request["base"]["sha"], "pull request base SHA")
+    head_sha = _require_sha(pull_request["head"]["sha"], "pull request head SHA")
     if pull_request["merged"] is not True or pull_request["state"] != "closed":
         raise ProtectionError("pull request was not merged")
-    if merge_commit["sha"] != merge_sha or main_ref["object"]["sha"] != merge_sha:
+    if (
+        pull_request["base"].get("ref") != "main"
+        or pull_request["head"].get("repo", {}).get("full_name") != policy["repository"]
+    ):
+        raise ProtectionError("pull request is not an exact same-repository main merge")
+    merge_commit_sha = _require_sha(merge_commit["sha"], "merge commit SHA")
+    main_sha = _require_sha(main_ref["object"]["sha"], "main ref SHA")
+    if merge_commit_sha != merge_sha or main_sha != merge_sha:
         raise ProtectionError("merge proof does not bind current main")
     raw_parents = merge_commit.get("parents", merge_commit["commit"].get("parents"))
-    parents = [parent["sha"] if isinstance(parent, dict) else parent for parent in raw_parents]
-    if len(parents) != 2 or parents[1] != head_sha:
-        raise ProtectionError("merge commit does not bind the reviewed head")
-    if head_commit["sha"] != head_sha:
+    parents = [
+        _require_sha(
+            parent["sha"] if isinstance(parent, dict) else parent,
+            "merge parent SHA",
+        )
+        for parent in raw_parents
+    ]
+    if parents != [base_sha, head_sha]:
+        raise ProtectionError("merge commit does not bind the exact base and reviewed head")
+    if _require_sha(head_commit["sha"], "head commit SHA") != head_sha:
         raise ProtectionError("reviewed head commit identity is wrong")
     merge_tree = merge_commit["commit"]["tree"]
-    merge_tree_sha = merge_tree["sha"] if isinstance(merge_tree, dict) else merge_tree
-    if head_commit["commit"]["tree"]["sha"] != merge_tree_sha:
+    merge_tree_sha = _require_sha(
+        merge_tree["sha"] if isinstance(merge_tree, dict) else merge_tree,
+        "merge tree SHA",
+    )
+    head_tree_sha = _require_sha(head_commit["commit"]["tree"]["sha"], "head tree SHA")
+    if head_tree_sha != merge_tree_sha:
         raise ProtectionError("merge commit tree differs from the reviewed head tree")
     if not required_checks or len(required_checks) != len(set(required_checks)):
         raise ProtectionError("required check inventory is empty or duplicated")
+    runs = check_runs.get("check_runs")
+    total_count = check_runs.get("total_count")
+    if (
+        not isinstance(runs, list)
+        or not isinstance(total_count, int)
+        or isinstance(total_count, bool)
+        or total_count < 0
+        or total_count != len(runs)
+    ):
+        raise ProtectionError("check-run evidence is incomplete or malformed")
     by_name: dict[str, list[dict[str, Any]]] = {}
-    for run in check_runs["check_runs"]:
+    seen_ids: set[int] = set()
+    for run in runs:
+        if not isinstance(run, dict):
+            raise ProtectionError("check-run evidence contains a malformed run")
+        run_id = run.get("id")
+        if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+            raise ProtectionError("check-run evidence contains a malformed check ID")
+        if run_id in seen_ids:
+            raise ProtectionError("check-run evidence contains a duplicate check ID")
+        seen_ids.add(run_id)
         by_name.setdefault(run["name"], []).append(run)
+    expected_integrations = {item["context"]: item["integration_id"] for item in EXACT_INTEGRATIONS}
     for name in required_checks:
         runs = by_name.get(name, [])
-        matching = [run for run in runs if run["head_sha"] == head_sha]
+        matching = [
+            run
+            for run in runs
+            if run["head_sha"] == head_sha
+            and isinstance(run.get("app"), dict)
+            and run["app"].get("id") == expected_integrations[name]
+        ]
         if not matching:
-            raise ProtectionError(f"{name}: missing or stale check")
-        run = max(matching, key=lambda item: (item.get("completed_at") or "", item["id"]))
+            raise ProtectionError(f"{name}: missing, stale, or wrong-integration check")
+        run = max(matching, key=lambda item: item["id"])
         if run["status"] != "completed" or run["conclusion"] != "success":
             raise ProtectionError(f"{name}: non-success conclusion {run['conclusion']!r}")
     return {

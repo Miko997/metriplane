@@ -17,8 +17,7 @@ def test_root_help_lists_the_bundled_demo_and_primary_actions(capsys) -> None:
     assert "demo       Run a complete recorded-incident example" in output
     assert "doctor     Check whether this installation is ready" in output
     assert (
-        "test       Rerun a bundle and compare its incidents and events with expectations"
-        in output
+        "test       Rerun a bundle and compare its incidents and events with expectations" in output
     )
     assert "physical-observability comparisons" not in output
     assert "metriplane --version" in output

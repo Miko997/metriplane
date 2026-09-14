@@ -1,7 +1,9 @@
 {
-  "authorization_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+  "authorization_mode": "independent-review",
+  "authorization_digest": "b070d14e4c8a9826a7e45649e819f169bcea6ab42101ba335f87e46e10dae6b3",
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
-  "repaired_main_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "policy_amendment_digest": null,
+  "repaired_main_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "resolved_at": "2026-08-26T18:00:00Z",
   "schema_version": 1
 }

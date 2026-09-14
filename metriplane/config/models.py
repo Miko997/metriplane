@@ -5,11 +5,13 @@
 
 from pydantic import BaseModel, Field, AliasChoices
 
+
 class HealthConfig(BaseModel):
     enabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("enabled", "enable"),
     )
+
 
 class AppConfig(BaseModel):
     # ...

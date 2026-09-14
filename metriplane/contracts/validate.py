@@ -23,6 +23,7 @@ def validate_contract(path: str | Path) -> tuple[bool, list[str]]:
 
 def _main() -> int:
     import sys
+
     if len(sys.argv) < 2:
         print("usage: python -m metriplane.contracts.validate <contract.yaml>")
         return 2

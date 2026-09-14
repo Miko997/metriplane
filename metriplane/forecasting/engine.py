@@ -6,8 +6,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from metriplane.contracts.models import SpatialContractPackage, SubjectSpec
-from metriplane.forecasting.models import ProjectedPointModel, RiskForecastModel
+from metriplane.contracts.models import ContractRuleSpec, SpatialContractPackage, SubjectSpec
+from metriplane.forecasting.models import ForecastType, ProjectedPointModel, RiskForecastModel
 from metriplane.forecasting.projector import project_path
 from metriplane.forecasting.velocity import VelocityEstimator
 from metriplane.schema import ObjectStateModel
@@ -93,14 +93,13 @@ class ForecastEngine:
         resolved: list[_Obj] = []
         for obj in sorted(objects, key=lambda o: str(o.id)):
             object_id, otype, tags = self._resolve(str(obj.id))
-            pos = ((obj.pos_world[0], obj.pos_world[1])
-                   if obj.pos_world else None)
+            pos = (obj.pos_world[0], obj.pos_world[1]) if obj.pos_world else None
             self._vel.observe(object_id, ts, pos)
-            vel_world = ((obj.vel_world[0], obj.vel_world[1])
-                         if obj.vel_world else None)
+            vel_world = (obj.vel_world[0], obj.vel_world[1]) if obj.vel_world else None
             est = self._vel.estimate(object_id, vel_world)
-            resolved.append(_Obj(object_id, otype, tags, obj.zone, pos,
-                                 est.vx, est.vy, est.confidence))
+            resolved.append(
+                _Obj(object_id, otype, tags, obj.zone, pos, est.vx, est.vy, est.confidence)
+            )
 
         if self.contract_package is None:
             return []
@@ -115,8 +114,10 @@ class ForecastEngine:
                 out.extend(self._forecast_distance(rule, ts, resolved))
         return out
 
-    def _forecast_zone(self, rule, ts, resolved):
-        out = []
+    def _forecast_zone(
+        self, rule: ContractRuleSpec, ts: float, resolved: list[_Obj]
+    ) -> list[RiskForecastModel]:
+        out: list[RiskForecastModel] = []
         if self.zone_map is None:
             return out
         spec = self._subject(rule.subject)
@@ -129,8 +130,13 @@ class ForecastEngine:
                 continue
             if o.zone in rule.zones:
                 continue  # already inside; that's an incident, not a forecast
-            path = project_path((o.pos[0], o.pos[1]), (o.vx, o.vy),
-                                self.horizon_s, self.step_s, self.max_projected_points)
+            path = project_path(
+                (o.pos[0], o.pos[1]),
+                (o.vx, o.vy),
+                self.horizon_s,
+                self.step_s,
+                self.max_projected_points,
+            )
             hit_dt = None
             hit_zone = None
             for dt, x, y in path:
@@ -138,18 +144,29 @@ class ForecastEngine:
                 if z in rule.zones:
                     hit_dt, hit_zone = dt, z
                     break
-            if hit_dt is not None:
+            if hit_dt is not None and hit_zone is not None:
                 if not self._cooldown_ok(rule.id, o.object_id, ts):
                     continue
                 self._mark(rule.id, o.object_id, ts)
-                out.append(self._mk(
-                    "future_forbidden_zone", rule, ts, [o.object_id],
-                    [hit_zone], hit_dt, o.confidence, path,
-                    f"{o.object_id} projected to enter {hit_zone} in {hit_dt}s"))
+                out.append(
+                    self._mk(
+                        "future_forbidden_zone",
+                        rule,
+                        ts,
+                        [o.object_id],
+                        [hit_zone],
+                        hit_dt,
+                        o.confidence,
+                        path,
+                        f"{o.object_id} projected to enter {hit_zone} in {hit_dt}s",
+                    )
+                )
         return out
 
-    def _forecast_distance(self, rule, ts, resolved):
-        out = []
+    def _forecast_distance(
+        self, rule: ContractRuleSpec, ts: float, resolved: list[_Obj]
+    ) -> list[RiskForecastModel]:
+        out: list[RiskForecastModel] = []
         spec_a = self._subject(rule.subject_a)
         spec_b = self._subject(rule.subject_b)
         if spec_a is None or spec_b is None:
@@ -157,46 +174,75 @@ class ForecastEngine:
         a_list = [o for o in resolved if o.pos is not None and _match(spec_a, o)]
         b_list = [o for o in resolved if o.pos is not None and _match(spec_b, o)]
         seen: set[tuple[str, str]] = set()
+        distance_m = rule.distance_m
+        if distance_m is None:
+            return out
         for a in a_list:
             for b in b_list:
                 if a.object_id == b.object_id:
                     continue
-                key = tuple(sorted((a.object_id, b.object_id)))
+                a_pos = a.pos
+                b_pos = b.pos
+                if a_pos is None or b_pos is None:
+                    continue
+                key = (min(a.object_id, b.object_id), max(a.object_id, b.object_id))
                 if key in seen:
                     continue
                 seen.add(key)
-                cur = math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])
-                if cur < rule.distance_m:
+                cur = math.hypot(a_pos[0] - b_pos[0], a_pos[1] - b_pos[1])
+                if cur < distance_m:
                     continue  # already violating; that's current, not forecast
                 conf = min(a.confidence, b.confidence)
                 if conf < self.min_confidence:
                     continue
-                pa = project_path(a.pos, (a.vx, a.vy), self.horizon_s,
-                                  self.step_s, self.max_projected_points)
-                pb = project_path(b.pos, (b.vx, b.vy), self.horizon_s,
-                                  self.step_s, self.max_projected_points)
+                pa = project_path(
+                    a_pos, (a.vx, a.vy), self.horizon_s, self.step_s, self.max_projected_points
+                )
+                pb = project_path(
+                    b_pos, (b.vx, b.vy), self.horizon_s, self.step_s, self.max_projected_points
+                )
                 hit_dt = None
                 for (dt, ax, ay), (_, bx, by) in zip(pa, pb):
-                    if math.hypot(ax - bx, ay - by) < rule.distance_m:
+                    if math.hypot(ax - bx, ay - by) < distance_m:
                         hit_dt = dt
                         break
                 if hit_dt is not None:
                     if not self._cooldown_ok(rule.id, "|".join(key), ts):
                         continue
                     self._mark(rule.id, "|".join(key), ts)
-                    out.append(self._mk(
-                        "future_minimum_distance", rule, ts, list(key), [],
-                        hit_dt, conf, pa,
-                        f"{key[0]} and {key[1]} projected within "
-                        f"{rule.distance_m}m in {hit_dt}s"))
+                    out.append(
+                        self._mk(
+                            "future_minimum_distance",
+                            rule,
+                            ts,
+                            list(key),
+                            [],
+                            hit_dt,
+                            conf,
+                            pa,
+                            f"{key[0]} and {key[1]} projected within {distance_m}m in {hit_dt}s",
+                        )
+                    )
         return out
 
-    def _mk(self, ftype, rule, ts, object_ids, zones, ttv, conf, path, explanation):
+    def _mk(
+        self,
+        ftype: ForecastType,
+        rule: ContractRuleSpec,
+        ts: float,
+        object_ids: list[str],
+        zones: list[str],
+        ttv: float | None,
+        conf: float,
+        path: list[tuple[float, float, float]],
+        explanation: str,
+    ) -> RiskForecastModel:
         self._seq += 1
-        projected = []
+        projected: list[ProjectedPointModel] = []
         if self.include_projected_path:
-            projected = [ProjectedPointModel(dt_s=dt, pos_world=(x, y, 0.0))
-                         for dt, x, y in path]
+            projected = [ProjectedPointModel(dt_s=dt, pos_world=(x, y, 0.0)) for dt, x, y in path]
+        package = self.contract_package
+        assert package is not None
         return RiskForecastModel(
             forecast_type=ftype,
             severity=rule.severity,
@@ -206,7 +252,7 @@ class ForecastEngine:
             confidence=round(conf, 3),
             object_ids=object_ids,
             zones=zones,
-            contract_id=self.contract_package.contract_id,
+            contract_id=package.contract_id,
             rule_id=rule.id,
             explanation=explanation,
             projected_path=projected,

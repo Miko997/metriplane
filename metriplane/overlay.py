@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
 
-import cv2  # type: ignore
+import cv2
 
 
 def _as_px(obj: Any) -> tuple[int, int] | None:
@@ -25,7 +25,7 @@ def _as_px(obj: Any) -> tuple[int, int] | None:
 
 
 def _draw_multiline_box(
-    img,
+    img: Any,
     *,
     x: int,
     y: int,
@@ -78,7 +78,7 @@ def _draw_multiline_box(
 
 
 def draw_tracking_overlay(
-    frame_bgr,
+    frame_bgr: Any,
     objects: Iterable[Any],
     *,
     units: str = "meters",

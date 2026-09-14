@@ -26,7 +26,7 @@ def test_root_runtime_pytest_bridge_requires_an_explicit_executable(
         cross_adapter_pytest.pytest_configure()
 
 
-def test_root_runtime_pytest_bridge_uses_the_locked_gate_python(
+def test_root_runtime_pytest_bridge_uses_explicit_python_for_frozen_commands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     previous = sys._base_executable
@@ -36,6 +36,12 @@ def test_root_runtime_pytest_bridge_uses_the_locked_gate_python(
         assert sys._base_executable == sys.executable
     finally:
         sys._base_executable = previous
+
+    gate_source = (REPOSITORY_ROOT / "tools/cross_adapter_gate.py").read_text(encoding="utf-8")
+    assert 'temporary_root / "frozen-command-checkout"' in gate_source
+    assert "cwd=execution_package" in gate_source
+    assert "os.pathsep.join((str(frozen_checkout), str(repo)))" in gate_source
+    assert '"UV_PYTHON": sys.executable' in gate_source
 
 
 def _massrobotics_component() -> dict[str, object]:

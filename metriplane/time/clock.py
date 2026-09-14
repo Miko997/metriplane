@@ -38,6 +38,7 @@ class Clock(ABC):
 @dataclass
 class RealTimeClock(Clock):
     """Wall-clock-ish monotonic time (ns). Good for live runs."""
+
     def now_ns(self) -> int:
         return time.monotonic_ns()
 
@@ -52,6 +53,7 @@ class RealTimeClock(Clock):
 @dataclass
 class ReplayClock(Clock):
     """Replay clock: caller sets time to recorded timestamps."""
+
     current_ns: int = 0
 
     def now_ns(self) -> int:
@@ -68,6 +70,7 @@ class ReplayClock(Clock):
 @dataclass
 class FixedStepClock(Clock):
     """Fixed-step simulation clock: deterministic ticks."""
+
     dt_ns: int
     current_ns: int = 0
 

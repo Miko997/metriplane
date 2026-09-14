@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 
@@ -13,8 +12,9 @@ def main_ask(argv: list[str]) -> int:
     p.add_argument("question")
     p.add_argument("--run-dir", default=None)
     p.add_argument("--bundle", default=None)
-    p.add_argument("--json", action="store_true", default=False,
-                   help="Print the full AssistantAnswer as JSON")
+    p.add_argument(
+        "--json", action="store_true", default=False, help="Print the full AssistantAnswer as JSON"
+    )
     args = p.parse_args(argv)
 
     run_dir = args.run_dir or args.bundle

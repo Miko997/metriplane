@@ -27,14 +27,25 @@ CONFIG_RULES = "configs/rules.example.yaml"
 
 def make_frame(ts, frame_id, objects, run_id="bundle_test"):
     objs = [
-        {"id": str(o["id"]), "pos_world": o.get("pos"),
-         "vel_world": o.get("vel"), "zone": o.get("zone")}
+        {
+            "id": str(o["id"]),
+            "pos_world": o.get("pos"),
+            "vel_world": o.get("vel"),
+            "zone": o.get("zone"),
+        }
         for o in objects
     ]
-    return json.dumps({
-        "schema_version": "1.0", "source_backend": "dummy", "run_id": run_id,
-        "ts": ts, "frame_id": frame_id, "objects": objs, "events": [],
-    })
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "source_backend": "dummy",
+            "run_id": run_id,
+            "ts": ts,
+            "frame_id": frame_id,
+            "objects": objs,
+            "events": [],
+        }
+    )
 
 
 @pytest.fixture
@@ -66,33 +77,52 @@ def scenario(tmp_path):
 def test_bundle_files_present(tmp_path, scenario):
     out = tmp_path / "bundle"
     create_bundle(
-        incident=scenario["incident"], alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
-    for name in ["incident.json", "alerts.jsonl", "session_excerpt.jsonl",
-                 "trace.csv", "report.md", "report.html", "replay.sh",
-                 "CHECKSUMS.sha256", "objects.yaml", "rules.yaml"]:
+    for name in [
+        "incident.json",
+        "alerts.jsonl",
+        "session_excerpt.jsonl",
+        "trace.csv",
+        "report.md",
+        "report.html",
+        "replay.sh",
+        "CHECKSUMS.sha256",
+        "objects.yaml",
+        "rules.yaml",
+    ]:
         assert (out / name).exists(), f"missing {name}"
 
 
 def test_bundle_replay_sh_executable(tmp_path, scenario):
     out = tmp_path / "bundle"
     create_bundle(
-        incident=scenario["incident"], alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
     import os
+
     assert os.access(out / "replay.sh", os.X_OK)
 
 
 def test_bundle_verifies_ok(tmp_path, scenario):
     out = tmp_path / "bundle"
     create_bundle(
-        incident=scenario["incident"], alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
     ok, messages = verify_bundle(out)
     assert ok, messages
@@ -173,8 +203,7 @@ def test_bundle_verifier_reports_incident_semantic_mismatches(
         assert any(reported_field in message for message in messages)
     else:
         assert any(
-            f"FAIL incident mismatch: {reported_field} expected" in message
-            for message in messages
+            f"FAIL incident mismatch: {reported_field} expected" in message for message in messages
         )
 
 
@@ -258,9 +287,7 @@ def test_bundle_verifier_requires_alert_ids_to_reproduce(
     incident_path.write_text(json.dumps(incidents), encoding="utf-8")
     alerts_path = out / "alerts.jsonl"
     alerts = [
-        json.loads(line)
-        for line in alerts_path.read_text(encoding="utf-8").splitlines()
-        if line
+        json.loads(line) for line in alerts_path.read_text(encoding="utf-8").splitlines() if line
     ]
     for alert, fake_id in zip(alerts, fake_ids, strict=True):
         alert["alert_id"] = fake_id
@@ -395,9 +422,12 @@ def test_bundle_sanitizes_copied_runtime_config(tmp_path: Path, scenario) -> Non
 def test_checksums_detect_tampering(tmp_path, scenario):
     out = tmp_path / "bundle"
     create_bundle(
-        incident=scenario["incident"], alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
     # tamper with the report
     (out / "report.md").write_text("tampered")
@@ -408,9 +438,12 @@ def test_checksums_detect_tampering(tmp_path, scenario):
 def test_bundle_verify_fails_on_tamper(tmp_path, scenario):
     out = tmp_path / "bundle"
     create_bundle(
-        incident=scenario["incident"], alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
     (out / "trace.csv").write_text("garbage")
     ok, _ = verify_bundle(out)
@@ -446,9 +479,12 @@ def test_bundle_verifier_fails_closed_on_signed_malformed_excerpt(
 def test_excerpt_only_contains_window(tmp_path, scenario):
     out = tmp_path / "bundle"
     create_bundle(
-        incident=scenario["incident"], alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
     excerpt = (out / "session_excerpt.jsonl").read_text().strip().splitlines()
     assert len(excerpt) >= 1
@@ -497,20 +533,22 @@ def test_excerpt_uses_authoritative_fixed_clock_time(tmp_path: Path) -> None:
         for line in (out / "session_excerpt.jsonl").read_text().splitlines()
         if line
     ]
-    assert [row["ts_sim_ns"] for row in excerpt] == [
-        row["ts_sim_ns"] for row in rows
-    ]
+    assert [row["ts_sim_ns"] for row in excerpt] == [row["ts_sim_ns"] for row in rows]
     assert verify_bundle(out)[0] is True
 
 
 def test_bundle_only_includes_incident_alerts(tmp_path, scenario):
     from metriplane.sentinel.events import read_alerts_jsonl
+
     out = tmp_path / "bundle"
     inc = scenario["incident"]
     create_bundle(
-        incident=inc, alerts=scenario["alerts"],
-        out_dir=out, session_path=scenario["session"],
-        objects_path=CONFIG_OBJECTS, rules_path=CONFIG_RULES,
+        incident=inc,
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
     bundled = read_alerts_jsonl(out / "alerts.jsonl")
     assert {a.alert_id for a in bundled} == set(inc.alert_ids)

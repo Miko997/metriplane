@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SeverityAtLeast = Literal["info", "warning", "high", "critical"]
 
@@ -21,7 +21,7 @@ class _ExpectedCountSpec(BaseModel):
     max_count: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def _valid_count_range(self):
+    def _valid_count_range(self) -> Self:
         if self.max_count is not None and self.max_count < self.min_count:
             raise ValueError("max_count must be greater than or equal to min_count")
         return self
@@ -67,4 +67,4 @@ class PhysicalRegressionResult(BaseModel):
     observed: dict[str, Any] = Field(default_factory=dict)
     output_hash: str | None = None
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)

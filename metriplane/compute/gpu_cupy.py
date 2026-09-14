@@ -8,16 +8,21 @@ from typing import Any, Mapping, Sequence, Tuple
 
 import numpy as np
 
-from metriplane.compute.interface import FusionComputeBackend, normalize_method, obs_to_lite, weight_for
+from metriplane.compute.interface import (
+    FusionComputeBackend,
+    normalize_method,
+    obs_to_lite,
+    weight_for,
+)
 
 
 class GpuUnavailable(RuntimeError):
     pass
 
 
-def _import_cupy():
+def _import_cupy() -> Any:
     try:
-        import cupy as cp  # type: ignore
+        import cupy as cp  # type: ignore[import-not-found]
 
         return cp
     except Exception as e:

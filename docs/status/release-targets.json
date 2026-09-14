@@ -1,0 +1,76 @@
+{
+  "milestones": [
+    {
+      "id": "v0.4",
+      "predecessor": "v0.3.0",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v0.4.x"
+    },
+    {
+      "id": "v0.5",
+      "predecessor": "v0.4",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v0.5.x"
+    },
+    {
+      "id": "v0.6",
+      "predecessor": "v0.5",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v0.6.x"
+    },
+    {
+      "id": "v0.7",
+      "predecessor": "v0.6",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v0.7.x"
+    },
+    {
+      "id": "v0.8",
+      "predecessor": "v0.7",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v0.8.x"
+    },
+    {
+      "id": "v0.9",
+      "predecessor": "v0.8",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v0.9.x"
+    },
+    {
+      "id": "v1.0",
+      "predecessor": "v0.9",
+      "required_targets": [
+        "github-release",
+        "pypi",
+        "testpypi"
+      ],
+      "version_line": "v1.0.x"
+    }
+  ],
+  "owner": "MP2-007",
+  "schema_version": "metriplane.release-targets.v1"
+}

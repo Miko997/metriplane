@@ -19,8 +19,8 @@ def test_disagreement_computed():
     report = analyze_session(FIXTURE)
     cam0 = report.camera_scores["cam0"]
     cam1 = report.camera_scores["cam1"]
-    assert cam0.mean_disagreement_m == 0.0           # cam0 agrees with fused
-    assert cam1.mean_disagreement_m > 0.05           # cam1 disagrees > 5cm
+    assert cam0.mean_disagreement_m == 0.0  # cam0 agrees with fused
+    assert cam1.mean_disagreement_m > 0.05  # cam1 disagrees > 5cm
 
 
 def test_low_score_becomes_failed():
@@ -35,11 +35,10 @@ def test_frames_analyzed():
 
 
 def test_no_raw_per_camera_safe():
-    import json
     from metriplane.schema import FrameStateModel
+
     analyzer = CameraTrustAnalyzer()
-    frame = FrameStateModel(source_backend="dummy", ts=0.0, frame_id=0,
-                            objects=[])
+    frame = FrameStateModel(source_backend="dummy", ts=0.0, frame_id=0, objects=[])
     analyzer.update(frame)  # no raw_per_camera
     report = analyzer.report()
     assert report.frames_analyzed == 1

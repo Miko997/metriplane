@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "amended_rule": {"const": "repair_requires_non_author"},
+    "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+    "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "reason": {"const": "single-maintainer-no-independent-collaborator"},
+    "schema_version": {"const": 1},
+    "scope": {"const": "incident-only"}
+  },
+  "required": ["amended_rule", "authorization_mode", "incident_digest", "reason", "schema_version", "scope"],
+  "type": "object"
+}

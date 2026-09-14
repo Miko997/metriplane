@@ -9,11 +9,36 @@ Choose the citation that matches what you actually used. The current product,
 the frozen research artifact, and the manuscript are separate objects with
 separate version boundaries.
 
-## Exact v0.3.0 software release
+## Exact v0.4.1 software release
 
-Metriplane v0.3.0 has no DOI. Cite the exact `v0.3.0` GitHub software release;
+Metriplane v0.4.1 is the Assurance Hardening software release and has no DOI.
+Cite the exact `v0.4.1` GitHub software release; if a citation style requires a
+release date, use September 12, 2026:
+
+> Parkkinen, Miko. *Metriplane v0.4.1* [Computer software].
+> GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.4.1
+
+No v0.4.1 DOI exists. Do not use the v0.2.0 DOI for v0.4.1.
+
+## Exact v0.4.0.post2 software release
+
+Metriplane v0.4.0.post2 is the replacement publication identity for the reduced
+Truth Recovery core release and has no DOI. Cite the exact `v0.4.0.post2` GitHub software release;
 if a citation style requires a release date, use the date shown on the release
 record:
+
+> Parkkinen, Miko. *Metriplane v0.4.0.post2* [Computer software].
+> GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.4.0.post2
+
+No v0.4.0.post2 DOI exists. Do not use the v0.2.0 DOI for v0.4.0.post2.
+The immutable `v0.4.0` tag records the failed publication attempt and is not a
+published package or GitHub Release.
+
+## Prior v0.3.0 software release
+
+Metriplane v0.3.0 is the prior usability and adoption software release. It has
+no DOI and does not establish a research measurement boundary. Cite its exact
+GitHub software release when that is the version used:
 
 > Parkkinen, Miko. *Metriplane v0.3.0* [Computer software].
 > GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.3.0
@@ -32,8 +57,8 @@ exact archived artifact, cite:
 > Observability for Workcell Evidence, Replay, and Regression Testing*
 > [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.20736619
 
-Use the exact `v0.2.0` tag for reproduction. Do not attribute v0.3.0 behavior,
-outputs, compatibility, or measurements to this DOI.
+Use the exact `v0.2.0` tag for reproduction. Do not attribute v0.4.1, v0.4.0.post2, or v0.3.0
+behavior, outputs, compatibility, or measurements to this DOI.
 
 ## Manuscript
 

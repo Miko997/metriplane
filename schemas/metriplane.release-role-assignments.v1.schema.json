@@ -1,0 +1,675 @@
+{
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "role_assignment_payload": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "independent_assurance": {
+                "additionalProperties": false,
+                "properties": {
+                  "applicability": {
+                    "const": "not_applicable"
+                  }
+                },
+                "required": [
+                  "applicability"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "milestone": {
+                "enum": [
+                  "v0.9",
+                  "v1.0"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "independent_assurance": {
+                "properties": {
+                  "applicability": {
+                    "const": "required"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "author_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "author_provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "authority_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authorized_executor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "independent_assurance": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "applicability": {
+                  "const": "required"
+                },
+                "binding": {
+                  "$ref": "#/$defs/role_binding"
+                }
+              },
+              "required": [
+                "applicability",
+                "binding"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "applicability": {
+                  "const": "not_applicable"
+                }
+              },
+              "required": [
+                "applicability"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "infrastructure_owner": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "non_author_reviewer": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "non_author_reviewer_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "operator": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "provider_attestation_keyring_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "publisher": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "publisher_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "release_context_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "run_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "signing_method": {
+          "const": "provider-attestation-v1"
+        },
+        "task_id": {
+          "const": "MP2-007"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "author_id",
+        "author_provider",
+        "authority_policy_digest",
+        "authorized_executor_id",
+        "independent_assurance",
+        "infrastructure_owner",
+        "milestone",
+        "non_author_reviewer",
+        "non_author_reviewer_id",
+        "operator",
+        "provider_attestation_keyring_digest",
+        "publisher",
+        "publisher_id",
+        "release_context_digest",
+        "run_id",
+        "signing_method",
+        "task_id",
+        "valid_from",
+        "valid_until"
+      ],
+      "type": "object"
+    },
+    "role_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "backup_actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "conflict_free": {
+          "const": true
+        },
+        "provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "role": {
+          "enum": [
+            "release_operator",
+            "non_author_reviewer",
+            "infrastructure_owner",
+            "publisher",
+            "independent_assurance_verifier"
+          ]
+        }
+      },
+      "required": [
+        "actor_id",
+        "backup_actor_id",
+        "conflict_free",
+        "provenance_digest",
+        "provider",
+        "role"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-role-assignments.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "author_provider",
+              "authority_policy_digest",
+              "independent_assurance",
+              "infrastructure_owner",
+              "milestone",
+              "non_author_reviewer",
+              "operator",
+              "provider_attestation_keyring_digest",
+              "publisher",
+              "run_id",
+              "signing_method",
+              "valid_from",
+              "valid_until"
+            ]
+          },
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-role-assignments. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "independent_assurance": {
+                "additionalProperties": false,
+                "properties": {
+                  "applicability": {
+                    "const": "not_applicable"
+                  }
+                },
+                "required": [
+                  "applicability"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "milestone": {
+                "enum": [
+                  "v0.9",
+                  "v1.0"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "independent_assurance": {
+                "properties": {
+                  "applicability": {
+                    "const": "required"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "author_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "author_provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "authority_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authorized_executor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "independent_assurance": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "applicability": {
+                  "const": "required"
+                },
+                "binding": {
+                  "$ref": "#/$defs/role_binding"
+                }
+              },
+              "required": [
+                "applicability",
+                "binding"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "applicability": {
+                  "const": "not_applicable"
+                }
+              },
+              "required": [
+                "applicability"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "infrastructure_owner": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "kind": {
+          "const": "recorded_assignments"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "non_author_reviewer": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "non_author_reviewer_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "operator": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "original_protected_input": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "original_protected_input_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "provider_attestation_keyring_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "publisher": {
+          "$ref": "#/$defs/role_binding"
+        },
+        "publisher_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "release_context_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "run_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "signing_method": {
+          "const": "provider-attestation-v1"
+        },
+        "task_id": {
+          "const": "MP2-007"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "author_id",
+        "author_provider",
+        "authority_policy_digest",
+        "authorized_executor_id",
+        "independent_assurance",
+        "infrastructure_owner",
+        "milestone",
+        "non_author_reviewer",
+        "non_author_reviewer_id",
+        "operator",
+        "provider_attestation_keyring_digest",
+        "publisher",
+        "publisher_id",
+        "release_context_digest",
+        "run_id",
+        "signing_method",
+        "task_id",
+        "valid_from",
+        "valid_until",
+        "kind",
+        "original_protected_input",
+        "original_protected_input_digest",
+        "producer_intent_digest",
+        "invocation_root_locator"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-role-assignments"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "const": []
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-role-assignments record",
+  "type": "object",
+  "x-metriplane-live-required": [
+    "author_provider",
+    "authority_policy_digest",
+    "independent_assurance",
+    "infrastructure_owner",
+    "milestone",
+    "non_author_reviewer",
+    "operator",
+    "provider_attestation_keyring_digest",
+    "publisher",
+    "run_id",
+    "signing_method",
+    "valid_from",
+    "valid_until"
+  ],
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes",
+    "release_context_digest is the canonical complete supplied upstream release-context record; resolve it through exact journal/supplied-input bindings and validate its original governed registry and frozen project evidence",
+    "This is a CLI-derived result, not a new human signature. Verify the original protected role-assignment record at its typed immutable file and C(full record), then compare every assignment payload field exactly.",
+    "Authenticate the original envelope/signatures with signature_subject_digest/ProviderAttestationVerifier; never copy those signatures onto this changed current CLI envelope. Empty output signatures confer no authority without that original proof.",
+    "Every role/context/policy/provenance/conflict/validity predicate remains mandatory. Recompute current recorder intent/sequence and complete journal output membership; require the separate validator journal before gate use."
+  ]
+}

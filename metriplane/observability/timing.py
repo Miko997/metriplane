@@ -11,6 +11,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
+from types import TracebackType
 from typing import Any, ContextManager, Iterable
 
 
@@ -76,7 +77,12 @@ class _NoopSpan(ContextManager[None]):
     def __enter__(self) -> None:
         return None
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         return None
 
 
@@ -90,7 +96,12 @@ class _Span(ContextManager[None]):
         self._t0 = _now_ns()
         return None
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         t0 = self._t0
         if t0 is None:
             return None
@@ -151,8 +162,12 @@ class StageTiming:
 
         # M9.5 / per-frame config
         self._stages: list[str] = [str(s) for s in (stages or [])]
-        self._frames_csv_path: Path | None = Path(frames_csv_path) if frames_csv_path is not None else None
-        self._summary_csv_path: Path | None = Path(summary_csv_path) if summary_csv_path is not None else None
+        self._frames_csv_path: Path | None = (
+            Path(frames_csv_path) if frames_csv_path is not None else None
+        )
+        self._summary_csv_path: Path | None = (
+            Path(summary_csv_path) if summary_csv_path is not None else None
+        )
         self._flush_every = int(max(1, flush_every))
 
         self._run_id = run_id
@@ -244,7 +259,11 @@ class StageTiming:
         out: list[StageSummary] = []
         for stage, vals in items.items():
             if not vals:
-                out.append(StageSummary(stage=stage, count=0, mean_ms=None, p50_ms=None, p95_ms=None, max_ms=None))
+                out.append(
+                    StageSummary(
+                        stage=stage, count=0, mean_ms=None, p50_ms=None, p95_ms=None, max_ms=None
+                    )
+                )
                 continue
 
             count = len(vals)
@@ -378,7 +397,9 @@ class StageTiming:
             if ts is None or fid is None:
                 return
 
-            stage_ms: dict[str, float] = {k: float(v) / 1e6 for k, v in self._frame_stage_ns.items()}
+            stage_ms: dict[str, float] = {
+                k: float(v) / 1e6 for k, v in self._frame_stage_ns.items()
+            }
             total_ms = float(sum(stage_ms.values()))
             uptime_s = self._uptime_s()
 
@@ -389,10 +410,7 @@ class StageTiming:
                     self._git_commit or "",
                     f"{float(ts):.6f}",
                     int(fid),
-                    *[
-                        ("" if s not in stage_ms else f"{stage_ms[s]:.3f}")
-                        for s in self._stages
-                    ],
+                    *[("" if s not in stage_ms else f"{stage_ms[s]:.3f}") for s in self._stages],
                     f"{total_ms:.3f}",
                     f"{uptime_s:.3f}",
                 ]

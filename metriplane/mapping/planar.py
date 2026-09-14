@@ -72,7 +72,9 @@ def load_homography(path: Path) -> HomographyMapping:
             f"Got keys={list(data.keys())}. Path={path}"
         )
     if not isinstance(H_raw, list) or len(H_raw) != 3:
-        raise ValueError(f"Invalid homography: expected 3 rows, got {type(H_raw)} len={len(H_raw) if hasattr(H_raw,'__len__') else '?'} Path={path}")
+        raise ValueError(
+            f"Invalid homography: expected 3 rows, got {type(H_raw)} len={len(H_raw) if hasattr(H_raw, '__len__') else '?'} Path={path}"
+        )
 
     rows: list[tuple[float, float, float]] = []
     for r in H_raw:
@@ -126,7 +128,6 @@ def load_planar_mapper(mapping_path: Path, intrinsics_path: Optional[Path] = Non
         elif intrinsics_path is None and isinstance(intr_file, str) and intr_file.strip():
             p = Path(intr_file.strip())
             intrinsics_path = p if p.is_absolute() else (mapping_path.parent / p)
-
 
     intr: CameraIntrinsics | None = None
     if intrinsics_path is not None:

@@ -73,12 +73,68 @@ metriplane stop
 | `--run-id TEXT` | auto | Override run ID |
 | `--dashboard-port N` | 8088 | Web server port |
 | `--runner-port N` | 9000 | Runner API port |
-| `--runs-dir PATH` | `~/metriplane-runs` | Runs base directory |
+| `--runs-dir PATH` | platform data directory + `runs/` | Runs base directory |
 | `--open/--no-open` | open | Open browser automatically |
 | `--operator` | off | Open operator.html |
 
-Launcher state lives in `~/.cache/metriplane/launcher-state.json`.  
-Logs live in `~/metriplane-runs/_launcher/<timestamp>/`.
+Launcher state lives in the platform state directory as `launcher-state.json`.
+Logs live in the platform runs directory under `_launcher/<timestamp>/`.
+
+### Platform directories
+
+Metriplane resolves paths at command or request time, so tests and embedding applications can
+inject isolated directories without changing the process home. No directories are created during
+module import.
+
+| Platform | Config base | Data and run-recording base | Cache base | State base |
+|----------|-------------|-----------------------------|------------|------------|
+| Linux and other Unix | `$XDG_CONFIG_HOME`, falling back to `~/.config` | `$XDG_DATA_HOME`, falling back to `~/.local/share` | `$XDG_CACHE_HOME`, falling back to `~/.cache` | `$XDG_STATE_HOME`, falling back to `~/.local/state` |
+| macOS | XDG override or `~/Library/Application Support` | XDG override or `~/Library/Application Support` | XDG override or `~/Library/Caches` | XDG override or `~/Library/Application Support` |
+| Windows | `%APPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` |
+
+The application directory `metriplane/` is appended to each base. Platform-aware surfaces,
+including `metriplane run`, Sentinel, launchers, and embedding applications with injected
+`PlatformPaths`, default recordings to the `runs/` child of the platform data directory.
+`--runs-dir PATH` remains an explicit override, and existing configs with an explicit `runs_dir` or
+`record_jsonl` continue to use that value. Whitespace-only run-root overrides are treated as absent.
+Run roots that cannot be resolved, including symbolic-link loops, fail through the shared platform
+path error contract before a service or writer starts.
+A launcher override is propagated to the runner, its allowlisted replay command, and the `RUNS`
+environment used by allowlisted `tools/mp.sh` jobs.
+
+The primary `metriplane run` command injects the platform default unless the established
+`METRIPLANE_DATA_DIR` deployment root is present. The legacy `metriplane-run` console script,
+direct `python -m metriplane.run`, direct `python -m metriplane.run_fusion`, and runtime APIs without
+injected paths retain their established fallback: `/data/runs` when the Docker data directory is
+active and `./runs` on a host. Supplying `--runs-dir`, config `runs_dir`, or injected
+`PlatformPaths` still takes precedence. The shipped image sets `METRIPLANE_DATA_DIR=/data`, so all
+Compose runtime profiles keep primary recordings inside the persistent `/data/runs` volume.
+
+Runtime provenance resolves its run root in this order: direct `--runs-dir`, config `runs_dir`, an
+explicitly injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the legacy Docker or host
+fallback above. The primary CLI treats `METRIPLANE_DATA_DIR` as an established deployment override
+and therefore does not synthesize a platform-path injection over it.
+This keeps the Docker `/data` mount contract while allowing platform-aware commands, tests, and
+embedding applications to inject one isolated root explicitly.
+
+Run IDs accepted by the runtime, launcher, operator API, Sentinel, benchmark helpers, and external
+fixture writer are portable single-component names containing letters, numbers, dots, dashes, or
+underscores. Windows device basenames such as `CON`, `NUL.txt`, `COM1`, and `LPT9.log`, plus names
+ending in a dot or space, are rejected. An explicitly supplied empty or whitespace-only ID is also
+invalid; only omitting the ID requests automatic generation. When omitted, Sentinel and the UI demo
+replay generate a unique portable identifier. Sentinel reserves a new run directory and refuses an
+existing one rather than overwriting its artifacts.
+
+On Windows, configuration is roaming but machine-local data and run recordings are not. When
+`APPDATA` or `LOCALAPPDATA` is unset, Metriplane derives the corresponding
+`AppData/Roaming` or `AppData/Local` base from absolute `USERPROFILE` (then `HOME`). If neither the
+environment variable nor a usable profile/home is available, resolution fails without writing.
+Launcher children use Windows process groups and `taskkill /T` for tree cleanup; POSIX launchers
+retain session/process-group signaling.
+
+On POSIX systems with no usable `HOME`, set all four XDG variables to absolute paths. A read-only
+home is supported when writable XDG paths are supplied. If required bases are missing or relative,
+the command reports a platform-path error instead of silently writing elsewhere.
 
 ---
 

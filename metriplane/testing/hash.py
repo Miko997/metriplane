@@ -14,7 +14,7 @@ def stable_hash(obj: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def incidents_fingerprint(incidents: list) -> str:
+def incidents_fingerprint(incidents: list[Any]) -> str:
     """Hash the observable shape of incidents, ignoring volatile IDs."""
     shape = [
         {

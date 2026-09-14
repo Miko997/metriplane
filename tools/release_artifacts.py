@@ -8,19 +8,29 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import tarfile
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
-
+from urllib.parse import urlencode
 
 PROJECT_NAME = "metriplane"
+GITHUB_API_VERSION = "2022-11-28"
+PUBLISH_BROKER_APP_ID = 4722589
+PUBLISH_BROKER_APP_SLUG = "metriplane-main-health-publisher"
+PUBLISH_LEASE_CHECK_NAME = "Release serialization / required"
+PUBLISH_LEASE_REF_PREFIX = "refs/heads/release-leases/pypi-"
 _SHA256_LINE = re.compile(r"([0-9a-f]{64})  ([^/\\]+)")
 _VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z.!+_-]*")
+_GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+_GIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
+_POSITIVE_INTEGER = re.compile(r"[1-9][0-9]*\Z")
 _FORBIDDEN_ARCHIVE_PARTS = {
     ".DS_Store",
     ".env",
@@ -85,6 +95,321 @@ class ReleaseArtifactError(ValueError):
     """Raised when release files do not satisfy the publication contract."""
 
 
+@dataclass(frozen=True)
+class PublishLease:
+    repository: str
+    release_sha: str
+    run_id: str
+    run_attempt: str
+    ref: str
+    external_id: str
+
+
+def _publish_lease(
+    repository: str,
+    release_sha: str,
+    run_id: str,
+    run_attempt: str,
+) -> PublishLease:
+    if _GITHUB_REPOSITORY.fullmatch(repository) is None:
+        raise ReleaseArtifactError("Invalid GitHub repository identity")
+    if _GIT_SHA.fullmatch(release_sha) is None:
+        raise ReleaseArtifactError("Release commit must be a lowercase 40-character Git SHA")
+    if _POSITIVE_INTEGER.fullmatch(run_id) is None:
+        raise ReleaseArtifactError("GitHub run ID must be a positive integer")
+    if _POSITIVE_INTEGER.fullmatch(run_attempt) is None:
+        raise ReleaseArtifactError("GitHub run attempt must be a positive integer")
+    return PublishLease(
+        repository=repository,
+        release_sha=release_sha,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        ref=f"{PUBLISH_LEASE_REF_PREFIX}{run_id}-{run_attempt}",
+        external_id=(f"metriplane-publish-lease.v1:{run_id}:{run_attempt}:{release_sha}"),
+    )
+
+
+def _github_request(
+    repository: str,
+    path: str,
+    token: str,
+) -> Any:
+    if not token.strip():
+        raise ReleaseArtifactError("GitHub token is required for publish-lease operations")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/{path}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "metriplane-publish-lease",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read()
+    except (OSError, TimeoutError, urllib.error.HTTPError, urllib.error.URLError) as exc:
+        raise ReleaseArtifactError(
+            f"GitHub publish-lease request failed for GET {path}: {exc}"
+        ) from exc
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReleaseArtifactError("GitHub publish-lease response is not JSON") from exc
+
+
+def _lease_ref_api_path(lease: PublishLease) -> str:
+    return "git/ref/heads/" + lease.ref.removeprefix("refs/heads/")
+
+
+def _require_ref(
+    lease: PublishLease,
+    *,
+    ref: str,
+    path: str,
+    token: str,
+) -> None:
+    value = _github_request(lease.repository, path, token)
+    obj = value.get("object") if isinstance(value, Mapping) else None
+    if (
+        not isinstance(value, Mapping)
+        or value.get("ref") != ref
+        or not isinstance(obj, Mapping)
+        or obj.get("type") != "commit"
+        or obj.get("sha") != lease.release_sha
+    ):
+        raise ReleaseArtifactError(
+            f"GitHub ref {ref!r} does not resolve exactly to {lease.release_sha}"
+        )
+
+
+def _require_main(lease: PublishLease, token: str) -> None:
+    _require_ref(
+        lease,
+        ref="refs/heads/main",
+        path="git/ref/heads/main",
+        token=token,
+    )
+
+
+def _require_lease_ref(lease: PublishLease, token: str) -> None:
+    _require_ref(
+        lease,
+        ref=lease.ref,
+        path=_lease_ref_api_path(lease),
+        token=token,
+    )
+
+
+def _require_lease_ref_absent(lease: PublishLease, token: str) -> None:
+    prefix = lease.ref.removeprefix("refs/")
+    value = _github_request(
+        lease.repository,
+        f"git/matching-refs/{prefix}",
+        token,
+    )
+    if value != []:
+        raise ReleaseArtifactError("GitHub publish-lease ref still exists after App reconciliation")
+
+
+def _lease_check(lease: PublishLease, token: str) -> tuple[int, str, str | None] | None:
+    query = urlencode(
+        {
+            "check_name": PUBLISH_LEASE_CHECK_NAME,
+            "filter": "all",
+            "per_page": 100,
+        }
+    )
+    value = _github_request(
+        lease.repository,
+        f"commits/{lease.release_sha}/check-runs?{query}",
+        token,
+    )
+    runs = value.get("check_runs") if isinstance(value, Mapping) else None
+    total = value.get("total_count") if isinstance(value, Mapping) else None
+    if (
+        isinstance(total, bool)
+        or not isinstance(total, int)
+        or total < 0
+        or not isinstance(runs, list)
+        or total != len(runs)
+        or total > 100
+        or any(not isinstance(run, Mapping) for run in runs)
+    ):
+        raise ReleaseArtifactError(
+            "GitHub publish-lease check inventory is incomplete or malformed"
+        )
+    matches = [run for run in runs if run.get("external_id") == lease.external_id]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ReleaseArtifactError("GitHub returned duplicate publish-lease acknowledgments")
+    run = matches[0]
+    app = run.get("app")
+    check_id = run.get("id")
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    if (
+        isinstance(check_id, bool)
+        or not isinstance(check_id, int)
+        or check_id <= 0
+        or run.get("name") != PUBLISH_LEASE_CHECK_NAME
+        or run.get("head_sha") != lease.release_sha
+        or not isinstance(app, Mapping)
+        or app.get("id") != PUBLISH_BROKER_APP_ID
+        or app.get("slug") != PUBLISH_BROKER_APP_SLUG
+        or status not in {"in_progress", "completed"}
+        or (status == "in_progress" and conclusion is not None)
+        or (status == "completed" and not isinstance(conclusion, str))
+    ):
+        raise ReleaseArtifactError("GitHub publish-lease acknowledgment identity is malformed")
+    return check_id, status, conclusion
+
+
+def _wait_for_lease_check(
+    lease: PublishLease,
+    token: str,
+    *,
+    expected_status: str,
+    expected_check_id: int | None,
+    attempts: int,
+    delay_seconds: float,
+) -> int:
+    if attempts < 1 or delay_seconds < 0:
+        raise ReleaseArtifactError("Publish-lease retry settings must be non-negative")
+    for attempt in range(1, attempts + 1):
+        observed = _lease_check(lease, token)
+        if observed is not None:
+            check_id, status, conclusion = observed
+            if expected_check_id is not None and check_id != expected_check_id:
+                raise ReleaseArtifactError("GitHub publish-lease check identity changed")
+            if expected_status == "in_progress":
+                if status == "in_progress":
+                    return check_id
+                raise ReleaseArtifactError("GitHub publish lease ended before publication")
+            if status == "completed":
+                if conclusion != "success":
+                    raise ReleaseArtifactError(
+                        f"GitHub publish-lease reconciliation concluded {conclusion!r}"
+                    )
+                return check_id
+        if attempt < attempts:
+            time.sleep(delay_seconds)
+    raise ReleaseArtifactError(
+        f"GitHub App did not acknowledge publish lease state {expected_status!r}"
+    )
+
+
+def assert_publish_lease(lease: PublishLease, token: str) -> int:
+    """Prove that the App-acknowledged lease still fences exact current main."""
+
+    _require_lease_ref(lease, token)
+    first_check = _wait_for_lease_check(
+        lease,
+        token,
+        expected_status="in_progress",
+        expected_check_id=None,
+        attempts=1,
+        delay_seconds=0,
+    )
+    _require_main(lease, token)
+    _require_lease_ref(lease, token)
+    second_check = _wait_for_lease_check(
+        lease,
+        token,
+        expected_status="in_progress",
+        expected_check_id=first_check,
+        attempts=1,
+        delay_seconds=0,
+    )
+    return second_check
+
+
+def acquire_publish_lease(
+    lease: PublishLease,
+    token: str,
+    *,
+    attempts: int,
+    delay_seconds: float,
+) -> int:
+    """Wait for the main-update broker to create and acknowledge its exact lease."""
+
+    _require_main(lease, token)
+    check_id = _wait_for_lease_check(
+        lease,
+        token,
+        expected_status="in_progress",
+        expected_check_id=None,
+        attempts=attempts,
+        delay_seconds=delay_seconds,
+    )
+    confirmed = assert_publish_lease(lease, token)
+    if confirmed != check_id:
+        raise ReleaseArtifactError(
+            "GitHub publish-lease check identity changed after acknowledgment"
+        )
+    return check_id
+
+
+def reconcile_publish_lease(
+    lease: PublishLease,
+    token: str,
+    *,
+    attempts: int,
+    delay_seconds: float,
+) -> int:
+    """Require exact post-publication main and the App's terminal lease proof."""
+
+    observed = _lease_check(lease, token)
+    if observed is None:
+        raise ReleaseArtifactError("GitHub App publish-lease acknowledgment is missing")
+    check_id, status, _conclusion = observed
+    if status == "in_progress":
+        try:
+            check_id = assert_publish_lease(lease, token)
+        except ReleaseArtifactError:
+            raced = _lease_check(lease, token)
+            if raced is None or raced[0] != check_id or raced[1] != "completed":
+                raise
+            completed = _wait_for_lease_check(
+                lease,
+                token,
+                expected_status="completed",
+                expected_check_id=check_id,
+                attempts=1,
+                delay_seconds=0,
+            )
+        else:
+            completed = _wait_for_lease_check(
+                lease,
+                token,
+                expected_status="completed",
+                expected_check_id=check_id,
+                attempts=attempts,
+                delay_seconds=delay_seconds,
+            )
+    else:
+        completed = _wait_for_lease_check(
+            lease,
+            token,
+            expected_status="completed",
+            expected_check_id=check_id,
+            attempts=1,
+            delay_seconds=0,
+        )
+    _require_lease_ref_absent(lease, token)
+    return _wait_for_lease_check(
+        lease,
+        token,
+        expected_status="completed",
+        expected_check_id=completed,
+        attempts=1,
+        delay_seconds=0,
+    )
+
+
 def _validate_version(version: str) -> None:
     if not _VERSION.fullmatch(version):
         raise ReleaseArtifactError(f"Invalid release version: {version!r}")
@@ -94,9 +419,7 @@ def _validate_artifact_names(names: Iterable[str], version: str) -> tuple[str, s
     _validate_version(version)
     names_tuple = tuple(sorted(names))
     wheel_names = [name for name in names_tuple if name.endswith(".whl")]
-    sdist_names = [
-        name for name in names_tuple if name.endswith((".tar.gz", ".zip"))
-    ]
+    sdist_names = [name for name in names_tuple if name.endswith((".tar.gz", ".zip"))]
     if len(names_tuple) != 2 or len(wheel_names) != 1 or len(sdist_names) != 1:
         raise ReleaseArtifactError(
             "Expected exactly one wheel and one source distribution; found: "
@@ -128,9 +451,7 @@ def release_artifacts(dist_dir: Path, version: str) -> tuple[Path, Path]:
         raise ReleaseArtifactError(
             "Distribution directory contains non-regular entries: " + ", ".join(invalid)
         )
-    wheel_name, sdist_name = _validate_artifact_names(
-        (path.name for path in entries), version
-    )
+    wheel_name, sdist_name = _validate_artifact_names((path.name for path in entries), version)
     return dist_dir / wheel_name, dist_dir / sdist_name
 
 
@@ -151,9 +472,7 @@ def create_manifest(dist_dir: Path, manifest_path: Path, version: str) -> dict[s
     }
     try:
         with manifest_path.open("x", encoding="utf-8") as manifest:
-            manifest.write(
-                "".join(f"{digest}  {name}\n" for name, digest in digests.items())
-            )
+            manifest.write("".join(f"{digest}  {name}\n" for name, digest in digests.items()))
     except OSError as exc:
         raise ReleaseArtifactError(f"Cannot create release manifest: {exc}") from exc
     return digests
@@ -183,14 +502,10 @@ def verify_manifest(dist_dir: Path, manifest_path: Path, version: str) -> dict[s
 
     wheel, sdist = release_artifacts(dist_dir, version)
     expected = read_manifest(manifest_path, version)
-    actual = {
-        path.name: sha256_file(path) for path in sorted((wheel, sdist), key=lambda p: p.name)
-    }
+    actual = {path.name: sha256_file(path) for path in sorted((wheel, sdist), key=lambda p: p.name)}
     if actual != expected:
         raise ReleaseArtifactError(
-            "Release artifact SHA-256 mismatch\n"
-            f"expected: {expected}\n"
-            f"actual:   {actual}"
+            f"Release artifact SHA-256 mismatch\nexpected: {expected}\nactual:   {actual}"
         )
     return actual
 
@@ -202,8 +517,7 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
     expected_root = f"{PROJECT_NAME}-{version}"
     if sdist_path.name != f"{expected_root}.tar.gz":
         raise ReleaseArtifactError(
-            "Only the canonical tar.gz source distribution is accepted: "
-            f"{sdist_path.name}"
+            f"Only the canonical tar.gz source distribution is accepted: {sdist_path.name}"
         )
 
     relative_files: set[str] = set()
@@ -212,9 +526,7 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
             for member in archive.getmembers():
                 member_path = PurePosixPath(member.name)
                 if member_path.is_absolute() or ".." in member_path.parts:
-                    raise ReleaseArtifactError(
-                        f"Unsafe source-distribution path: {member.name!r}"
-                    )
+                    raise ReleaseArtifactError(f"Unsafe source-distribution path: {member.name!r}")
                 if not member_path.parts or member_path.parts[0] != expected_root:
                     raise ReleaseArtifactError(
                         f"Unexpected source-distribution root: {member.name!r}"
@@ -351,6 +663,21 @@ def _parser() -> argparse.ArgumentParser:
     registry.add_argument("--manifest", type=Path, required=True)
     registry.add_argument("--attempts", type=int, default=12)
     registry.add_argument("--delay-seconds", type=float, default=10)
+
+    for command in (
+        "acquire-publish-lease",
+        "assert-publish-lease",
+        "reconcile-publish-lease",
+    ):
+        lease = subparsers.add_parser(command)
+        lease.add_argument("--repository", required=True)
+        lease.add_argument("--release-sha", required=True)
+        lease.add_argument("--run-id", required=True)
+        lease.add_argument("--run-attempt", required=True)
+        lease.add_argument("--github-token-env", default="GITHUB_TOKEN")
+        if command != "assert-publish-lease":
+            lease.add_argument("--attempts", type=int, default=60)
+            lease.add_argument("--delay-seconds", type=float, default=5)
     return parser
 
 
@@ -363,7 +690,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             verify_manifest(args.dist, args.manifest, args.version)
         elif args.command == "inspect-sdist":
             inspect_sdist(args.sdist, args.version)
-        else:
+        elif args.command == "verify-registry":
             verify_registry(
                 args.repository,
                 args.project,
@@ -371,6 +698,46 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.manifest,
                 attempts=args.attempts,
                 delay_seconds=args.delay_seconds,
+            )
+        else:
+            lease = _publish_lease(
+                args.repository,
+                args.release_sha,
+                args.run_id,
+                args.run_attempt,
+            )
+            token = os.environ.get(args.github_token_env, "")
+            if args.command == "acquire-publish-lease":
+                check_id = acquire_publish_lease(
+                    lease,
+                    token,
+                    attempts=args.attempts,
+                    delay_seconds=args.delay_seconds,
+                )
+                state = "in_progress"
+            elif args.command == "assert-publish-lease":
+                check_id = assert_publish_lease(lease, token)
+                state = "in_progress"
+            else:
+                check_id = reconcile_publish_lease(
+                    lease,
+                    token,
+                    attempts=args.attempts,
+                    delay_seconds=args.delay_seconds,
+                )
+                state = "completed"
+            print(
+                json.dumps(
+                    {
+                        "check_id": check_id,
+                        "external_id": lease.external_id,
+                        "ref": lease.ref,
+                        "release_sha": lease.release_sha,
+                        "state": state,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
             )
     except ReleaseArtifactError as exc:
         print(f"release artifact check failed: {exc}")

@@ -33,18 +33,24 @@ def _assert_no_private_paths(root: Path, forbidden: tuple[str, ...]) -> None:
                     data = archive.read(member)
                     for value in forbidden:
                         assert value.encode() not in data, (path, member.filename, value)
-                    assert re.search(
-                        rb"(?:/home/[^/\s\"']+|/Users/[^/\s\"']+|(?<![A-Za-z0-9.+-])[A-Za-z]:[\\/])",
-                        data,
-                    ) is None, (path, member.filename)
+                    assert (
+                        re.search(
+                            rb"(?:/home/[^/\s\"']+|/Users/[^/\s\"']+|(?<![A-Za-z0-9.+-])[A-Za-z]:[\\/])",
+                            data,
+                        )
+                        is None
+                    ), (path, member.filename)
             continue
         data = path.read_bytes()
         for value in forbidden:
             assert value.encode() not in data, (path, value)
-        assert re.search(
-            rb"(?:/home/[^/\s\"']+|/Users/[^/\s\"']+|(?<![A-Za-z0-9.+-])[A-Za-z]:[\\/])",
-            data,
-        ) is None, path
+        assert (
+            re.search(
+                rb"(?:/home/[^/\s\"']+|/Users/[^/\s\"']+|(?<![A-Za-z0-9.+-])[A-Za-z]:[\\/])",
+                data,
+            )
+            is None
+        ), path
 
 
 def test_existing_system_temp_output_requires_explicit_overwrite() -> None:
@@ -120,15 +126,21 @@ def test_run_reference_resolver_prefers_contained_copy_for_legacy_manifest(
     contained.write_text("{}\n", encoding="utf-8")
     legacy = tmp_path / "legacy" / "source.jsonl"
 
-    assert resolve_run_reference(
-        run,
-        str(legacy.resolve()),
-        contained_reference="state_segment.jsonl",
-    ) == contained
+    assert (
+        resolve_run_reference(
+            run,
+            str(legacy.resolve()),
+            contained_reference="state_segment.jsonl",
+        )
+        == contained
+    )
 
     contained.unlink()
-    assert resolve_run_reference(
-        run,
-        str(legacy.resolve()),
-        contained_reference="state_segment.jsonl",
-    ) == legacy.resolve()
+    assert (
+        resolve_run_reference(
+            run,
+            str(legacy.resolve()),
+            contained_reference="state_segment.jsonl",
+        )
+        == legacy.resolve()
+    )

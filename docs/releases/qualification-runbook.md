@@ -1,0 +1,277 @@
+# Release qualification implementation status
+
+The cumulative release framework is under implementation. MP2-007 includes source
+capture, artifact construction and candidate finalization under the common
+invocation supervisor. Live authority and the complete downstream release protocol
+remain acceptance work.
+The complete release protocol remains unqualified. v0.4.1 tagging and publication
+are held by the owner’s explicit instruction. Every release acceptance gate
+remains required before a later authorization to publish.
+
+## v0.5.0 single-maintainer review scope
+
+The owner-approved
+[v0.5.0 single-maintainer review policy](v0.5.0-single-maintainer-review-policy.md)
+classifies independent-human approval as `NOT_APPLICABLE_FOR_V0_5`, never
+`PASS`. Miko may make the protected MP2-030 architecture/trust-profile decision
+as owner; the decision remains distinct from the machine evidence that verifies
+the implementation and exact candidate.
+
+This exception removes only the independent/non-author human reviewer, mandatory
+second-human READY review, `backup_non_author_reviewer`, and a reviewer key or
+signature used solely to prove human independence. OIDC-backed machine
+attestation/signature verification, accepted subject, issuer, workflow,
+ref/event, commit and artifact-digest claims, fail-closed negative fixtures,
+qualification, provenance, promotion, exact-byte publication, reconciliation,
+recovery, CI, branch protection, broker admission, reproducibility, package
+integrity and installed-product testing remain mandatory. MP2-207, MP2-210,
+MP2-223 and MP2-225 retain later organizational-separation requirements.
+
+New v0.5.0 task starts use the MP2-016
+[delegation contract](../maintainers/task-delegation.md) and work-order v2.
+The release-readiness registry records Miko as grantor and the exact Codex goal
+as executor, while production authority remains `BLOCKED_NEEDS_OWNER` until an
+approved public owner key is installed at the protected keyring path. That
+status cannot be converted to `READY` by chat, fixture data or self-signing.
+
+## Source and artifact segment
+
+The commands consume complete gate-input and target-resolution records in a
+single run directory. Source capture reads the exact clean Git commit, all seven
+registry/policy inputs, every tracked workflow, version metadata and the selected
+release notes. It independently recomputes these inputs during validation.
+Missing inputs, source drift and unavailable authority block the operation.
+
+Every command needs its own fixed stage and next sequence under the run’s
+`invocations` directory. Source and artifact producers start at `001` in a new
+run. A failed producer requires a new staging run. Validator retries use the next
+sequence and retain the preceding intent and any completed terminal record.
+
+```console
+uv --no-config run --frozen python tools/freeze_release_source.py --invocation-dir <run>/invocations/source-freeze/001 --gate-input <run>/gate-input.json --source-sha <exact-commit> --out <run>/source-freeze.json
+uv --no-config run --frozen python tools/validate_release_source_freeze.py --invocation-dir <run>/invocations/source-freeze-validation/001 --record <run>/source-freeze.json --verify-tree-clean
+uv --no-config run --frozen python tools/build_release_artifacts.py --invocation-dir <run>/invocations/artifact-build/001 --target-resolution <run>/target-resolution.json --source-freeze <run>/source-freeze.json --out-dir <run>/artifacts --manifest <run>/artifact-manifest.json
+uv --no-config run --frozen python tools/validate_release_artifact_manifest.py --invocation-dir <run>/invocations/artifact-manifest-validation/001 --record <run>/artifact-manifest.json --artifacts <run>/artifacts --read-hash
+```
+
+The supervisor reserves and fsyncs its intent before the worker starts. The
+worker stages output; the supervisor validates it before exclusive installation.
+Consumers require exactly one matching terminal PASS producer, including its
+intent, sequence, diagnostics and exact output digests. Missing or incomplete
+terminal evidence blocks consumption, including after a supervisor is killed.
+Retain the entire run directory and partial evidence during recovery.
+
+A started worker group remains unsettled until the supervisor observes that it
+no longer exists. Group cleanup retries for at most five seconds, including
+transient permission errors while macOS reaps exited children. A permission
+error alone never proves shutdown. Unconfirmed cleanup retains an incomplete
+invocation and cannot install canonical artifacts or write a terminal record.
+
+The artifact builder uses the single recipe in `metriplane.release_control` and
+the installed backend pinned by `pyproject.toml` and `uv.lock`. It builds one
+wheel and one sdist with `python -m build --no-isolation --sdist --wheel`, checks
+metadata and fingerprints the exact bytes with the existing artifact owner.
+It refuses an existing canonical destination and preserves failed build bytes.
+
+Synthetic mode is restricted to isolated test fixtures. Tests create complete
+local Git source and upstream input records, exercise the production commands,
+and retain synthetic provenance. A synthetic run cannot satisfy live authority,
+durable-store independence or release qualification. For v0.5.0, it also cannot
+turn the policy-scoped absence of independent human review into `PASS`.
+
+## Candidate finalization and readback
+
+Candidate finalization consumes the five canonical records in one staging run:
+`gate-input.json`, `target-resolution.json`, `source-freeze.json`,
+`artifact-manifest.json` and `predecessor.json`. The existing source and artifact
+producers must already have complete matching PASS journals, and every artifact
+must match its manifest. Finalization preserves those bytes and their producer
+history. It does not rebuild distributions.
+
+The three directory families are siblings under one release parent:
+`<release-parent>/.staging/<run>`, `<release-parent>/.control/<run>` and
+`<release-parent>/<selected-tag>/<candidate-digest>`. Prepare the tagged release
+root on the same filesystem. The original finalizer journal lives outside the
+moving candidate at `.control/<run>/invocations/candidate-finalization/001`.
+The identity basename is exactly `candidate-identity.json`.
+
+```console
+uv --no-config run --frozen python tools/finalize_release_candidate_identity.py --work-dir <release-parent>/.staging/<run> --release-root <release-parent>/<selected-tag> --gate-input <release-parent>/.staging/<run>/gate-input.json --source-freeze <release-parent>/.staging/<run>/source-freeze.json --predecessor <release-parent>/.staging/<run>/predecessor.json --artifact-manifest <release-parent>/.staging/<run>/artifact-manifest.json --identity-name candidate-identity.json --no-evaluation-adoption --invocation-dir <release-parent>/.control/<run>/invocations/candidate-finalization/001
+uv --no-config run --frozen python tools/validate_release_candidate_identity.py --record <candidate>/candidate-identity.json --predecessor <candidate>/predecessor.json --candidate-dir <candidate> --no-evaluation-adoption --invocation-dir <candidate>/invocations/validate-release-candidate-identity/001
+```
+
+These are implemented command forms, not an authorization or a claim that the
+live inputs are available. Current isolated qualification uses explicitly
+synthetic records. Live keyring/verifier propagation, original-input authority,
+derived-record signing and signed-output replay still need common authority
+integration. Supplying credentials alone does not complete that software work.
+
+Before effects, the external intent records the original input bytes, closed
+staging inventory, directory identities, exact arguments and output plan. The
+candidate digest includes that intent digest and its fixed control locator; it
+excludes its own digest and the derived final directory. This avoids predicting a
+future terminal checksum. The worker computes and stages the identity. The
+supervisor revalidates it, creates it exclusively through the held original
+staging directory, and uses one native exclusive same-filesystem rename.
+Linux and macOS use their respective exclusive rename operations; unsupported
+operations, an existing destination and cross-device moves block without a copy
+or replacement fallback.
+
+The supervisor checks the complete final inventory, flushes the held objects,
+and retains the exact candidate result before committing its terminal journal.
+A separate internal receipt binds the original intent and terminal only after
+the terminal write and required fsync calls have returned. Public validation
+requires that original PASS, receipt and full candidate readback. A visible
+identity or a complete-looking terminal without its receipt cannot qualify the
+candidate. This mechanism does not claim hardware power-loss testing.
+
+Retain both staging and control evidence after any interruption. A later
+finalizer sequence is diagnostic only: it observes staging/final presence and
+conflicts, retains opaque raw/absent/unreadable witnesses for prior intents,
+terminals and receipts, and completes BLOCKED without starting another worker.
+It separately classifies the original terminal as absent, unreadable, invalid
+or partial, unverifiable, or a validated outcome with completion status. A new
+observation can record that an earlier witness was contradicted, while the older
+record remains invalid and public candidate consumption remains blocked. Never
+backfill a missing terminal or receipt, replace conflicting bytes, delete the
+foreign object or move a candidate back as a recovery shortcut.
+
+Read-only validation may append complete source, artifact or candidate validator
+journals at their fixed stages. Their exact inputs and original bytes remain
+binding. A complete negative journal gives no release credit, but valid early
+failure or cancellation evidence can be replayed. An unrelated input, unknown
+stage or member, incomplete other invocation, or mutation of a captured journal
+blocks public consumption. Only the exact currently executing candidate
+validator worker receives the bounded active-invocation exception.
+
+## Target control semantics under implementation
+
+Target observations use normalized package versions such as `0.4.1`. The existing
+target-resolution and burn records retain their explicit `v0.4.1` package-version
+wire values and matching release tags. Artifact construction validates that exact
+pair before projecting the package version to `0.4.1`. Aliases, leading zeros and
+new `.post` identities are invalid. Historical `.post` observations remain part of
+the unchanged original history.
+
+Every occupied or partial provider/version pair belongs in a burn record's
+`affected_targets` array, with the digest of its full original observation row.
+The newly affected subset excludes only pairs already present in the independently
+verified complete burn history. An empty newly affected subset means
+`no_new_burn`, a null burn ID and no index append. Its affected array can still be
+nonempty. A new burn retains every affected pair and requires the existing
+manifest, two independent store readbacks and index transaction. A later selected
+patch never replaces the originally occupied version in these rows.
+
+One original index receipt identifies one burn operation. Its scope-local sequence,
+manifest digest and observation digest must agree across all expanded rows.
+Different operations may reuse or restart scope-local sequence numbers. Their order
+comes from the complete original native index chain; sorting sequence numbers does
+not establish it. Burn-manifest subjects are full evidence-manifest record digests,
+distinct from the burn record digest and burn ID.
+
+Under the exact-target policy, a successfully recorded control preserves the
+owner-selected identity and its burn obligations. That recording does not mean the
+target is usable. A current conflict or any indexed historical burn for the requested
+identity blocks gate admission, including after durable retention or a later provider
+response reporting absence. The operator must obtain a new owner release-identity
+decision before selecting a different target. Under a separately approved generic
+patch policy, the original search must cover each consecutive same-milestone patch
+from the initial identity through the first fully observed unused identity. Missing,
+unknown, reordered or incomplete observations block selection.
+
+The shared projections enforce these semantics, but native provider authentication,
+complete index and receipt replay, original producer journals and gate admission
+remain required software integration. A schema-valid control or a synthetic test
+does not establish those facts or authorize publication.
+
+## Private fixture staging and gate completion
+
+Private native fixtures use the fixed seed slot
+`inputs/fixture-native/<invocation-stage>/<sequence>/seed.json`. The seed and
+all declared raw members are original typed inputs, fixed before reservation.
+The synthetic interpreter preserves supplied observation times; emulation and
+historical replay cannot make an old observation fresh. These fixtures exercise
+the protocol and do not establish provider identity or independent storage. They
+also do not establish non-author approval; v0.5.0 records that approval as
+policy-scoped `NOT_APPLICABLE`, not as fixture-derived evidence.
+
+Staging and installation retain the original created directory and file
+identities through verification and copying. The complete native graph, original
+producer and validator journals, worker quiescence and full output inventory
+remain necessary before success. A private byte-copy result is not admission.
+
+A passing gate journal also requires `terminal-commit.json`, which binds the
+canonical original intent and terminal digests after the complete held output
+prefix has been synced. The witness is outside both records' digest inputs, so
+it does not create a future-digest cycle. Completion and later consumption must
+still reject changed original objects and unowned staged or journal members.
+Failure retains partial bytes and any already-created witness; a surviving
+prefix witness alone does not make a failed command or changed journal pass.
+
+The actual common worker, complete prerequisite graph and public gate consumers
+must be connected before the fixture producer can emit consumable PASS results.
+Live adapters and release approval remain separate acceptance requirements.
+
+## Remaining acceptance work
+
+MP2-007 retains all original A01–A13. Remaining work includes signed roles and
+task state; complete staging and recovery; live target observation and indexed
+burns; authentic predecessor/LKG resolution; live signed candidate finalization; gate and matrix
+construction with every terminal; unconditional two-store retention and indexing;
+the approval classification required by the governing release scope;
+checkpoint-bound planning and fenced promotion locking;
+exact-byte publication observation and reconciliation; chain append, CAS LKG,
+pointer retention and signed invalidation. Unimplemented adapters return a
+blocker and cannot create PASS records from fixture argument strings.
+
+The official registries, full stage/producer/validator journal graph, every
+remaining CLI route, mutation and crash-recovery coverage, current publisher
+integration, fifth protected release terminal and reviewed deployment all remain
+required software or acceptance work. No private key, independent signer, Store A,
+Store B or CAS/lock/LKG backend has been bound by this segment. The owner’s
+protected-main merge path and existing release criteria remain in force.
+
+## Qualification boundaries and provider administration
+
+Prepare and review a complete compatible slice before its hosted qualification.
+An independent human performs that review when the governing milestone requires
+one; v0.5.0 uses the owner-approved single-maintainer classification above. The
+target is one full platform matrix per stable coherent PR candidate and one final
+integrated release-candidate matrix. Additional
+complete runs require a recorded source or environment invalidation under the
+exact-identity contract. CI's four fresh macOS shards per Python version (eight total) retain the complete test
+collection and all outcomes; its aggregate is source qualification evidence,
+not a release gate-input, signed approval, publication or deployment record.
+
+Keep an efficiency ledger with the exact commit and tree, source digest,
+workflow/run/attempt, Python/platform and runner image, ordered collection,
+pass/skip/fail counts, runner duration and rerun reason. Preserve original
+reports and distinguish full-suite execution time from total workflow runner
+time and elapsed wall clock. A cancelled or failed generation remains visible.
+The first sharded hosted candidate supplies the measured after result; local
+registry benchmarks and focused tests cannot prove macOS performance.
+
+A fresh provider request for the same qualified source can avoid an
+administrative-only commit once the reviewed normal broker policy is deployed.
+The older request stays retained and expired; it is never reused. The new
+request needs a unique nonce and digest, current exact head/base, current state,
+collaborators and rulesets, a fresh valid lease, and an unspent canonical closed
+check. An earlier admitted request, including a failed or incomplete admitted
+transaction, prevents this renewal path. Scheduled deep-health overlap and
+transient admission closure remain fail-closed conditions; read back the live
+state before a new request. Provider-only readback cannot override qualification.
+
+Broker policy source must be normally merged before deployment. Continue using
+the deployed trusted control code for that merge, with candidate source bound
+separately and never imported as live control code. Deploy the reviewed broker
+and its exact validator dependencies, prove their file origins and hashes, then
+read back protected-main state, all rulesets and terminal producers before
+activating the lightweight-only metadata trigger. No deployment or renewal
+capability is claimed before that proof.
+
+All remaining CLI routes, the approval classification required by the governing
+release scope, two independent durable stores, CAS/lock/LKG backend and
+deployment/readback remain acceptance work. A local
+fixture or same-host directory pair cannot satisfy those bindings. Keep MET-163
+In Progress and retain the explicit v0.4.1 publication/tag hold throughout this
+work; neither CI efficiency nor completion of one source segment closes it.

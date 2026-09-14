@@ -6,7 +6,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
@@ -90,7 +90,9 @@ class MetricsRegistry:
             k = (qn, pol)
             self._queue_dropped_total[k] = int(self._queue_dropped_total.get(k, 0)) + int(n)
 
-    def observe_stage_latency_ms(self, stage: str, last: float, *, ema: float | None = None) -> None:
+    def observe_stage_latency_ms(
+        self, stage: str, last: float, *, ema: float | None = None
+    ) -> None:
         st = str(stage)
         with self._lock:
             self._stage_latency_ms_last[st] = float(last)
@@ -147,7 +149,7 @@ def _render_prometheus(s: MetricsSnapshot) -> str:
     # Queue depths
     for qname in sorted(s.queue_depth.keys()):
         depth = int(s.queue_depth[qname])
-        lines.append(f"metriplane_queue_depth{{queue=\"{_prom_label(qname)}\"}} {depth}")
+        lines.append(f'metriplane_queue_depth{{queue="{_prom_label(qname)}"}} {depth}')
 
     lines.extend(
         [
@@ -157,11 +159,11 @@ def _render_prometheus(s: MetricsSnapshot) -> str:
         ]
     )
 
-    for (qname, policy) in sorted(s.queue_dropped_total.keys(), key=lambda k: (k[0], k[1])):
+    for qname, policy in sorted(s.queue_dropped_total.keys(), key=lambda k: (k[0], k[1])):
         c = int(s.queue_dropped_total[(qname, policy)])
         lines.append(
             "metriplane_queue_dropped_total"
-            f"{{queue=\"{_prom_label(qname)}\",policy=\"{_prom_label(policy)}\"}} {c}"
+            f'{{queue="{_prom_label(qname)}",policy="{_prom_label(policy)}"}} {c}'
         )
 
     lines.extend(
@@ -173,7 +175,7 @@ def _render_prometheus(s: MetricsSnapshot) -> str:
     )
     for st in sorted(s.stage_latency_ms_last.keys()):
         v = float(s.stage_latency_ms_last[st])
-        lines.append(f"metriplane_stage_latency_ms_last{{stage=\"{_prom_label(st)}\"}} {v:.3f}")
+        lines.append(f'metriplane_stage_latency_ms_last{{stage="{_prom_label(st)}"}} {v:.3f}')
 
     lines.extend(
         [
@@ -184,7 +186,7 @@ def _render_prometheus(s: MetricsSnapshot) -> str:
     )
     for st in sorted(s.stage_latency_ms_ema.keys()):
         v = float(s.stage_latency_ms_ema[st])
-        lines.append(f"metriplane_stage_latency_ms_ema{{stage=\"{_prom_label(st)}\"}} {v:.3f}")
+        lines.append(f'metriplane_stage_latency_ms_ema{{stage="{_prom_label(st)}"}} {v:.3f}')
 
     lines.append("")
     return "\n".join(lines) + "\n"
@@ -201,7 +203,7 @@ def _health_status_to_prom_value(status: str) -> int:
     return -1  # unknown
 
 
-def _render_health_prometheus(health: dict) -> str:
+def _render_health_prometheus(health: dict[str, Any]) -> str:
     """
     Expects:
       {
@@ -243,7 +245,7 @@ def start_metrics_server(
     port: int,
     registry: MetricsRegistry,
     get_ws_clients: Callable[[], int],
-    get_health: Optional[Callable[[], dict]] = None,  # <-- NEW
+    get_health: Optional[Callable[[], dict[str, Any]]] = None,  # <-- NEW
 ) -> ThreadingHTTPServer:
     import json  # local import is fine; keeps module deps minimal
 
@@ -276,7 +278,10 @@ def start_metrics_server(
                 try:
                     body_obj = get_health()
                     if not isinstance(body_obj, dict):
-                        body_obj = {"overall": "FAILED", "error": "get_health did not return a dict"}
+                        body_obj = {
+                            "overall": "FAILED",
+                            "error": "get_health did not return a dict",
+                        }
                 except Exception as e:
                     body_obj = {"overall": "FAILED", "error": str(e)}
 

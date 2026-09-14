@@ -31,10 +31,7 @@ def test_setup_py_installs_metriplane_bridge_console_script():
     entry_points = ast.literal_eval(kwargs["entry_points"])
 
     assert package_expr == "[package_name]"
-    assert (
-        "metriplane_bridge = metriplane_ros.bridge_node:main"
-        in entry_points["console_scripts"]
-    )
+    assert "metriplane_bridge = metriplane_ros.bridge_node:main" in entry_points["console_scripts"]
 
 
 def test_setup_cfg_installs_console_scripts_into_ros_libexec_path():

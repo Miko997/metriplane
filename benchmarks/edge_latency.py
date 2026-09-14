@@ -13,6 +13,7 @@ Example:
         --session tests/fixtures/contracts/sentinel_minimal_session.jsonl \\
         --duration-s 5 --out evidence/experiments/jetson_edge_latency_001.csv
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,9 +22,12 @@ import time
 from pathlib import Path
 
 
-def run_edge_latency(session_path: str, duration_s: float = 0.0,
-                     rules_path: str | None = None,
-                     objects_path: str | None = None) -> dict:
+def run_edge_latency(
+    session_path: str,
+    duration_s: float = 0.0,
+    rules_path: str | None = None,
+    objects_path: str | None = None,
+) -> dict:
     """Replay frames (optionally looping to fill duration_s) and measure latency."""
     from metriplane.sentinel.engine import RuleEngine, iter_frames
 
@@ -35,9 +39,11 @@ def run_edge_latency(session_path: str, duration_s: float = 0.0,
     registry = None
     if rules_path:
         from metriplane.sentinel.rules import load_rules
+
         ruleset = load_rules(rules_path)
     if objects_path:
         from metriplane.sentinel.registry import load_registry
+
         registry = load_registry(objects_path)
 
     per_frame_ms: list[float] = []
@@ -79,6 +85,7 @@ def run_edge_latency(session_path: str, duration_s: float = 0.0,
     }
     try:
         import psutil  # optional
+
         proc = psutil.Process()
         result["cpu_percent"] = round(proc.cpu_percent(interval=0.1), 2)
         result["rss_mb"] = round(proc.memory_info().rss / (1024 * 1024), 2)
@@ -89,8 +96,7 @@ def run_edge_latency(session_path: str, duration_s: float = 0.0,
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser("edge_latency")
-    p.add_argument("--session",
-                   default="tests/fixtures/contracts/sentinel_minimal_session.jsonl")
+    p.add_argument("--session", default="tests/fixtures/contracts/sentinel_minimal_session.jsonl")
     p.add_argument("--rules", default="configs/rules.example.yaml")
     p.add_argument("--objects", default="configs/objects.example.yaml")
     p.add_argument("--duration-s", type=float, default=0.0)

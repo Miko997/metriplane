@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -77,7 +77,7 @@ class CameraFrameModel(BaseModel):
         return _validate_json_extension(value, path="metrics")
 
     @model_validator(mode="after")
-    def _unique_object_ids(self):
+    def _unique_object_ids(self) -> Self:
         ids = [obj.id for obj in self.objects]
         if len(ids) != len(set(ids)):
             raise ValueError(f"camera {self.camera_id!r} contains duplicate object ids")
@@ -118,7 +118,7 @@ class FrameStateModel(BaseModel):
         return _validate_json_extension(value, path="metrics")
 
     @model_validator(mode="after")
-    def _unique_frame_identities(self):
+    def _unique_frame_identities(self) -> Self:
         for name, objects in (("objects", self.objects), ("fused", self.fused)):
             if objects is None:
                 continue

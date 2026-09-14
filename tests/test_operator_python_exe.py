@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from metriplane.runner.operator_api import (
     OperatorAPI,
@@ -26,6 +25,7 @@ from metriplane.runner.operator_api import (
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_api(tmp_path: Path) -> OperatorAPI:
     """Create an OperatorAPI instance with a minimal tmp repo root."""
@@ -73,6 +73,7 @@ def _make_mapping(profile_dir: Path) -> None:
 
 # ── _resolve_python_executable ────────────────────────────────────────────────
 
+
 class TestResolvePythonExecutable:
     """Priority: METRIPLANE_PYTHON > METRIPLANE_VENV > repo_root/.vt-venv > repo_root/.venv > sys.executable"""
 
@@ -85,7 +86,6 @@ class TestResolvePythonExecutable:
 
     def test_prefers_vt_python(self, tmp_path: Path):
         vt_py = self._make_exec(tmp_path, "vt_python")
-        venv_py = self._make_exec(tmp_path, ".venv_bin_python")
         # .venv/bin/python also exists
         venv_dir = tmp_path / ".venv" / "bin"
         venv_dir.mkdir(parents=True)
@@ -136,9 +136,7 @@ class TestResolvePythonExecutable:
         env = {"METRIPLANE_PYTHON": "", "METRIPLANE_VENV": ""}
         with patch.dict(os.environ, env, clear=False):
             result = _resolve_python_executable(tmp_path)
-        assert result == str(vt_venv_py), (
-            f".vt-venv should win over .venv, got {result!r}"
-        )
+        assert result == str(vt_venv_py), f".vt-venv should win over .venv, got {result!r}"
 
     def test_prefers_repo_venv_over_sys_executable(self, tmp_path: Path):
         """Step 4: .venv/bin/python wins over sys.executable when .vt-venv absent."""
@@ -175,6 +173,7 @@ class TestResolvePythonExecutable:
 
 # ── _check_cv2_available ──────────────────────────────────────────────────────
 
+
 class TestCheckCv2Available:
     def test_returns_true_when_cv2_imports(self):
         mock_run = MagicMock()
@@ -200,8 +199,8 @@ class TestCheckCv2Available:
     def test_aruco_false_when_import_fails(self):
         mock_run = MagicMock()
         mock_run.side_effect = [
-            MagicMock(returncode=0, stdout="4.9.0\n"),   # cv2 ok
-            MagicMock(returncode=1, stdout=""),           # aruco fails
+            MagicMock(returncode=0, stdout="4.9.0\n"),  # cv2 ok
+            MagicMock(returncode=1, stdout=""),  # aruco fails
         ]
         with patch("metriplane.runner.operator_api.subprocess.run", mock_run):
             ok, ver, aruco = _check_cv2_available("/usr/bin/python3")
@@ -209,8 +208,9 @@ class TestCheckCv2Available:
         assert aruco is False
 
     def test_returns_false_on_exception(self):
-        with patch("metriplane.runner.operator_api.subprocess.run",
-                   side_effect=OSError("no such file")):
+        with patch(
+            "metriplane.runner.operator_api.subprocess.run", side_effect=OSError("no such file")
+        ):
             ok, ver, aruco = _check_cv2_available("/nonexistent/python")
         assert ok is False
         assert ver is None
@@ -218,6 +218,7 @@ class TestCheckCv2Available:
 
 
 # ── Commands use self._python, not sys.executable ─────────────────────────────
+
 
 class TestCommandsUseResolvedPython:
     SENTINEL = "/resolved/venv/python"
@@ -236,14 +237,16 @@ class TestCommandsUseResolvedPython:
 
     def test_calibrate_command_uses_resolved_python(self, tmp_path: Path):
         api = self._sentinel_api(tmp_path)
-        profile_dir = _make_profile(tmp_path)
+        _make_profile(tmp_path)
 
         with self._cv2_ok_patch():
-            status, resp = api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "0",
-            })
+            status, resp = api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "0",
+                }
+            )
 
         assert status == 200, resp
         cmd = api.executor.execute.call_args[1]["command"]
@@ -255,11 +258,13 @@ class TestCommandsUseResolvedPython:
         profile_dir = _make_profile(tmp_path)
         _make_mapping(profile_dir)
 
-        status, resp = api._validate_alignment({
-            "profile": "local_test",
-            "cam0": "0",
-            "cam1": "2",
-        })
+        status, resp = api._validate_alignment(
+            {
+                "profile": "local_test",
+                "cam0": "0",
+                "cam1": "2",
+            }
+        )
 
         assert status == 200, resp
         cmd = api.executor.execute.call_args[1]["command"]
@@ -271,10 +276,12 @@ class TestCommandsUseResolvedPython:
         cfg_path = tmp_path / "configs" / "test.yaml"
         cfg_path.write_text("profile: test\n")
 
-        status, resp = api._start_fusion({
-            "config": "configs/test.yaml",
-            "duration_s": 10,
-        })
+        status, resp = api._start_fusion(
+            {
+                "config": "configs/test.yaml",
+                "duration_s": 10,
+            }
+        )
 
         assert status == 200, resp
         cmd = api.executor.execute.call_args[1]["command"]
@@ -282,6 +289,7 @@ class TestCommandsUseResolvedPython:
 
 
 # ── cv2 preflight in _calibrate ───────────────────────────────────────────────
+
 
 class TestCalibrateCv2Preflight:
     def test_preflight_failure_returns_400(self, tmp_path: Path):
@@ -293,11 +301,13 @@ class TestCalibrateCv2Preflight:
             "metriplane.runner.operator_api._check_cv2_available",
             return_value=(False, None, False),
         ):
-            status, resp = api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "0",
-            })
+            status, resp = api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "0",
+                }
+            )
 
         assert status == 400
         assert "error" in resp
@@ -312,11 +322,13 @@ class TestCalibrateCv2Preflight:
             "metriplane.runner.operator_api._check_cv2_available",
             return_value=(False, None, False),
         ):
-            api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "0",
-            })
+            api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "0",
+                }
+            )
 
         api.executor.execute.assert_not_called()
 
@@ -330,11 +342,13 @@ class TestCalibrateCv2Preflight:
             "metriplane.runner.operator_api._check_cv2_available",
             return_value=(False, None, False),
         ):
-            status, resp = api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "0",
-            })
+            status, resp = api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "0",
+                }
+            )
 
         assert status == 400
         assert resp.get("python_executable") == "/wrong/python"
@@ -350,11 +364,13 @@ class TestCalibrateCv2Preflight:
             "metriplane.runner.operator_api._check_cv2_available",
             return_value=(True, "4.9.0", True),
         ):
-            status, resp = api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "0",
-            })
+            status, resp = api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "0",
+                }
+            )
 
         assert status == 200
         api.executor.execute.assert_called_once()
@@ -362,14 +378,19 @@ class TestCalibrateCv2Preflight:
 
 # ── /operator/env includes cv2 fields ─────────────────────────────────────────
 
+
 class TestEnvIncludesCv2Fields:
     def test_env_cv2_available_true(self, tmp_path: Path):
         api = _make_api(tmp_path)
         with (
-            patch("metriplane.runner.operator_api._check_cv2_available",
-                  return_value=(True, "4.9.0", True)),
-            patch("metriplane.runner.operator_api.subprocess.run",
-                  return_value=MagicMock(returncode=1, stdout="")),
+            patch(
+                "metriplane.runner.operator_api._check_cv2_available",
+                return_value=(True, "4.9.0", True),
+            ),
+            patch(
+                "metriplane.runner.operator_api.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout=""),
+            ),
         ):
             status, resp = api._get_env()
 
@@ -382,10 +403,14 @@ class TestEnvIncludesCv2Fields:
     def test_env_cv2_available_false_includes_warning(self, tmp_path: Path):
         api = _make_api(tmp_path)
         with (
-            patch("metriplane.runner.operator_api._check_cv2_available",
-                  return_value=(False, None, False)),
-            patch("metriplane.runner.operator_api.subprocess.run",
-                  return_value=MagicMock(returncode=1, stdout="")),
+            patch(
+                "metriplane.runner.operator_api._check_cv2_available",
+                return_value=(False, None, False),
+            ),
+            patch(
+                "metriplane.runner.operator_api.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout=""),
+            ),
         ):
             status, resp = api._get_env()
 
@@ -399,10 +424,14 @@ class TestEnvIncludesCv2Fields:
         api = _make_api(tmp_path)
         api._python = "/test/venv/bin/python"
         with (
-            patch("metriplane.runner.operator_api._check_cv2_available",
-                  return_value=(True, "4.9.0", True)),
-            patch("metriplane.runner.operator_api.subprocess.run",
-                  return_value=MagicMock(returncode=1, stdout="")),
+            patch(
+                "metriplane.runner.operator_api._check_cv2_available",
+                return_value=(True, "4.9.0", True),
+            ),
+            patch(
+                "metriplane.runner.operator_api.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout=""),
+            ),
         ):
             status, resp = api._get_env()
 
@@ -410,6 +439,7 @@ class TestEnvIncludesCv2Fields:
 
 
 # ── operator.js static guard: calib-next-btn id present ───────────────────────
+
 
 class TestOperatorJsCalibNavGuard:
     """

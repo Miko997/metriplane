@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.blockers.v1.schema.json",
+  "title": "Metriplane release blocker registry v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_version",
+    "blockers"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "metriplane.blockers.v1"
+    },
+    "policy_version": {
+      "const": "MP2-006.v1"
+    },
+    "blockers": {
+      "description": "Append-only blocker history; retained IDs, initial classifications, and governed action records are immutable relative to the validation base.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/blocker"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "actor_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$"
+    },
+    "approval": {
+      "type": "object",
+      "required": [
+        "provider",
+        "repository",
+        "pull_request",
+        "subject_sha256"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "pull_request": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "subject_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blocker": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "owner",
+        "reported_by_actor_id",
+        "opened_at",
+        "initial_severity",
+        "severity",
+        "initial_security",
+        "security",
+        "status",
+        "source",
+        "acceptance_ids",
+        "downgrade",
+        "closure"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^MPBLK-[0-9]{4}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "reported_by_actor_id": {
+          "$ref": "#/$defs/actor_id"
+        },
+        "opened_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "initial_severity": {
+          "description": "Immutable severity assigned when the blocker was opened.",
+          "$ref": "#/$defs/severity"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "initial_security": {
+          "description": "Immutable security classification assigned when the blocker was opened.",
+          "type": "boolean"
+        },
+        "security": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "controlled",
+            "closed"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "acceptance_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "MP2-006.A01",
+              "MP2-006.A02"
+            ]
+          }
+        },
+        "downgrade": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/downgrade"
+            }
+          ]
+        },
+        "closure": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/closure"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "closure": {
+      "type": "object",
+      "required": [
+        "closed_by_actor_id",
+        "closed_at",
+        "resolution_evidence",
+        "control_evidence",
+        "approval"
+      ],
+      "properties": {
+        "closed_by_actor_id": {
+          "$ref": "#/$defs/actor_id"
+        },
+        "closed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "resolution_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "control_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        }
+      },
+      "additionalProperties": false
+    },
+    "downgrade": {
+      "type": "object",
+      "required": [
+        "from_severity",
+        "to_severity",
+        "from_security",
+        "to_security",
+        "changed_by_actor_id",
+        "changed_at",
+        "reproduction_evidence",
+        "control_evidence",
+        "approval"
+      ],
+      "properties": {
+        "from_severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "to_severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "from_security": {
+          "type": "boolean"
+        },
+        "to_security": {
+          "type": "boolean"
+        },
+        "changed_by_actor_id": {
+          "$ref": "#/$defs/actor_id"
+        },
+        "changed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reproduction_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "control_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "kind",
+        "producer_actor_id"
+      ],
+      "properties": {
+        "path": {
+          "description": "Clean repository-relative path to a regular-file blob tracked at the exact validated commit.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^[A-Za-z0-9_.-][A-Za-z0-9_./-]*$"
+        },
+        "sha256": {
+          "description": "SHA-256 of the evidence blob bytes at the exact validated commit.",
+          "$ref": "#/$defs/sha256"
+        },
+        "kind": {
+          "enum": [
+            "reproduction",
+            "control",
+            "resolution"
+          ]
+        },
+        "producer_actor_id": {
+          "$ref": "#/$defs/actor_id"
+        }
+      },
+      "additionalProperties": false
+    },
+    "severity": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2"
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  }
+}

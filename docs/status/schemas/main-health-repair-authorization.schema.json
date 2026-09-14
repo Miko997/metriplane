@@ -1,25 +1,46 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "authorization_mode": {"const": "independent-review"},
+        "manifest_digest": {"type": "null"},
+        "policy_amendment_digest": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "manifest_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "policy_amendment_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+      }
+    }
+  ],
   "properties": {
+    "authorization_mode": {"enum": ["independent-review", "single-maintainer-owner-emergency"]},
     "approval_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "approval_id": {"minLength": 1, "type": "string"},
-    "approval_provider": {"enum": ["github", "linear"]},
+    "approval_provider": {"const": "github"},
     "allowed_paths": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
     "author": {"minLength": 1, "type": "string"},
     "author_id": {"minLength": 1, "type": "string"},
     "changed_paths_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "expires_at": {"format": "date-time", "type": "string"},
     "failing_obligations": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+    "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+    "manifest_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "policy_amendment_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "proposed_repair_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
-    "required_cadences": {"items": {"enum": ["nightly", "weekly"]}, "type": "array", "uniqueItems": true},
+    "required_cadences": {"const": ["nightly", "weekly"]},
     "reviewer": {"minLength": 1, "type": "string"},
     "reviewer_id": {"minLength": 1, "type": "string"},
+    "reviewer_permission": {"enum": ["admin", "maintain", "write"]},
     "schema_version": {"const": 1}
   },
-  "required": ["approval_digest", "approval_id", "approval_provider", "allowed_paths", "author", "author_id", "changed_paths_digest", "expires_at", "failing_obligations", "issue", "proposed_repair_sha", "pull_request", "repository", "required_cadences", "reviewer", "reviewer_id", "schema_version"],
+  "required": ["authorization_mode", "approval_digest", "approval_id", "approval_provider", "allowed_paths", "author", "author_id", "changed_paths_digest", "expires_at", "failing_obligations", "incident_digest", "issue", "manifest_digest", "policy_amendment_digest", "proposed_repair_sha", "pull_request", "repository", "required_cadences", "reviewer", "reviewer_id", "reviewer_permission", "schema_version"],
   "type": "object"
 }

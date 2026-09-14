@@ -6,35 +6,41 @@ from __future__ import annotations
 import inspect
 import logging
 import os
+import sys
 import threading
 import time
-from metriplane.time.clock import RealTimeClock, Clock
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import cv2  # type: ignore
-from metriplane.observability.timing import StageTiming
+import cv2
 
 from metriplane.backends.aruco_backend import ArUcoBackend
 from metriplane.camera.usb_multi import USBMultiCamera
-from metriplane.config import Config, apply_profile_defaults, load_config
-from metriplane.fusion.fuse_xy import XYObs, fuse_average, fuse_weighted
 from metriplane.compute.select import select_fusion_backend
+from metriplane.config import Config, apply_profile_defaults, load_config
+from metriplane.fusion.fuse_xy import XYObs
 from metriplane.fusion.kalman_cv import MultiObjectKalman
 from metriplane.mapping.planar_multi import MultiPlanarMapper, load_multi_planar_mapper
 from metriplane.metrics import MetricsRegistry, start_metrics_server
+from metriplane.observability.timing import StageTiming
+from metriplane.paths import (
+    PlatformPaths,
+    normalize_runs_dir,
+)
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
     create_run_context,
     open_jsonl_writer,
 )
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import CameraFrameModel, FrameStateModel, ObjectStateModel
 from metriplane.streaming.ws_server import client_count
 from metriplane.streaming.ws_thread import WsServerThread
+from metriplane.time.clock import Clock, RealTimeClock
 from metriplane.tracking import ObjectRegistry
 from metriplane.zone_analytics import ZoneAnalytics
 from metriplane.zones import load_zones
@@ -119,7 +125,9 @@ class HealthRegistry:
 
         if comps:
             worst_rank = min(_STATUS_RANK[c.status] for c in comps.values())
-            overall = {2: HealthStatus.OK, 1: HealthStatus.DEGRADED, 0: HealthStatus.FAILED}[worst_rank]
+            overall = {2: HealthStatus.OK, 1: HealthStatus.DEGRADED, 0: HealthStatus.FAILED}[
+                worst_rank
+            ]
         else:
             overall = HealthStatus.OK
 
@@ -228,8 +236,8 @@ def _resolve_multi_mapper_from_cfg(
         dev: int | str | None
         if getattr(c, "device", None):
             dev = str(c.device)
-        elif getattr(c, "index", None) is not None:
-            dev = int(c.index)
+        elif (index := getattr(c, "index", None)) is not None:
+            dev = int(index)
         else:
             skipped.append(cid)
             if health is not None:
@@ -257,7 +265,9 @@ def _resolve_multi_mapper_from_cfg(
         cameras[cid] = dev
         mapping_by_cam[cid] = mp
 
-        ip: Path | None = Path(str(c.intrinsics_file)) if getattr(c, "intrinsics_file", None) else None
+        ip: Path | None = (
+            Path(str(c.intrinsics_file)) if getattr(c, "intrinsics_file", None) else None
+        )
         intr_by_cam[cid] = ip if (ip is not None and ip.is_file()) else None
 
         if health is not None:
@@ -362,7 +372,23 @@ def run_loop_fusion(
     run_id: str | None = None,
     runs_dir: str | None = None,
     duration_s: float = 0.0,
+    paths: PlatformPaths | None = None,
 ) -> int:
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is not None:
+        try:
+            validate_portable_run_id(str(configured_run_id))
+        except ValueError as exc:
+            log.error("run storage unavailable: %s", exc)
+            return 2
+
+    effective_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if effective_runs_dir is None:
+        effective_runs_dir = configured_runs_dir
+    if effective_runs_dir is None:
+        if paths is not None:
+            effective_runs_dir = str(paths.runs_dir)
     resources = _FusionResources()
     try:
         return _run_loop_fusion_impl(
@@ -372,7 +398,7 @@ def run_loop_fusion(
             config_path=config_path,
             argv=argv,
             run_id=run_id,
-            runs_dir=runs_dir,
+            runs_dir=effective_runs_dir,
             duration_s=duration_s,
             _resources=resources,
         )
@@ -410,13 +436,17 @@ def _run_loop_fusion_impl(
     cfg = apply_profile_defaults(cfg)
 
     # M9.4: run provenance (FAIL FAST if we cannot create it)
-    ctx: RunContext = create_run_context(
-        cfg,
-        config_path=config_path,
-        argv=argv,
-        run_id=run_id,
-        runs_dir=runs_dir,
-    )
+    try:
+        ctx: RunContext = create_run_context(
+            cfg,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+        )
+    except (OSError, ValueError) as exc:
+        log.error("run storage unavailable: %s", exc)
+        return 2
 
     mirror_path = str(cfg.record_jsonl) if cfg.record_jsonl else None
     mirror_enabled = bool(mirror_path)
@@ -439,7 +469,9 @@ def _run_loop_fusion_impl(
     _resources.recorder = recorder
 
     recorder.write(ctx.header_record())
-    log.info("M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash)
+    log.info(
+        "M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash
+    )
     log.info("M9.4 recorder paths: %s", ", ".join(str(p) for p in recorder.paths))
 
     # M9.5 timing
@@ -483,12 +515,18 @@ def _run_loop_fusion_impl(
     _resources.timing = timing
 
     if timing_enabled:
-        log.info("M9.5 timing: ENABLED frames_csv=%s summary_csv=%s", ctx.run_dir / "latency_frames.csv", ctx.run_dir / "latency_summary.csv")
+        log.info(
+            "M9.5 timing: ENABLED frames_csv=%s summary_csv=%s",
+            ctx.run_dir / "latency_frames.csv",
+            ctx.run_dir / "latency_summary.csv",
+        )
     else:
         log.info("M9.5 timing: DISABLED (set METRIPLANE_TIMING=1 or timing.enabled=true)")
 
     hcfg = getattr(cfg, "health", None) or {}
-    health_enabled = bool(hcfg.get("enabled", hcfg.get("enable", True)))  # default True to match metriplane.run
+    health_enabled = bool(
+        hcfg.get("enabled", hcfg.get("enable", True))
+    )  # default True to match metriplane.run
     health = HealthRegistry()
 
     # M9.6: compute backend selection (CPU NumPy by default; optional GPU via CuPy)
@@ -502,7 +540,9 @@ def _run_loop_fusion_impl(
     if (not mirror_enabled) and mirror_path:
         health.set_degraded("recorder.jsonl", f"mirror disabled (failed to open): {mirror_path}")
 
-    faults = _parse_faults(fault_args, os.getenv("METRIPLANE_FAULT") or os.getenv("METRIPLANE_FAULT"))
+    faults = _parse_faults(
+        fault_args, os.getenv("METRIPLANE_FAULT") or os.getenv("METRIPLANE_FAULT")
+    )
     cam1_disconnect_after_s = _coerce_float(faults.get("cam1_disconnect_after_s"), -1.0)
     ws_fail_after_s = _coerce_float(faults.get("ws_fail_after_s"), -1.0)
 
@@ -520,7 +560,7 @@ def _run_loop_fusion_impl(
 
     log.info("fusion run loop started")
     log.info("profile=%s cameras=%s", cfg.profile, [c.name for c in (cfg.cameras or ())])
-    for c in (cfg.cameras or ()):
+    for c in cfg.cameras or ():
         log.info(
             "cam=%s index=%s mapping=%s intrinsics=%s",
             c.name,
@@ -564,7 +604,9 @@ def _run_loop_fusion_impl(
     cameras, mm, skipped = _resolve_multi_mapper_from_cfg(cfg, health=health)
     if skipped:
         health.set_degraded("fusion", f"skipped cameras: {','.join(sorted(skipped))}")
-        log.warning("fusion: skipped cameras due to missing mapping/device: %s", ",".join(sorted(skipped)))
+        log.warning(
+            "fusion: skipped cameras due to missing mapping/device: %s", ",".join(sorted(skipped))
+        )
     else:
         health.set_ok("fusion")
 
@@ -608,28 +650,44 @@ def _run_loop_fusion_impl(
     if method not in ("avg", "weighted", "nearest", "kalman"):
         raise ValueError(f"Unsupported fusion method '{method}'. Use avg|weighted|nearest|kalman.")
 
-    z_world = _coerce_float(str(fcfg.get("z_world")) if fcfg.get("z_world") is not None else None, 0.0)
+    z_world = _coerce_float(
+        str(fcfg.get("z_world")) if fcfg.get("z_world") is not None else None, 0.0
+    )
 
     base_meas_sigma = _coerce_float(
-        str(fcfg.get("meas_sigma") if fcfg.get("meas_sigma") is not None else fcfg.get("base_meas_sigma"))
+        str(
+            fcfg.get("meas_sigma")
+            if fcfg.get("meas_sigma") is not None
+            else fcfg.get("base_meas_sigma")
+        )
         if (fcfg.get("meas_sigma") is not None or fcfg.get("base_meas_sigma") is not None)
         else None,
         0.03,
     )
-    process_sigma = _coerce_float(str(fcfg.get("process_sigma")) if fcfg.get("process_sigma") is not None else None, 0.8)
-    timeout_s = _coerce_float(str(fcfg.get("timeout_s")) if fcfg.get("timeout_s") is not None else None, 2.0)
+    process_sigma = _coerce_float(
+        str(fcfg.get("process_sigma")) if fcfg.get("process_sigma") is not None else None, 0.8
+    )
+    timeout_s = _coerce_float(
+        str(fcfg.get("timeout_s")) if fcfg.get("timeout_s") is not None else None, 2.0
+    )
 
     if not fcfg:
         base_meas_sigma = _coerce_float(
-            str(getattr(cfg, "fusion_meas_sigma", None)) if getattr(cfg, "fusion_meas_sigma", None) is not None else None,
+            str(getattr(cfg, "fusion_meas_sigma", None))
+            if getattr(cfg, "fusion_meas_sigma", None) is not None
+            else None,
             base_meas_sigma,
         )
         process_sigma = _coerce_float(
-            str(getattr(cfg, "fusion_process_sigma", None)) if getattr(cfg, "fusion_process_sigma", None) is not None else None,
+            str(getattr(cfg, "fusion_process_sigma", None))
+            if getattr(cfg, "fusion_process_sigma", None) is not None
+            else None,
             process_sigma,
         )
         timeout_s = _coerce_float(
-            str(getattr(cfg, "fusion_timeout_s", None)) if getattr(cfg, "fusion_timeout_s", None) is not None else None,
+            str(getattr(cfg, "fusion_timeout_s", None))
+            if getattr(cfg, "fusion_timeout_s", None) is not None
+            else None,
             timeout_s,
         )
 
@@ -695,7 +753,10 @@ def _run_loop_fusion_impl(
                     continue
                 frames_by_cam[cid] = fr
 
-            if cam1_disconnect_after_s > 0 and (time.monotonic() - t0_mon) >= cam1_disconnect_after_s:
+            if (
+                cam1_disconnect_after_s > 0
+                and (time.monotonic() - t0_mon) >= cam1_disconnect_after_s
+            ):
                 if "cam1" in frames_by_cam:
                     frames_by_cam.pop("cam1", None)
                 if not cam1_fault_triggered:
@@ -729,7 +790,9 @@ def _run_loop_fusion_impl(
                 preview_ns = time.perf_counter_ns() - t_prev0
 
             if not frames_by_cam:
-                if capture_health and all(s == HealthStatus.FAILED for s in capture_health.values()):
+                if capture_health and all(
+                    s == HealthStatus.FAILED for s in capture_health.values()
+                ):
                     health.set_failed("camera.read", "all camera captures stalled")
                 elif any(s != HealthStatus.OK for s in capture_health.values()):
                     health.set_degraded("camera.read", "waiting for fresh camera capture")
@@ -742,7 +805,9 @@ def _run_loop_fusion_impl(
             frame_id += 1
 
             try:
-                ts_frame = max(float(getattr(fr, "ts_cam_read", 0.0)) for fr in frames_by_cam.values())
+                ts_frame = max(
+                    float(getattr(fr, "ts_cam_read", 0.0)) for fr in frames_by_cam.values()
+                )
             except Exception:
                 ts_frame = time.time()
 
@@ -812,7 +877,7 @@ def _run_loop_fusion_impl(
 
                 # ---- map.<cid> ----
                 with timing.stage(f"map.{cid}"):
-                    for (mid, cx, cy) in dets:
+                    for mid, cx, cy in dets:
                         if not _filter_ids(cfg, int(mid)):
                             continue
                         dets_kept += 1
@@ -843,7 +908,13 @@ def _run_loop_fusion_impl(
                         if not is_stale:
                             dets_used_for_fusion += 1
                             obs_for_fuse[str(mid)].append(
-                                XYObs(camera_id=cid, x=float(xw), y=float(yw), confidence=1.0, rmse=rmse)
+                                XYObs(
+                                    camera_id=cid,
+                                    x=float(xw),
+                                    y=float(yw),
+                                    confidence=1.0,
+                                    rmse=rmse,
+                                )
                             )
                             sigma = (
                                 max(float(base_meas_sigma), float(rmse))
@@ -860,21 +931,17 @@ def _run_loop_fusion_impl(
                         metrics={
                             "age_s": age_s,
                             "stale_for_fusion": bool(is_stale),
-
                             # Keep old field for compatibility
                             "dets": dets_raw,
-
                             # NEW: more actionable breakdown
                             "dets_kept": int(dets_kept),
                             "dets_mapped": int(dets_mapped),
                             "dets_used_for_fusion": int(dets_used_for_fusion),
-
                             # Helpful for correlating with mapping quality
                             "cam_anchor_rmse": rmse,
                         },
                     )
                 )
-
 
             fused_now: list[ObjectStateModel] = []
             with timing.stage("fuse"):
@@ -888,12 +955,17 @@ def _run_loop_fusion_impl(
                                 id=str(oid),
                                 pos_world=(float(x), float(y), float(z_world)),
                                 confidence=1.0,
-                                extra={"fusion": {"method": method, "sources": [o.camera_id for o in obs]}},
+                                extra={
+                                    "fusion": {
+                                        "method": method,
+                                        "sources": [o.camera_id for o in obs],
+                                    }
+                                },
                             )
                         )
-                         
 
                 elif method == "nearest":
+
                     def _score(o: XYObs, eps: float = 1e-9) -> float:
                         w = float(o.confidence) if o.confidence is not None else 1.0
                         if o.rmse is not None and o.rmse > 0:
@@ -909,14 +981,18 @@ def _run_loop_fusion_impl(
                             ObjectStateModel(
                                 id=str(oid),
                                 pos_world=(float(best.x), float(best.y), float(z_world)),
-                                confidence=float(best.confidence) if best.confidence is not None else 1.0,
+                                confidence=float(best.confidence)
+                                if best.confidence is not None
+                                else 1.0,
                                 extra={"fusion": {"method": "nearest", "source": best.camera_id}},
                             )
                         )
 
                 elif method == "kalman":
                     if kalman is None:
-                        raise RuntimeError("fusion method 'kalman' selected but filter not initialized")
+                        raise RuntimeError(
+                            "fusion method 'kalman' selected but filter not initialized"
+                        )
 
                     meas_sorted: dict[str, list[tuple[float, float, float]]] = {
                         k: meas_by_oid[k] for k in sorted(meas_by_oid.keys())
@@ -930,7 +1006,12 @@ def _run_loop_fusion_impl(
                                 pos_world=(float(x), float(y), float(z_world)),
                                 vel_world=(float(vx), float(vy), 0.0),
                                 confidence=1.0,
-                                extra={"fusion": {"method": "kalman", "sensors": len(meas_by_oid.get(oid, []))}},
+                                extra={
+                                    "fusion": {
+                                        "method": "kalman",
+                                        "sensors": len(meas_by_oid.get(oid, [])),
+                                    }
+                                },
                             )
                         )
 
@@ -1012,7 +1093,11 @@ def _run_loop_fusion_impl(
 
                 with timing.stage("ws.send"):
                     try:
-                        if (not ws_fault_triggered) and ws_fail_after_s > 0 and (time.monotonic() - t0_mon) >= ws_fail_after_s:
+                        if (
+                            (not ws_fault_triggered)
+                            and ws_fail_after_s > 0
+                            and (time.monotonic() - t0_mon) >= ws_fail_after_s
+                        ):
                             ws_fault_triggered = True
                             raise RuntimeError(f"fault injected: ws_fail_after_s={ws_fail_after_s}")
                         ws.send_frame(msg)
@@ -1050,10 +1135,8 @@ def _run_loop_fusion_impl(
     return 0
 
 
-
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
-    import sys
 
     ap = argparse.ArgumentParser(description="Metriplane fusion runner")
     ap.add_argument("--config", "-c", default="config.example.yaml", help="Path to YAML config")
@@ -1070,7 +1153,9 @@ def main(argv=None) -> int:
         help="Fault injection (repeatable), e.g. --fault cam1_disconnect_after_s=8 --fault ws_fail_after_s=12. "
         "Also supports env METRIPLANE_FAULT='k=v,k2=v2'.",
     )
-    ap.add_argument("--duration-s", type=float, default=0.0, help="Stop after N seconds (0=forever).")
+    ap.add_argument(
+        "--duration-s", type=float, default=0.0, help="Stop after N seconds (0=forever)."
+    )
 
     argv_in = list(sys.argv[1:] if argv is None else argv)
     args = ap.parse_args(argv_in)
@@ -1082,8 +1167,9 @@ def main(argv=None) -> int:
         config_path=Path(args.config),
         argv=["metriplane-fusion", *argv_in],
         run_id=args.run_id,
-        runs_dir=args.runs_dir,
+        runs_dir=normalize_runs_dir(args.runs_dir),
         duration_s=args.duration_s,
+        paths=paths,
     )
 
 

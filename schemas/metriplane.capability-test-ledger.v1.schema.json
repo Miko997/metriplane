@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.capability-test-ledger.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "owner", "graph_digest", "rows", "summary"],
+  "properties": {
+    "schema_version": {"const": "metriplane.capability-test-ledger.v1"},
+    "owner": {"const": "MP2-014"},
+    "graph_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability_id", "requirement_ids", "code_ids", "obligation_ids", "validator_ids", "doc_ids", "rubric_ids", "first_release", "change_releases", "mapping_status"],
+        "properties": {
+          "capability_id": {"type": "string", "minLength": 1},
+          "requirement_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+          "code_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+          "obligation_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+          "validator_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+          "doc_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+          "rubric_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+          "first_release": {"type": "string", "minLength": 1},
+          "change_releases": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "mapping_status": {"enum": ["mapped", "unresolved"]}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_count", "mapped_count", "unresolved_count"],
+      "properties": {
+        "capability_count": {"type": "integer", "minimum": 1},
+        "mapped_count": {"type": "integer", "minimum": 0},
+        "unresolved_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

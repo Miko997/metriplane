@@ -11,7 +11,6 @@ Key invariants:
 - Both convert /dev/videoN → integer index before building the command
 """
 
-import pytest
 from unittest.mock import MagicMock
 from metriplane.runner.operator_api import OperatorAPI
 
@@ -52,8 +51,8 @@ def _add_intrinsics(profile_dir):
 
 # ── validate-alignment (planar, intrinsics optional) ─────────────────────────
 
-class TestValidateAlignment:
 
+class TestValidateAlignment:
     def test_succeeds_without_intrinsics(self, tmp_path):
         """report_alignment.py does not need intrinsics — should submit job."""
         api = _make_api(tmp_path)
@@ -62,9 +61,7 @@ class TestValidateAlignment:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "report_alignment.py").write_text("# stub")
 
-        status, resp = api._validate_alignment({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._validate_alignment({"profile": "local_test", "cam0": "0", "cam1": "2"})
 
         assert status == 200
         assert "job_id" in resp
@@ -80,9 +77,7 @@ class TestValidateAlignment:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "report_alignment.py").write_text("# stub")
 
-        status, resp = api._validate_alignment({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._validate_alignment({"profile": "local_test", "cam0": "0", "cam1": "2"})
 
         assert status == 200
         assert resp["has_intrinsics"] is True
@@ -100,11 +95,13 @@ class TestValidateAlignment:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "report_alignment.py").write_text("# stub")
 
-        status, resp = api._validate_alignment({
-            "profile": "local_test",
-            "cam0": "/dev/video0",
-            "cam1": "/dev/video2",
-        })
+        status, resp = api._validate_alignment(
+            {
+                "profile": "local_test",
+                "cam0": "/dev/video0",
+                "cam1": "/dev/video2",
+            }
+        )
 
         assert status == 200
         cmd = api.executor.execute.call_args[1]["command"]
@@ -122,9 +119,7 @@ class TestValidateAlignment:
         (profile_dir / "cam1" / "mapping_raw.yaml").write_text("h: 1\n")
         (profile_dir / "anchors.yaml").write_text("profile: local_test\n")
 
-        status, resp = api._validate_alignment({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._validate_alignment({"profile": "local_test", "cam0": "0", "cam1": "2"})
 
         assert status == 400
         assert "cam0" in resp["error"].lower()
@@ -135,9 +130,7 @@ class TestValidateAlignment:
         _minimal_profile(tmp_path)
         # Do NOT create tools/report_alignment.py
 
-        status, resp = api._validate_alignment({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._validate_alignment({"profile": "local_test", "cam0": "0", "cam1": "2"})
 
         assert status == 500
         assert "report_alignment.py" in resp["error"]
@@ -146,8 +139,8 @@ class TestValidateAlignment:
 
 # ── validate-alignment-full (debug, intrinsics required) ────────────────────
 
-class TestFullAlignmentCheck:
 
+class TestFullAlignmentCheck:
     def test_returns_400_when_intrinsics_missing(self, tmp_path):
         """Must return structured 400 with missing paths and can_skip=True."""
         api = _make_api(tmp_path)
@@ -155,9 +148,9 @@ class TestFullAlignmentCheck:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "debug_alignment.py").write_text("# stub")
 
-        status, resp = api._full_alignment_check({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._full_alignment_check(
+            {"profile": "local_test", "cam0": "0", "cam1": "2"}
+        )
 
         assert status == 400
         assert "error" in resp
@@ -177,9 +170,9 @@ class TestFullAlignmentCheck:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "debug_alignment.py").write_text("# stub")
 
-        status, resp = api._full_alignment_check({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._full_alignment_check(
+            {"profile": "local_test", "cam0": "0", "cam1": "2"}
+        )
 
         assert status == 400
         assert len(resp["missing_intrinsics"]) == 1
@@ -193,9 +186,9 @@ class TestFullAlignmentCheck:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "debug_alignment.py").write_text("# stub")
 
-        status, resp = api._full_alignment_check({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._full_alignment_check(
+            {"profile": "local_test", "cam0": "0", "cam1": "2"}
+        )
 
         assert status == 200
         assert "job_id" in resp
@@ -213,11 +206,13 @@ class TestFullAlignmentCheck:
         (tmp_path / "tools").mkdir(exist_ok=True)
         (tmp_path / "tools" / "debug_alignment.py").write_text("# stub")
 
-        status, resp = api._full_alignment_check({
-            "profile": "local_test",
-            "cam0": "/dev/v4l/by-id/usb-cam-001",
-            "cam1": "2",
-        })
+        status, resp = api._full_alignment_check(
+            {
+                "profile": "local_test",
+                "cam0": "/dev/v4l/by-id/usb-cam-001",
+                "cam1": "2",
+            }
+        )
 
         assert status == 400
         assert "video" in resp["error"].lower()
@@ -227,9 +222,9 @@ class TestFullAlignmentCheck:
         api = _make_api(tmp_path)
         _minimal_profile(tmp_path)
 
-        status, resp = api._full_alignment_check({
-            "profile": "local_test", "cam0": "0", "cam1": "2"
-        })
+        status, resp = api._full_alignment_check(
+            {"profile": "local_test", "cam0": "0", "cam1": "2"}
+        )
 
         assert status == 400
         # generate_command must guide the user to calibrate_intrinsics_chessboard.py

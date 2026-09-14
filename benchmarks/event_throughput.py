@@ -11,6 +11,7 @@ Example:
     python benchmarks/event_throughput.py --n-events 100000 \\
         --out evidence/experiments/scalable_event_pipeline_001.csv
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,12 +66,20 @@ def run(n_events: int, tmp_dir: Path) -> list[dict]:
     ]
     try:
         from metriplane.exporters.parquet import parquet_available
+
         ok, engine = parquet_available()
         if ok:
-            rows.append({"backend": f"parquet({engine})", "n_events": n_events,
-                         "duration_s": None, "events_per_s": None,
-                         "p50_publish_ms": None, "p95_publish_ms": None,
-                         "note": "batch export; see metriplane.exporters.parquet"})
+            rows.append(
+                {
+                    "backend": f"parquet({engine})",
+                    "n_events": n_events,
+                    "duration_s": None,
+                    "events_per_s": None,
+                    "p50_publish_ms": None,
+                    "p95_publish_ms": None,
+                    "note": "batch export; see metriplane.exporters.parquet",
+                }
+            )
     except Exception:
         pass
     return rows
@@ -78,6 +87,7 @@ def run(n_events: int, tmp_dir: Path) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     import tempfile
+
     p = argparse.ArgumentParser("event_throughput")
     p.add_argument("--n-events", type=int, default=100000)
     p.add_argument("--out", default=None)
@@ -89,8 +99,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.out:
         path = Path(args.out)
         path.parent.mkdir(parents=True, exist_ok=True)
-        fields = ["backend", "n_events", "duration_s", "events_per_s",
-                  "p50_publish_ms", "p95_publish_ms"]
+        fields = [
+            "backend",
+            "n_events",
+            "duration_s",
+            "events_per_s",
+            "p50_publish_ms",
+            "p95_publish_ms",
+        ]
         with path.open("w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             w.writeheader()

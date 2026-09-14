@@ -52,7 +52,7 @@ metriplane demo
 
 ## Tests
 
-Run the complete suite from the repository root:
+The complete suite command, when a full qualification is required, is:
 
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
@@ -80,8 +80,14 @@ python -m build
 python -m twine check --strict dist/*
 ```
 
-CI runs the full Linux and macOS combinations and the repository's Release
-Gates. A pull request is not ready to merge until every required check is green.
+Batch a coherent change, review every affected producer and consumer, resolve
+known findings, and run focused tests, static checks and deterministic generation
+before pushing a stable candidate. CI runs the complete Linux and macOS
+combinations and the repository's Release Gates. A pull request is ready to
+merge only when every required check is green for its exact candidate. Do not
+repeat a full suite during ordinary iteration or merely to refresh metadata or
+provider readback. Preserve the original result identity and record the concrete
+source or environment change that requires another qualification.
 
 ## Branch and pull-request workflow
 
@@ -89,10 +95,11 @@ Gates. A pull request is not ready to merge until every required check is green.
 2. Make the smallest coherent change and add or update tests.
 3. Update user-facing documentation when behavior, commands, artifacts, or
    support boundaries change.
-4. Run focused tests and the complete suite.
+4. Run focused tests and static/generation checks; resolve all known review findings.
 5. Open a pull request using the repository template. Explain the user-visible
    result, compatibility impact, and evidence/research impact.
-6. Address review findings without silently broadening the pull request.
+6. Qualify the frozen candidate once through the required complete hosted matrix.
+   Address new findings together before another stable qualification boundary.
 
 Do not include generated run directories, virtual environments, caches,
 credentials, private data, or unrelated formatting changes.

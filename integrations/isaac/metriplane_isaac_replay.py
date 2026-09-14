@@ -11,6 +11,7 @@ on machines without NVIDIA software.
 Usage (inside an Isaac Sim Python environment):
     python integrations/isaac/metriplane_isaac_replay.py --run-dir runs/<id>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,9 +25,11 @@ def open_in_isaac(usda_path: str | Path) -> None:  # pragma: no cover - needs Is
         raise SystemExit(
             "Isaac Sim not available in this environment. Export the .usda with "
             "metriplane_to_usd.py and open it manually in Omniverse/Isaac.\n"
-            f"(import error: {e})")
+            f"(import error: {e})"
+        )
     sim = SimulationApp({"headless": False})
     import omni.usd
+
     omni.usd.get_context().open_stage(str(usda_path))
     while sim.is_running():
         sim.update()
@@ -42,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover
     usda = args.usda
     if usda is None:
         from integrations.isaac.metriplane_to_usd import write_usda_replay
+
         usda = str(Path(args.run_dir) / "isaac" / "metriplane_replay.usda")
         write_usda_replay(run_dir=args.run_dir, output_path=usda)
     open_in_isaac(usda)

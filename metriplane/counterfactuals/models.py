@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 TransformType = Literal[
     "rule_threshold_sweep",
@@ -31,7 +31,7 @@ class CounterfactualCaseResult(BaseModel):
     summary: str
     metrics: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class CounterfactualReport(BaseModel):
