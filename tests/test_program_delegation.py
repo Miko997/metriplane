@@ -620,11 +620,29 @@ def test_attestor_builder_binds_complete_graph_and_current_base() -> None:
         prepare_task_observation(**kwargs)
 
 
-def test_live_program_grant_cannot_be_supplied_only_by_caller() -> None:
+def test_live_program_grant_cannot_be_supplied_only_by_caller(tmp_path: Path) -> None:
     delegated, _, _, _ = _task_fixture()
-    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "grantless base",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
     with pytest.raises(NotReady, match="absent from the exact protected base"):
-        _validate_live_program_grant(ROOT, head, delegated)
+        _validate_live_program_grant(tmp_path, head, delegated)
 
 
 def test_executor_can_only_complete_preexisting_machine_attestation(tmp_path: Path) -> None:
