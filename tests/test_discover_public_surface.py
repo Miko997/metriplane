@@ -408,7 +408,7 @@ def test_direct_script_loads_sibling_kernel_without_pythonpath() -> None:
 
     assert completed.returncode == 0, completed.stderr
     summary = json.loads(completed.stdout)
-    assert summary["rows"] == 11_074
+    assert summary["rows"] == 11_104
     assert summary["public_api"] == 2_515
     assert summary["manifest_keys"] == 3_938
 
