@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7dba24f20437c582`
+Canonical projection SHA-256: `c01fca1fd6071c102c296c832d8a302403fe23a8ac4c6cf588fcabc4bc671d96`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 227 |
+| actions | 237 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -285,10 +285,13 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.check_work_order_catalog | tool | Check Work Order Catalog | python tools/check_work_order_catalog.py |
 | tool.collect_publication_observations | tool | Collect Publication Observations | python tools/collect_publication_observations.py |
 | tool.command_center_up | tool | Command Center Up | tools/command_center_up.sh |
+| tool.complete_delegated_task | tool | Complete Delegated Task | python tools/complete_delegated_task.py |
 | tool.cross_adapter_gate | tool | Cross Adapter Gate | python tools/cross_adapter_gate.py |
 | tool.cross_adapter_pytest | tool | Cross Adapter Pytest | python tools/cross_adapter_pytest.py |
 | tool.dashboard_runner | tool | Dashboard Runner | tools/dashboard_runner.sh |
 | tool.debug_alignment | tool | Debug Alignment | python tools/debug_alignment.py |
+| tool.delegated_merge | tool | Delegated Merge | python tools/delegated_merge.py |
+| tool.delegated_task_authority | tool | Delegated Task Authority | python tools/delegated_task_authority.py |
 | tool.demo4_everything | tool | Demo4 Everything | tools/demo4_everything.sh |
 | tool.discover_functional_surface | tool | Discover Functional Surface | python tools/discover_functional_surface.py |
 | tool.discover_public_surface | tool | Discover Public Surface | python tools/discover_public_surface.py |
@@ -298,6 +301,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.docker_live_up | tool | Docker Live Up | tools/docker_live_up.sh |
 | tool.docker_smoke_test | tool | Docker Smoke Test | tools/docker_smoke_test.sh |
 | tool.docker_stop | tool | Docker Stop | tools/docker_stop.sh |
+| tool.ed25519_envelope | tool | Ed25519 Envelope | python tools/ed25519_envelope.py |
 | tool.execute_release_qualification | tool | Execute Release Qualification | python tools/execute_release_qualification.py |
 | tool.export_release_attempt_index | tool | Export Release Attempt Index | python tools/export_release_attempt_index.py |
 | tool.export_release_burn_lineage | tool | Export Release Burn Lineage | python tools/export_release_burn_lineage.py |
@@ -306,6 +310,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.finalize_release_gate_instance | tool | Finalize Release Gate Instance | python tools/finalize_release_gate_instance.py |
 | tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
+| tool.linear_work_order_provider | tool | Linear Work Order Provider | python tools/linear_work_order_provider.py |
 | tool.list_cameras | tool | List Cameras | python tools/list_cameras.py |
 | tool.main_health_broker | tool | Main Health Broker | python tools/main_health_broker.py |
 | tool.materialize_task_work_order | tool | Materialize Task Work Order | python tools/materialize_task_work_order.py |
@@ -313,14 +318,17 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.observe_main_health | tool | Observe Main Health | python tools/observe_main_health.py |
 | tool.plan_release_qualification | tool | Plan Release Qualification | python tools/plan_release_qualification.py |
 | tool.plot_compute_backend_comparison | tool | Plot Compute Backend Comparison | python tools/plot_compute_backend_comparison.py |
+| tool.prepare_delegate_merge_request | tool | Prepare Delegate Merge Request | python tools/prepare_delegate_merge_request.py |
 | tool.prepare_release_gate_input | tool | Prepare Release Gate Input | python tools/prepare_release_gate_input.py |
 | tool.prepare_release_impact_manifest | tool | Prepare Release Impact Manifest | python tools/prepare_release_impact_manifest.py |
 | tool.preview_world_overlay | tool | Preview World Overlay | python tools/preview_world_overlay.py |
 | tool.preview_world_overlay_multi | tool | Preview World Overlay Multi | python tools/preview_world_overlay_multi.py |
 | tool.preview_world_overlay_multi_ws | tool | Preview World Overlay Multi Ws | python tools/preview_world_overlay_multi_ws.py |
 | tool.preview_zones_overlay | tool | Preview Zones Overlay | python tools/preview_zones_overlay.py |
+| tool.program_delegation | tool | Program Delegation | python tools/program_delegation.py |
 | tool.promote_release_candidate | tool | Promote Release Candidate | python tools/promote_release_candidate.py |
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
+| tool.protected_source | tool | Protected Source | python tools/protected_source.py |
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
 | tool.record_postpublication_conflict | tool | Record Postpublication Conflict | python tools/record_postpublication_conflict.py |
 | tool.record_release_approval | tool | Record Release Approval | python tools/record_release_approval.py |
@@ -343,6 +351,8 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.session_health_summary | tool | Session Health Summary | python tools/session_health_summary.py |
 | tool.start_metriplane | tool | Start Metriplane | tools/start_metriplane.sh |
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
+| tool.task_attestation_builder | tool | Task Attestation Builder | python tools/task_attestation_builder.py |
+| tool.task_authority_attestor | tool | Task Authority Attestor | python tools/task_authority_attestor.py |
 | tool.task_delegation | tool | Task Delegation | python tools/task_delegation.py |
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
 | tool.update_last_known_good | tool | Update Last Known Good | python tools/update_last_known_good.py |

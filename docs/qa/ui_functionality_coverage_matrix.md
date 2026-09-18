@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7dba24f20437c582`
+Canonical projection SHA-256: `c01fca1fd6071c102c296c832d8a302403fe23a8ac4c6cf588fcabc4bc671d96`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -144,10 +144,13 @@ Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7
 | tool.check_work_order_catalog | Check Work Order Catalog | tools/check_work_order_catalog.py | python tools/check_work_order_catalog.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.collect_publication_observations | Collect Publication Observations | tools/collect_publication_observations.py | python tools/collect_publication_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.command_center_up | Command Center Up | tools/command_center_up.sh | tools/command_center_up.sh | web/dashboard/* | command_center_up.sh | ui_copy_command_only | P2 |  |
+| tool.complete_delegated_task | Complete Delegated Task | tools/complete_delegated_task.py | python tools/complete_delegated_task.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | web/dashboard/* | dashboard_runner.sh | ui_copy_command_only | P2 |  |
 | tool.debug_alignment | Debug Alignment | tools/debug_alignment.py | python tools/debug_alignment.py | web/dashboard/* | debug_alignment.py | ui_copy_command_only | P2 |  |
+| tool.delegated_merge | Delegated Merge | tools/delegated_merge.py | python tools/delegated_merge.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.delegated_task_authority | Delegated Task Authority | tools/delegated_task_authority.py | python tools/delegated_task_authority.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.demo4_everything | Demo4 Everything | tools/demo4_everything.sh | tools/demo4_everything.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.discover_functional_surface | Discover Functional Surface | tools/discover_functional_surface.py | python tools/discover_functional_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.discover_public_surface | Discover Public Surface | tools/discover_public_surface.py | python tools/discover_public_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -157,6 +160,7 @@ Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7
 | tool.docker_live_up | Docker Live Up | tools/docker_live_up.sh | tools/docker_live_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_smoke_test | Docker Smoke Test | tools/docker_smoke_test.sh | tools/docker_smoke_test.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_stop | Docker Stop | tools/docker_stop.sh | tools/docker_stop.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.ed25519_envelope | Ed25519 Envelope | tools/ed25519_envelope.py | python tools/ed25519_envelope.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.execute_release_qualification | Execute Release Qualification | tools/execute_release_qualification.py | python tools/execute_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.export_release_attempt_index | Export Release Attempt Index | tools/export_release_attempt_index.py | python tools/export_release_attempt_index.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.export_release_burn_lineage | Export Release Burn Lineage | tools/export_release_burn_lineage.py | python tools/export_release_burn_lineage.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -165,6 +169,7 @@ Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7
 | tool.finalize_release_gate_instance | Finalize Release Gate Instance | tools/finalize_release_gate_instance.py | python tools/finalize_release_gate_instance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.freeze_release_source | Freeze Release Source | tools/freeze_release_source.py | python tools/freeze_release_source.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.jetson_preflight | Jetson Preflight | tools/jetson_preflight.sh | tools/jetson_preflight.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.linear_work_order_provider | Linear Work Order Provider | tools/linear_work_order_provider.py | python tools/linear_work_order_provider.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
 | tool.main_health_broker | Main Health Broker | tools/main_health_broker.py | python tools/main_health_broker.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.materialize_task_work_order | Materialize Task Work Order | tools/materialize_task_work_order.py | python tools/materialize_task_work_order.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -172,14 +177,17 @@ Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7
 | tool.observe_main_health | Observe Main Health | tools/observe_main_health.py | python tools/observe_main_health.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.plan_release_qualification | Plan Release Qualification | tools/plan_release_qualification.py | python tools/plan_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.plot_compute_backend_comparison | Plot Compute Backend Comparison | tools/plot_compute_backend_comparison.py | python tools/plot_compute_backend_comparison.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.prepare_delegate_merge_request | Prepare Delegate Merge Request | tools/prepare_delegate_merge_request.py | python tools/prepare_delegate_merge_request.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.prepare_release_gate_input | Prepare Release Gate Input | tools/prepare_release_gate_input.py | python tools/prepare_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.prepare_release_impact_manifest | Prepare Release Impact Manifest | tools/prepare_release_impact_manifest.py | python tools/prepare_release_impact_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay | Preview World Overlay | tools/preview_world_overlay.py | python tools/preview_world_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay_multi | Preview World Overlay Multi | tools/preview_world_overlay_multi.py | python tools/preview_world_overlay_multi.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay_multi_ws | Preview World Overlay Multi Ws | tools/preview_world_overlay_multi_ws.py | python tools/preview_world_overlay_multi_ws.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_zones_overlay | Preview Zones Overlay | tools/preview_zones_overlay.py | python tools/preview_zones_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.program_delegation | Program Delegation | tools/program_delegation.py | python tools/program_delegation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.promote_release_candidate | Promote Release Candidate | tools/promote_release_candidate.py | python tools/promote_release_candidate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.proof_m8_fusion | Proof M8 Fusion | tools/proof_m8_fusion.sh | tools/proof_m8_fusion.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.protected_source | Protected Source | tools/protected_source.py | python tools/protected_source.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_postpublication_conflict | Record Postpublication Conflict | tools/record_postpublication_conflict.py | python tools/record_postpublication_conflict.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_approval | Record Release Approval | tools/record_release_approval.py | python tools/record_release_approval.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -202,6 +210,8 @@ Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.stop_the_line | Stop The Line | tools/stop_the_line.py | python tools/stop_the_line.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.task_attestation_builder | Task Attestation Builder | tools/task_attestation_builder.py | python tools/task_attestation_builder.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.task_authority_attestor | Task Authority Attestor | tools/task_authority_attestor.py | python tools/task_authority_attestor.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_delegation | Task Delegation | tools/task_delegation.py | python tools/task_delegation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.ui_safe_cleanup | Ui Safe Cleanup | tools/ui_safe_cleanup.py | python tools/ui_safe_cleanup.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 | tool.update_last_known_good | Update Last Known Good | tools/update_last_known_good.py | python tools/update_last_known_good.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
