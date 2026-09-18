@@ -283,7 +283,9 @@ def main() -> int:
     try:
         root = args.repository_root.resolve(strict=True)
         if args.out.resolve().is_relative_to(root):
-            raise RequestPreparationError("delegate request output must remain outside the repository")
+            raise RequestPreparationError(
+                "delegate request output must remain outside the repository"
+            )
         result = prepare(
             repository_root=root,
             pull_number=args.pull_request,

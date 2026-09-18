@@ -197,6 +197,8 @@ DELEGATE_FORBIDDEN_PREFIXES = (".github/", "scripts/systemd/")
 
 def _delegate_path_is_forbidden(path: str) -> bool:
     return path in DELEGATE_FORBIDDEN_PATHS or path.startswith(DELEGATE_FORBIDDEN_PREFIXES)
+
+
 REQUEST_FIELDS = {
     "base_ref",
     "base_sha",
