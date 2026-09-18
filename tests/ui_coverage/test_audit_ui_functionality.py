@@ -520,7 +520,7 @@ def test_current_governed_surface_has_exact_measured_counts():
         "cli": 23,
         "operator_api": 28,
         "runner_api": 6,
-        "tool": 128,
+        "tool": 138,
     }
     assert {
         key: audit.summary[key]
