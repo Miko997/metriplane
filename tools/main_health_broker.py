@@ -30,7 +30,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn
 
+from metriplane.release_control import canonical_json as strict_canonical_json
 from tools import check_pr_contract, observe_main_health, stop_the_line
+from tools.delegated_merge import (
+    DelegatedMergeError,
+    select_delegate_admission,
+    validate_delegate_package_at_base,
+)
+from tools.task_delegation import DelegationError
 
 APP_INTEGRATION_ID = 4722589
 ACTIONS_INTEGRATION_ID = 15368
@@ -147,6 +154,51 @@ OWNER_REQUEST_MARKER = "metriplane-owner-merge-request:v1"
 OWNER_REPAIR_REQUEST_MARKER = "metriplane-owner-repair-request:v1"
 OWNER_AUTHORIZATION_MODE = "single-maintainer-owner-attestation"
 OWNER_EMERGENCY_MODE = "single-maintainer-owner-emergency"
+DELEGATE_REQUEST_MAX_BYTES = 2_000_000
+DELEGATE_PROGRAM_GRANT_PATH = "docs/status/v05-program-delegation.json"
+DELEGATE_FORBIDDEN_PATHS = frozenset(
+    {
+        "docs/status/task-delegation-authority.json",
+        "docs/status/v05-program-delegation.json",
+        "docs/status/task-work-orders.json",
+        "tools/main_health_broker.py",
+        "tools/stop_the_line.py",
+        "tools/check_work_order_catalog.py",
+        "tools/check_pr_contract.py",
+        "tools/task_delegation.py",
+        "tools/program_delegation.py",
+        "tools/delegated_task_authority.py",
+        "tools/delegated_merge.py",
+        "tools/task_authority_attestor.py",
+        "tools/complete_delegated_task.py",
+        "tools/prepare_delegate_merge_request.py",
+        "tools/ed25519_envelope.py",
+        "tools/protected_source.py",
+        "tools/linear_work_order_provider.py",
+        "tools/task_attestation_builder.py",
+        "tools/materialize_task_work_order.py",
+        "tools/validate_task_work_order.py",
+        "schemas/metriplane.program-delegation.v1.schema.json",
+        "schemas/metriplane.task-delegation.v2.schema.json",
+        "schemas/metriplane.task-delegation.v1.schema.json",
+        "schemas/metriplane.task-delegation-authority.v1.schema.json",
+        "schemas/metriplane.task-work-order.v2.schema.json",
+        "schemas/metriplane.mp2-work-order-set.v1.schema.json",
+        "schemas/metriplane.delegate-merge-request.v1.schema.json",
+        "schemas/metriplane.delegate-merge-package.v1.schema.json",
+        "docs/maintainers/main-health-broker.md",
+        "docs/maintainers/task-delegation.md",
+        "scripts/systemd/metriplane-task-attestor@.service",
+        "scripts/systemd/metriplane-main-health-broker.service",
+    }
+)
+DELEGATE_FORBIDDEN_PREFIXES = (".github/", "scripts/systemd/")
+
+
+def _delegate_path_is_forbidden(path: str) -> bool:
+    return path in DELEGATE_FORBIDDEN_PATHS or path.startswith(DELEGATE_FORBIDDEN_PREFIXES)
+
+
 REQUEST_FIELDS = {
     "base_ref",
     "base_sha",
@@ -335,6 +387,57 @@ def _load_object(path: Path) -> dict[str, Any]:
         raise BrokerError(f"cannot read broker configuration {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise BrokerError("broker configuration must be an object")
+    return value
+
+
+def _read_delegate_package(state_root: Path, pull_number: int) -> dict[str, Any] | None:
+    """Read one local machine request without trusting paths inside its body."""
+    if pull_number <= 0:
+        raise BrokerError("delegate request PR number is invalid")
+    inbox = state_root / "delegate-requests"
+    try:
+        directory = inbox.lstat()
+    except FileNotFoundError:
+        return None
+    if (
+        not stat.S_ISDIR(directory.st_mode)
+        or directory.st_uid != os.geteuid()
+        or stat.S_IMODE(directory.st_mode) & 0o077
+    ):
+        raise BrokerError("delegate request inbox is not privately App-owned")
+    path = inbox / f"{pull_number}.json"
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise BrokerError("delegate request inbox entry is unreadable") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or metadata.st_nlink != 1
+            or metadata.st_size > DELEGATE_REQUEST_MAX_BYTES
+        ):
+            raise BrokerError("delegate request inbox entry is not privately App-owned")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            raw = stream.read(DELEGATE_REQUEST_MAX_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if len(raw) > DELEGATE_REQUEST_MAX_BYTES:
+        raise BrokerError("delegate request inbox entry exceeds the size limit")
+    try:
+        value = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise BrokerError("delegate request inbox entry is malformed JSON") from exc
+    try:
+        canonical = strict_canonical_json(value) + b"\n"
+    except ValueError as exc:
+        raise BrokerError("delegate request inbox entry is not canonical JSON") from exc
+    if not isinstance(value, dict) or raw != canonical:
+        raise BrokerError("delegate request inbox entry is not canonical JSON")
     return value
 
 
@@ -6765,7 +6868,7 @@ class Broker:
         self, *, admission: dict[str, Any], token: str, reserved: bool = False
     ) -> None:
         """Renew only never-admitted history; expiry never retires a transaction."""
-        if admission["kind"] != "owner-normal":
+        if admission["kind"] not in {"owner-normal", "delegate-normal"}:
             return
         inventory = self.spool.request_inventory()
         same_head = [
@@ -6946,7 +7049,7 @@ class Broker:
             state_branch=state_branch,
             token=token,
         )
-        if sealed_admission["kind"] in {"normal", "owner-normal"}:
+        if sealed_admission["kind"] in {"normal", "owner-normal", "delegate-normal"}:
             _validate_state_for_admission(
                 admission=sealed_admission,
                 config=self.config,
@@ -6968,7 +7071,7 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
-        if sealed_admission["kind"] in {"normal", "owner-normal"}:
+        if sealed_admission["kind"] in {"normal", "owner-normal", "delegate-normal"}:
             verified_state = HealthReconciler(
                 api=self.api,
                 config=self.config,
@@ -7323,31 +7426,48 @@ class Broker:
                     reviews=reviews,
                 )
             except BrokerError:
-                if not any(
+                has_owner_request = any(
                     isinstance(review.get("body"), str)
                     and review["body"].startswith(OWNER_REQUEST_MARKER)
                     for review in reviews
+                )
+                if has_owner_request:
+                    owner_context = _owner_provider_context(
+                        self.api,
+                        config=self.config,
+                        provider_now=provider_now,
+                        pull=pull,
+                        repair=False,
+                        settings_token=settings_token,
+                        state=state,
+                        state_branch=state_branch,
+                        token=token,
+                    )
+                    return select_admission(
+                        commits=commits,
+                        now=provider_now,
+                        owner_context=owner_context,
+                        pull=pull,
+                        repository=self.config.repository,
+                        reviewer_permissions=reviewer_permissions,
+                        reviews=reviews,
+                    )
+                # A machine request is not a GitHub review and cannot rescue a
+                # malformed or unapproved human request on the same PR.
+                if any(
+                    isinstance(review.get("body"), str)
+                    and review["body"].startswith((REQUEST_MARKER, REPAIR_REQUEST_MARKER))
+                    for review in reviews
                 ):
                     raise
-                owner_context = _owner_provider_context(
-                    self.api,
-                    config=self.config,
+                return self._select_delegate_provider_admission(
+                    commits=commits,
                     provider_now=provider_now,
                     pull=pull,
-                    repair=False,
                     settings_token=settings_token,
                     state=state,
                     state_branch=state_branch,
                     token=token,
-                )
-                return select_admission(
-                    commits=commits,
-                    now=provider_now,
-                    owner_context=owner_context,
-                    pull=pull,
-                    repository=self.config.repository,
-                    reviewer_permissions=reviewer_permissions,
-                    reviews=reviews,
                 )
         if state.get("status") == "red":
             try:
@@ -7389,6 +7509,112 @@ class Broker:
                     state=state,
                 )
         raise BrokerError("main-health state cannot admit a pull request")
+
+    def _select_delegate_provider_admission(
+        self,
+        *,
+        commits: list[dict[str, Any]],
+        provider_now: datetime,
+        pull: dict[str, Any],
+        settings_token: str,
+        state: dict[str, Any],
+        state_branch: StateBranch,
+        token: str,
+    ) -> dict[str, Any]:
+        _commit_actor_ids(commits)
+        number = _require_positive_int(pull.get("number"), "delegate pull request number")
+        package = _read_delegate_package(self.config.state_root, number)
+        if package is None:
+            raise BrokerError("pull request has no exact provider or machine merge request")
+        base = pull.get("base")
+        head = pull.get("head")
+        if not isinstance(base, dict) or not isinstance(head, dict):
+            raise BrokerError("delegate pull request head/base is malformed")
+        base_sha = _require_sha(base.get("sha"), "delegate pull base SHA")
+        head_sha = _require_sha(head.get("sha"), "delegate pull head SHA")
+        if _main_ref(self.api, config=self.config, token=token) != base_sha:
+            raise BrokerError("delegate pull base is not current protected main")
+        context = _owner_provider_context(
+            self.api,
+            config=self.config,
+            provider_now=provider_now,
+            pull=pull,
+            repair=False,
+            settings_token=settings_token,
+            state=state,
+            state_branch=state_branch,
+            token=token,
+        )
+        _files, changed_paths = _provider_changed_paths(
+            self.api, config=self.config, pull=pull, token=token
+        )
+        if digest(changed_paths) != context["changed_paths_digest"]:
+            raise BrokerError("delegate changed-path inventory changed during provider read")
+        if any(_delegate_path_is_forbidden(path) for path in changed_paths):
+            raise BrokerError("delegate PR changes its own authority or broker boundary")
+        head_commit = self.api.request(
+            f"repos/{self.config.repository}/git/commits/{head_sha}", token=token
+        ).value
+        if not isinstance(head_commit, dict) or head_commit.get("sha") != head_sha:
+            raise BrokerError("delegate PR head commit is not provider-bound")
+        tree = head_commit.get("tree")
+        if not isinstance(tree, dict):
+            raise BrokerError("delegate PR head tree is unavailable")
+        head_tree = _require_sha(tree.get("sha"), "delegate PR head tree")
+        with tempfile.TemporaryDirectory(
+            dir=self.config.state_root, prefix="delegate-base-"
+        ) as temporary:
+            root = Path(temporary)
+            _git(root, "init", "--quiet", token=token)
+            _git(
+                root,
+                "remote",
+                "add",
+                "origin",
+                f"https://github.com/{self.config.repository}.git",
+                token=token,
+            )
+            _git(root, "fetch", "--quiet", "origin", "refs/heads/main", token=token)
+            _git(root, "checkout", "--quiet", "--detach", "FETCH_HEAD", token=token)
+            checked_out = _git(root, "rev-parse", "HEAD", token=token).stdout.decode().strip()
+            if checked_out != base_sha:
+                raise BrokerError("delegate work-order source is not exact protected main")
+            try:
+                work_order, validated = validate_delegate_package_at_base(
+                    package,
+                    exact_base_root=root,
+                    temporary_root=self.config.state_root,
+                    provider_now=provider_now.replace(microsecond=0)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                )
+                grant = json.loads((root / DELEGATE_PROGRAM_GRANT_PATH).read_bytes())
+                authority = json.loads(
+                    (root / "docs/status/task-delegation-authority.json").read_bytes()
+                )
+                catalog = json.loads((root / "docs/status/task-work-orders.json").read_bytes())
+                admission = select_delegate_admission(
+                    package["request"],
+                    grant=grant,
+                    authority=authority,
+                    catalog=catalog,
+                    work_order=work_order,
+                    validated_work_order=validated,
+                    pull=pull,
+                    head_tree=head_tree,
+                    changed_paths=changed_paths,
+                    owner_context=context,
+                    state=state,
+                    provider_now=provider_now.replace(microsecond=0)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                    owner_id=context["owner_id"],
+                )
+            except (DelegatedMergeError, DelegationError, ValueError, OSError) as exc:
+                raise BrokerError("delegate machine request is not independently valid") from exc
+        if _main_ref(self.api, config=self.config, token=token) != base_sha:
+            raise BrokerError("protected main changed during delegate admission")
+        return admission
 
     def _process_pull(
         self,
@@ -7439,7 +7665,7 @@ class Broker:
         if check_run_id is None:
             raise BrokerError("pull request has no canonical failed broker check")
         self._guard_owner_transaction(admission=admission, token=token)
-        if admission["kind"] in {"normal", "owner-normal"}:
+        if admission["kind"] in {"normal", "owner-normal", "delegate-normal"}:
             _validate_state_for_admission(
                 admission=admission,
                 config=self.config,
@@ -7492,7 +7718,7 @@ class Broker:
             state_branch=state_branch,
             token=token,
         )
-        if admission["kind"] in {"normal", "owner-normal"}:
+        if admission["kind"] in {"normal", "owner-normal", "delegate-normal"}:
             _validate_state_for_admission(
                 admission=admission_again,
                 config=self.config,
@@ -7520,7 +7746,7 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
-        if admission["kind"] in {"normal", "owner-normal"}:
+        if admission["kind"] in {"normal", "owner-normal", "delegate-normal"}:
             verified_state = HealthReconciler(
                 api=self.api,
                 config=self.config,
@@ -7568,7 +7794,7 @@ class Broker:
             state_branch=state_branch,
             token=token,
         )
-        if admission["kind"] in {"normal", "owner-normal"}:
+        if admission["kind"] in {"normal", "owner-normal", "delegate-normal"}:
             _validate_state_for_admission(
                 admission=final_admission,
                 config=self.config,
@@ -7577,7 +7803,7 @@ class Broker:
             )
         if final_admission != admission:
             raise BrokerError("provider admission changed immediately before merge")
-        if final_admission["kind"] in {"owner-normal", "owner-repair"}:
+        if final_admission["kind"] in {"owner-normal", "owner-repair", "delegate-normal"}:
             sealed_pull, sealed_reviews, sealed_commits = _pull_snapshot(
                 self.api,
                 config=self.config,
@@ -7607,7 +7833,7 @@ class Broker:
                 state_branch=state_branch,
                 token=token,
             )
-            if sealed_admission["kind"] == "owner-normal":
+            if sealed_admission["kind"] in {"owner-normal", "delegate-normal"}:
                 _validate_state_for_admission(
                     admission=sealed_admission,
                     config=self.config,
