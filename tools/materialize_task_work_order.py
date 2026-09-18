@@ -29,6 +29,25 @@ except ImportError:
 
 SCHEMA_VERSION = "metriplane.task-work-order.v2"
 PRODUCTION_AUTHORITY_PATH = Path("docs/status/task-delegation-authority.json")
+MP2_018_ORIGINAL_DEPENDENCIES = (
+    "MP2-000",
+    "MP2-001",
+    "MP2-002",
+    "MP2-003",
+    "MP2-004",
+    "MP2-005",
+    "MP2-006",
+    "MP2-007",
+    "MP2-010",
+    "MP2-011",
+    "MP2-012",
+    "MP2-013",
+    "MP2-014",
+    "MP2-015",
+    "MP2-016",
+    "MP2-017",
+)
+MP2_018_DEFERRED_TO_V0_4_1 = frozenset({"MP2-007", "MP2-014", "MP2-015", "MP2-016", "MP2-017"})
 
 
 class MaterializationError(ValueError):
@@ -91,6 +110,19 @@ def _validate_relations(catalog: Mapping[str, Any], snapshot: Mapping[str, Any])
         for row in catalog["tasks"]
         for dependency in row["authoritative_blocked_by"]
     }
+    # MET-155's owner-approved v0.4.0 release rescue supersedes only this
+    # historical row's five deferred dependencies. The frozen catalog remains
+    # byte-for-byte intact; every other live relation still has to match it.
+    rescue_rows = [row for row in catalog["tasks"] if row["task_id"] == "MP2-018"]
+    if (
+        len(rescue_rows) != 1
+        or rescue_rows[0]["linear_issue"] != "MET-155"
+        or tuple(rescue_rows[0]["authoritative_blocked_by"]) != MP2_018_ORIGINAL_DEPENDENCIES
+    ):
+        raise InputError("MP2-018 frozen dependency authority changed unexpectedly")
+    expected.difference_update(
+        (issue_by_task[task_id], "MET-155") for task_id in MP2_018_DEFERRED_TO_V0_4_1
+    )
     edges = snapshot.get("edges")
     if not isinstance(edges, list):
         raise InputError("Linear snapshot edges must be a list")
