@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.program-delegation.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "synthetic", "subject", "subject_digest", "signature"],
+  "properties": {
+    "schema_version": {"const": "metriplane.program-delegation.v1"},
+    "synthetic": {"type": "boolean"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grant_id", "grantor", "delegate", "attestor", "scope", "issued_at", "expires_at", "signing_key_id"],
+      "properties": {
+        "grant_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "grantor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "actor_id", "role"],
+          "properties": {
+            "provider": {"enum": ["github", "linear"]},
+            "actor_id": {"type": "string", "minLength": 1},
+            "role": {"const": "repository_owner"}
+          }
+        },
+        "delegate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "executor_id", "key_id", "public_key_hex"],
+          "properties": {
+            "kind": {"const": "codex_goal"},
+            "executor_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+            "key_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "public_key_hex": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "attestor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "service", "key_id", "public_key_hex"],
+          "properties": {
+            "kind": {"const": "isolated_provider_attestor"},
+            "service": {"const": "metriplane-health"},
+            "key_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "public_key_hex": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "project_id", "milestone", "task_ids", "permitted_actions", "prohibited_actions"],
+          "properties": {
+            "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+            "project_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+            "milestone": {"const": "v0.5"},
+            "task_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^MP2-[0-9]{3}$"}},
+            "permitted_actions": {"const": ["materialize_task_work_order", "request_owner_normal_merge"]},
+            "prohibited_actions": {"const": ["owner_emergency_repair", "publication", "release_decision", "repository_settings", "subdelegation"]}
+          }
+        },
+        "issued_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+        "expires_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+        "signing_key_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "subject_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "actor_id", "key_id", "signature"],
+      "properties": {
+        "provider": {"enum": ["github", "linear"]},
+        "actor_id": {"type": "string", "minLength": 1},
+        "key_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "signature": {"type": "string", "pattern": "^[0-9a-f]{128}$"}
+      }
+    }
+  }
+}

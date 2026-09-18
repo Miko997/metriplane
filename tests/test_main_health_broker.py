@@ -37,6 +37,96 @@ TREE_SHA = "d" * 40
 NOW = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "docs/status/v05-program-delegation.json",
+        "tools/main_health_broker.py",
+        ".github/workflows/ci.yml",
+        "scripts/systemd/metriplane-task-attestor@.service",
+    ],
+)
+def test_delegate_merge_cannot_edit_its_own_authority_or_hosted_checks(path: str) -> None:
+    assert broker._delegate_path_is_forbidden(path)
+    assert not broker._delegate_path_is_forbidden("metriplane/atlas/cli.py")
+
+
+def test_delegate_inbox_requires_canonical_private_regular_file(tmp_path: Path) -> None:
+    inbox = tmp_path / "delegate-requests"
+    inbox.mkdir(mode=0o700)
+    assert broker._read_delegate_package(tmp_path, 135) is None
+    request = inbox / "135.json"
+    request.write_bytes(broker.canonical_bytes({"request": {"subject": "fixture"}}))
+    request.chmod(0o600)
+    assert broker._read_delegate_package(tmp_path, 135) == {"request": {"subject": "fixture"}}
+    request.chmod(0o644)
+    with pytest.raises(broker.BrokerError, match="privately App-owned"):
+        broker._read_delegate_package(tmp_path, 135)
+    request.unlink()
+    request.symlink_to(inbox / "absent.json")
+    with pytest.raises(broker.BrokerError):
+        broker._read_delegate_package(tmp_path, 135)
+
+
+def test_delegate_inbox_rejects_noncanonical_and_oversize(tmp_path: Path) -> None:
+    inbox = tmp_path / "delegate-requests"
+    inbox.mkdir(mode=0o700)
+    request = inbox / "135.json"
+    request.write_bytes(b'{"request": {}}\n')
+    request.chmod(0o600)
+    with pytest.raises(broker.BrokerError, match="canonical"):
+        broker._read_delegate_package(tmp_path, 135)
+    request.write_bytes(b"x" * (broker.DELEGATE_REQUEST_MAX_BYTES + 1))
+    with pytest.raises(broker.BrokerError, match="privately App-owned"):
+        broker._read_delegate_package(tmp_path, 135)
+
+
+def test_delegate_admission_is_only_a_green_state_nonhuman_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    target = object.__new__(broker.Broker)
+    target.config = _config(tmp_path)
+    calls: list[str] = []
+
+    def delegated(_self: broker.Broker, **_kwargs: object) -> dict[str, str]:
+        calls.append("delegate")
+        return {"kind": "delegate-normal"}
+
+    monkeypatch.setattr(broker.Broker, "_select_delegate_provider_admission", delegated)
+    kwargs: dict[str, Any] = {
+        "commits": [],
+        "provider_now": NOW,
+        "pull": {"number": 135},
+        "reviewer_permissions": {},
+        "reviews": [],
+        "settings_token": "fixture",
+        "state": {"status": "green"},
+        "state_branch": None,
+        "token": "fixture",
+    }
+    monkeypatch.setattr(broker, "select_admission", lambda **_ignored: {"kind": "normal"})
+    assert target._select_provider_authorization(**kwargs) == {"kind": "normal"}
+    assert calls == []
+
+    def no_human_admission(**_ignored: object) -> None:
+        raise broker.BrokerError("no human admission")
+
+    monkeypatch.setattr(broker, "select_admission", no_human_admission)
+    assert target._select_provider_authorization(**kwargs) == {"kind": "delegate-normal"}
+    assert calls == ["delegate"]
+    kwargs["reviews"] = [{"body": broker.REQUEST_MARKER + "\nmalformed"}]
+    with pytest.raises(broker.BrokerError, match="no human admission"):
+        target._select_provider_authorization(**kwargs)
+    assert calls == ["delegate"]
+    kwargs["reviews"] = []
+    kwargs["state"] = {"status": "red"}
+    monkeypatch.setattr(broker, "select_repair_admission", no_human_admission)
+    with pytest.raises(broker.BrokerError, match="no human admission"):
+        target._select_provider_authorization(**kwargs)
+    assert calls == ["delegate"]
+
+
 def _config(tmp_path: Path) -> broker.BrokerConfig:
     return broker.BrokerConfig.from_mapping(
         {

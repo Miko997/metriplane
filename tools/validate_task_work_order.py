@@ -21,10 +21,12 @@ except ImportError:
     from check_work_order_catalog import validate_catalog
 
 try:
+    from tools.delegated_task_authority import validate_delegated_task
     from tools.materialize_task_work_order import NotReady as MaterializationNotReady
     from tools.materialize_task_work_order import build as rebuild_work_order
     from tools.task_delegation import DelegationNotReady, parse_utc, validate_delegation
 except ImportError:
+    from delegated_task_authority import validate_delegated_task
     from materialize_task_work_order import NotReady as MaterializationNotReady
     from materialize_task_work_order import build as rebuild_work_order
     from task_delegation import DelegationNotReady, parse_utc, validate_delegation
@@ -241,21 +243,22 @@ def validate(
         work_order["evaluated_at"], "materialization time"
     ):
         raise ValidationError("validation time precedes materialization")
-    validate_delegation(
-        delegation,
-        authority,
-        snapshot,
-        task_id=work_order["task_id"],
-        linear_issue=work_order["linear_issue"],
-        repository=repository,
-        project_id=project_id,
-        base_sha=work_order["base_sha"],
-        base_tree=work_order["base_tree"],
-        grantor_id=grantor_id,
-        executor_id=executor_id,
-        evaluated_at=validated_at,
-        live=not fixture_mode,
-    )
+    common = {
+        "task_id": work_order["task_id"],
+        "linear_issue": work_order["linear_issue"],
+        "repository": repository,
+        "project_id": project_id,
+        "base_sha": work_order["base_sha"],
+        "base_tree": work_order["base_tree"],
+        "grantor_id": grantor_id,
+        "executor_id": executor_id,
+        "evaluated_at": validated_at,
+        "live": not fixture_mode,
+    }
+    if delegation.get("schema_version") == "metriplane.task-delegation.v2":
+        validate_delegated_task(delegation, authority, _read(catalog_path), snapshot, **common)
+    else:
+        validate_delegation(delegation, authority, snapshot, **common)
     return {
         "base_sha": work_order["base_sha"],
         "checks": {

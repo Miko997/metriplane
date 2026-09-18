@@ -235,6 +235,38 @@ match the request at every admission pass. Adding an eligible collaborator or
 invitation disables the single-maintainer path immediately. It does not create
 a human push, settings, required-check, or merge bypass.
 
+### Distinct v0.5 executor merge request
+
+After a production owner program grant has been separately signed and
+protected-merged, the exact grant's Codex executor may submit a
+`metriplane.delegate-merge-request.v1` machine signature for one v0.5
+implementation PR. This is `delegate-normal`, not a GitHub review, human
+approval, or owner-emergency repair. The package is a canonical, private,
+App-owned `delegate-requests/<PR>.json` inbox entry containing the signed
+request and the complete work-order validation inputs. Its request binds the
+owner grant ID, task/work-order digest, repository/project/executor, PR and
+exact base/head/tree, changed-path, collaboration and hosted-ruleset digests,
+protected state commit/generation, nonce and at most a ten-minute provider
+lease. A private inbox entry alone supplies no authority.
+
+The broker checks the owner signature against the protected production
+keyring, the executor signature against the public key in the signed grant,
+the fresh provider-attested task instance, and independently rebuilds the
+READY work order from the exact protected base. Every changed PR path must be
+an exact destination owned by that task in its validated resolution. Governance
+and authority files are additionally forbidden from this path; `.github/` and
+`scripts/systemd/` changes require the existing human owner-normal path. Main Health
+must be green/current; the broker still requires all ordinary hosted checks,
+rulesets, provider state, replay fencing, and merge seals. Any human request
+marker on the PR uses its existing human path and cannot be rescued by a
+machine request. Red-state owner-emergency admission is unchanged. No absent
+independent-human review is ever represented as PASS.
+
+This mechanism is not active merely because the code exists. Until the owner
+grant, isolated attestor, read-only Linear credential, executor key and
+protected exact-main qualification exist, the broker fails closed and the
+existing owner-normal request path remains available.
+
 Provider reviews that carry an owner-request marker but are anchored to a prior
 head remain immutable audit history and cannot authorize the current head. The
 broker ignores those prior-head requests during current-head selection and

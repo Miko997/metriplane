@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.delegate-merge-package.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request", "work_order", "delegation", "linear_snapshot", "dependencies", "commands", "resolution"],
+  "properties": {
+    "schema_version": {"const": "metriplane.delegate-merge-package.v1"},
+    "request": {"type": "object"},
+    "work_order": {"type": "object"},
+    "delegation": {"type": "object"},
+    "linear_snapshot": {"type": "object"},
+    "dependencies": {"type": "object"},
+    "commands": {"type": "object"},
+    "resolution": {"type": "object"}
+  }
+}

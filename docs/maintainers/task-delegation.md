@@ -64,6 +64,36 @@ For v0.5.0, an independent-human review field is
 separate from the automated `READY` evidence. Later milestone separation-of-duty
 rules remain unchanged.
 
+## Optional bounded v0.5 program grant
+
+The original `metriplane.task-delegation.v1` path above remains valid. A separate
+`metriplane.program-delegation.v1` grant can authorize the exact Codex goal for
+the fixed v0.5 implementation-task set without asking the owner to re-sign on
+every new main commit. This path is inert until Miko signs the grant and its
+canonical bytes are protected-merged at
+`docs/status/v05-program-delegation.json`. The grant binds the existing owner
+keyring, repository, Linear project, executor UUID, explicit task IDs, finite
+expiry, and distinct executor and isolated provider-attestor public keys. It
+excludes MP2-049, owner-emergency repair, release, publication, repository
+settings, and further delegation. Revocation through the protected keyring or
+expiry immediately ends its authority. A fixture grant cannot authorize live
+work.
+
+For each task and exact protected-main base, the isolated
+`metriplane-task-attestor@.service` reads Main Health, protected Git objects and
+the complete current Linear relation graph. Only that service may attest the
+fresh provider snapshot; it has a separately isolated read-only Linear token
+and Ed25519 key, not Miko's private key or the Codex executor key. Codex then
+countersigns the *same* short-lived task subject with its distinct executor
+key. `metriplane.task-delegation.v2` requires both valid signatures and all
+original MP2-016 READY predicates. The v1 record and historical work orders
+are not rewritten. A missing credential, partial graph, stale base, expired
+lease, changed dependency, or absent protected grant remains NOT READY.
+
+Activation needs a protected owner-signed grant, a qualified exact-main merge,
+the isolated credentials, and a live readback of the Linear query. Merely
+merging this software does not activate unattended execution.
+
 ## Historical evidence
 
 `metriplane.task-assignment.v1` and `metriplane.task-work-order.v1` are retained

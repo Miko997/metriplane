@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.delegate-merge-request.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "subject", "subject_digest", "signature"],
+  "properties": {
+    "schema_version": {"const": "metriplane.delegate-merge-request.v1"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_id", "grant_id", "repository", "project_id", "executor_id", "task_id", "linear_issue", "work_order_id", "work_order_digest", "pull_request", "base_sha", "head_sha", "head_tree", "changed_paths_digest", "collaboration_digest", "ruleset_digests", "state_commit", "health_generation", "issued_at", "expires_at", "nonce"],
+      "properties": {
+        "request_id": {"$ref": "#/$defs/digest"},
+        "grant_id": {"$ref": "#/$defs/digest"},
+        "repository": {"const": "Miko997/metriplane"},
+        "project_id": {"const": "cf53f98f-0965-4360-a66e-530457e40354"},
+        "executor_id": {"const": "01a096e0-4e21-7a11-9f0f-fb303387c5c0"},
+        "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+        "linear_issue": {"type": "string", "pattern": "^MET-[0-9]+$"},
+        "work_order_id": {"$ref": "#/$defs/digest"},
+        "work_order_digest": {"$ref": "#/$defs/digest"},
+        "pull_request": {"type": "integer", "minimum": 1},
+        "base_sha": {"$ref": "#/$defs/sha"},
+        "head_sha": {"$ref": "#/$defs/sha"},
+        "head_tree": {"$ref": "#/$defs/sha"},
+        "changed_paths_digest": {"$ref": "#/$defs/digest"},
+        "collaboration_digest": {"$ref": "#/$defs/digest"},
+        "ruleset_digests": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/digest"}
+        },
+        "state_commit": {"$ref": "#/$defs/sha"},
+        "health_generation": {"type": "integer", "minimum": 1},
+        "issued_at": {"$ref": "#/$defs/time"},
+        "expires_at": {"$ref": "#/$defs/time"},
+        "nonce": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "subject_digest": {"$ref": "#/$defs/digest"},
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "actor_id", "key_id", "signature"],
+      "properties": {
+        "provider": {"const": "codex_goal"},
+        "actor_id": {"const": "01a096e0-4e21-7a11-9f0f-fb303387c5c0"},
+        "key_id": {"$ref": "#/$defs/digest"},
+        "signature": {"type": "string", "pattern": "^[0-9a-f]{128}$"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "time": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"}
+  }
+}

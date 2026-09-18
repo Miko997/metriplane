@@ -27,8 +27,14 @@ try:
 except ImportError:
     from task_delegation import DelegationError, DelegationNotReady, validate_delegation
 
+try:
+    from tools.delegated_task_authority import validate_delegated_task
+except ImportError:
+    from delegated_task_authority import validate_delegated_task
+
 SCHEMA_VERSION = "metriplane.task-work-order.v2"
 PRODUCTION_AUTHORITY_PATH = Path("docs/status/task-delegation-authority.json")
+PRODUCTION_PROGRAM_GRANT_PATH = Path("docs/status/v05-program-delegation.json")
 MP2_018_ORIGINAL_DEPENDENCIES = (
     "MP2-000",
     "MP2-001",
@@ -165,6 +171,21 @@ def _validate_live_authority_root(root: Path, base_sha: str, path: Path) -> None
         raise InputError("live delegation authority differs from its exact-base Git object")
 
 
+def _validate_live_program_grant(root: Path, base_sha: str, delegation: Mapping[str, Any]) -> None:
+    grant = delegation.get("program_grant")
+    if not isinstance(grant, Mapping):
+        raise InputError("live delegated task lacks its owner program grant")
+    try:
+        committed = subprocess.check_output(
+            ["git", "show", f"{base_sha}:{PRODUCTION_PROGRAM_GRANT_PATH.as_posix()}"],
+            cwd=root,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise NotReady("approved program grant is absent from the exact protected base") from exc
+    if committed != canonical_json(grant):
+        raise InputError("delegated task program grant differs from the protected Git object")
+
+
 def build(
     root: Path,
     *,
@@ -212,21 +233,24 @@ def build(
     _schema_validate(linear_snapshot, linear_snapshot_schema_path, "Linear snapshot")
     if linear_snapshot.get("provider_status") == "outage":
         raise ConnectionError("Linear relation provider outage")
-    validate_delegation(
-        delegation,
-        authority_keyring,
-        linear_snapshot,
-        task_id=task_id,
-        linear_issue=task["linear_issue"],
-        repository=repository,
-        project_id=project_id,
-        base_sha=base_sha,
-        base_tree=base_tree,
-        grantor_id=grantor_id,
-        executor_id=executor_id,
-        evaluated_at=evaluated_at,
-        live=not fixture_mode,
-    )
+    common = {
+        "task_id": task_id,
+        "linear_issue": task["linear_issue"],
+        "repository": repository,
+        "project_id": project_id,
+        "base_sha": base_sha,
+        "base_tree": base_tree,
+        "grantor_id": grantor_id,
+        "executor_id": executor_id,
+        "evaluated_at": evaluated_at,
+        "live": not fixture_mode,
+    }
+    if delegation.get("schema_version") == "metriplane.task-delegation.v2":
+        if not fixture_mode:
+            _validate_live_program_grant(root, base_sha, delegation)
+        validate_delegated_task(delegation, authority_keyring, catalog, linear_snapshot, **common)
+    else:
+        validate_delegation(delegation, authority_keyring, linear_snapshot, **common)
     relation_digest = _validate_relations(catalog, linear_snapshot)
     evidence = _read(dependency_evidence_path)
     dependencies = evidence.get("dependencies")
@@ -281,6 +305,19 @@ def build(
     if covered != expected_criteria:
         raise NotReady("commands do not cover every criterion exactly")
     resolution = _read(resolution_path)
+    if delegation.get("schema_version") == "metriplane.task-delegation.v2":
+        # The broker reconstructs these task-specific inputs from a canonical
+        # JSON package. Do not let bytewise input_digests depend on whitespace
+        # that the independently reconstructed package cannot reproduce.
+        for label, path, value in (
+            ("delegation", delegation_path, delegation),
+            ("Linear snapshot", linear_snapshot_path, linear_snapshot),
+            ("dependencies", dependency_evidence_path, evidence),
+            ("commands", command_registry_path, commands),
+            ("resolution", resolution_path, resolution),
+        ):
+            if path.read_bytes() != canonical_json(value):
+                raise InputError(f"v2 {label} input is not exact canonical JSON")
     if resolution.get("task_id") != task_id or resolution.get("status") != "RESOLVED":
         raise NotReady("owned paths and anchors are not fully resolved")
     anchors = resolution.get("anchors")

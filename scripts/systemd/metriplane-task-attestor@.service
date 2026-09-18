@@ -1,0 +1,43 @@
+[Unit]
+Description=Metriplane exact-main v0.5 task attestor for %i
+After=network-online.target time-sync.target metriplane-main-health-broker.service
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=oneshot
+User=metriplane-health
+Group=metriplane-health
+WorkingDirectory=/home/metriplane-main-health-broker
+ExecStart=/home/metriplane-main-health-broker/.venv/bin/python -m tools.task_authority_attestor --config /etc/metriplane/main-health-broker.json --task-id %i
+LoadCredentialEncrypted=github-app-private-key.pem:/etc/credstore.encrypted/metriplane-main-health-app-key
+LoadCredentialEncrypted=linear-readonly-token:/etc/credstore.encrypted/metriplane-linear-readonly-token
+LoadCredentialEncrypted=task-attestor-ed25519.pem:/etc/credstore.encrypted/metriplane-task-attestor-ed25519
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+TimeoutStartSec=10min
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProcSubset=pid
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=read-only
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProtectSystem=strict
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/home/metriplane-health/state
+ReadOnlyPaths=/etc/metriplane /home/metriplane-main-health-broker
