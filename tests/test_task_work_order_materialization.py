@@ -13,7 +13,12 @@ from typing import Any
 import pytest
 
 from metriplane.release_control import canonical_json, sha256_json
-from tools.materialize_task_work_order import NotReady, _validate_live_authority_root
+from tools.materialize_task_work_order import (
+    InputError,
+    NotReady,
+    _validate_live_authority_root,
+    _validate_relations,
+)
 from tools.task_delegation import delegation_id, key_id, tracker_snapshot_digest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,9 +136,39 @@ def _relations() -> list[dict[str, str]]:
             {"blocked": row["linear_issue"], "blocker": issue[dependency]}
             for row in CATALOG["tasks"]
             for dependency in row["authoritative_blocked_by"]
+            if not (
+                row["task_id"] == "MP2-018"
+                and dependency in {"MP2-007", "MP2-014", "MP2-015", "MP2-016", "MP2-017"}
+            )
         ],
         key=lambda row: (row["blocker"], row["blocked"]),
     )
+
+
+def test_owner_approved_mp2_018_rescue_requires_exact_live_relations() -> None:
+    snapshot = {
+        "provider_status": "available",
+        "event_cursor": "fixture-cursor-1",
+        "edges": _relations(),
+    }
+    assert _validate_relations(CATALOG, snapshot)
+
+    missing = {**snapshot, "edges": snapshot["edges"][1:]}
+    with pytest.raises(NotReady, match="differ from the catalog"):
+        _validate_relations(CATALOG, missing)
+
+    superseded = {
+        **snapshot,
+        "edges": [*snapshot["edges"], {"blocked": "MET-155", "blocker": "MET-154"}],
+    }
+    with pytest.raises(NotReady, match="differ from the catalog"):
+        _validate_relations(CATALOG, superseded)
+
+    changed_catalog = json.loads(json.dumps(CATALOG))
+    rescue_row = next(row for row in changed_catalog["tasks"] if row["task_id"] == "MP2-018")
+    rescue_row["authoritative_blocked_by"].remove("MP2-007")
+    with pytest.raises(InputError, match="frozen dependency authority"):
+        _validate_relations(changed_catalog, snapshot)
 
 
 def _snapshot(
