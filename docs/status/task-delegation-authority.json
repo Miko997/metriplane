@@ -1,0 +1,19 @@
+{
+  "keys": [
+    {
+      "actor_id": "96778fbb-c8ff-42b3-9217-7cac45dcd097",
+      "key_id": "55a7ba6d677cc402c3b39a9fe59072d50beedfcaa42084a77d2f80d586675666",
+      "not_after": "2027-09-18T00:00:00Z",
+      "not_before": "2026-09-18T00:00:00Z",
+      "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+      "provider": "linear",
+      "public_key_hex": "64b16d73c8bd4cde127b00be728a1f604f0d5ede5b108b1097bb93a4caad0ab6",
+      "repository": "Miko997/metriplane",
+      "role": "repository_owner",
+      "status": "active",
+      "trust_class": "production"
+    }
+  ],
+  "revoked_delegation_ids": [],
+  "schema_version": "metriplane.task-delegation-authority.v1"
+}

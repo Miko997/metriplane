@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from metriplane.release_control import canonical_json, sha256_json
+from tools.materialize_task_work_order import NotReady, _validate_live_authority_root
 from tools.task_delegation import delegation_id, key_id, tracker_snapshot_digest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -558,11 +559,34 @@ def test_arbitrary_production_keyring_cannot_bootstrap_live_authority(tmp_path: 
 
 
 def test_missing_production_authority_is_blocked_needs_owner(tmp_path: Path) -> None:
-    fixture = _inputs(tmp_path, synthetic=False, trust_class="production")
-    fixture.paths["authority"] = ROOT / "docs/status/task-delegation-authority.json"
-    completed = _run(tmp_path, fixture, fixture_mode=False)
-    assert completed.returncode == 3
-    assert "BLOCKED_NEEDS_OWNER" in completed.stderr
+    root = tmp_path / "repository"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Fixture Owner",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "base without production authority",
+        ],
+        check=True,
+    )
+    base_sha = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    authority_path = root / "docs/status/task-delegation-authority.json"
+    authority_path.parent.mkdir(parents=True)
+    authority_path.write_bytes((ROOT / "docs/status/task-delegation-authority.json").read_bytes())
+    with pytest.raises(NotReady, match="BLOCKED_NEEDS_OWNER"):
+        _validate_live_authority_root(root, base_sha, authority_path)
 
 
 def test_stale_snapshot_and_missing_live_relation_are_not_ready(tmp_path: Path) -> None:
