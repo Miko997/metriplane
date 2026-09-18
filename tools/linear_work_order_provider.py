@@ -196,11 +196,19 @@ def observe_project_graph(
         times.append(provider_now)
     if not times or max(times) - min(times) > dt.timedelta(minutes=5):
         raise LinearObservationError("Linear graph read exceeded the freshness interval")
-    if forward != inverse:
+    # A catalog issue may block a release-coordination issue outside this
+    # frozen catalog. Its inverse cannot be observed by this bounded query.
+    # An outside blocker of a catalog issue is still an extra, unverified
+    # dependency and must fail the reciprocal check.
+    catalog_issues = set(identifiers)
+    catalog_forward = {edge for edge in forward if edge[1] in catalog_issues}
+    if catalog_forward != inverse:
         raise LinearObservationError("Linear blocking graph is not reciprocally complete")
     return {
         "issues": observed,
-        "edges": [{"blocker": blocker, "blocked": blocked} for blocker, blocked in sorted(forward)],
-        "cursor": sha256_json({"issues": observed, "edges": sorted(forward)}),
+        "edges": [
+            {"blocker": blocker, "blocked": blocked} for blocker, blocked in sorted(catalog_forward)
+        ],
+        "cursor": sha256_json({"issues": observed, "edges": sorted(catalog_forward)}),
         "captured_at": max(times).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }

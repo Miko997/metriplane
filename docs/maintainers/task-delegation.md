@@ -53,6 +53,14 @@ The materializer returns `READY` only when all of these classes pass together:
 - dependency evidence, criterion-to-command coverage, path/anchor resolution,
   ownership, resources and all other MP2-016 conditions pass.
 
+The live Linear reader retains every catalog issue's complete relation response
+in its signed snapshot cursor. Reciprocal and exact dependency checks cover all
+edges whose blocked issue is in the frozen catalog. A catalog task may also
+block a downstream release-coordination issue outside that catalog; its inverse
+cannot be read by the bounded catalog query and is not a catalog dependency.
+An outside issue blocking a catalog task remains an extra unverified dependency
+and is rejected. In-catalog edges still require both provider directions.
+
 Invalid schema, identity, scope, base, signature, key or time input exits `2`.
 A valid but expired, revoked, stale or unmet policy condition exits `3`. A
 provider outage exits `4`. Output creation is no-overwrite. The validator is
