@@ -589,7 +589,7 @@ def test_report_binds_materialization_and_denies_runtime_claim(
     text = report.decode("utf-8")
 
     assert "Task: `MP2-013` / `MET-78`" in text
-    assert "Owned rows: `11074`" in text
+    assert "Owned rows: `11104`" in text
     assert "Materialization SHA-256" in text
     assert "no runtime, compatibility, or support claim" in text
     assert "| `manifest_keys` | `artifact_manifest_key` | 3938 |" in text
