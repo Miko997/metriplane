@@ -195,6 +195,8 @@ def main() -> int:
         authority, catalog = _qualified_main(root)
         issued = datetime.now(UTC).replace(microsecond=0)
         expires = issued + timedelta(days=30)
+        if not sys.stdin.isatty():
+            raise DelegationError("owner passphrase requires an interactive terminal")
         passphrase = getpass.getpass("Owner key passphrase (not stored): ")
         grant = prepare_grant(
             authority=authority,

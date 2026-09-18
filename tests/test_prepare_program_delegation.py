@@ -8,11 +8,13 @@ import copy
 import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from tools.ed25519_envelope import EnvelopeSigningError
+from tools import prepare_program_delegation as preparer
 from tools.prepare_program_delegation import prepare_grant
 from tools.program_delegation import validate_program_grant
 from tools.task_delegation import DelegationError
@@ -167,3 +169,35 @@ def test_revoked_owner_key_is_rejected_without_output(tmp_path: Path) -> None:
     authority["keys"][0]["status"] = "revoked"
     with pytest.raises(DelegationError, match="approved production owner key is absent"):
         _prepare(key, authority)
+
+
+def test_noninteractive_cli_never_prompts_or_writes(tmp_path: Path, monkeypatch) -> None:
+    key, authority = _fixture(tmp_path)
+    root = tmp_path / "repo"
+    root.mkdir()
+    output = root / preparer.GRANT_PATH
+    monkeypatch.setattr(preparer, "_qualified_main", lambda _root: (authority, CATALOG))
+    monkeypatch.setattr(
+        preparer.getpass,
+        "getpass",
+        lambda _prompt: pytest.fail("noninteractive owner command prompted for a secret"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "prepare_program_delegation",
+            "--repository-root",
+            str(root),
+            "--owner-key",
+            str(key),
+            "--delegate-public-key-hex",
+            "11" * 32,
+            "--attestor-public-key-hex",
+            "22" * 32,
+            "--out",
+            str(output),
+        ],
+    )
+    assert preparer.main() == 3
+    assert not output.exists()
