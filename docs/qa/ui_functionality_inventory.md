@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `c01fca1fd6071c102c296c832d8a302403fe23a8ac4c6cf588fcabc4bc671d96`
+Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902edca924a90bde1a43`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 237 |
+| actions | 238 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -319,6 +319,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.plan_release_qualification | tool | Plan Release Qualification | python tools/plan_release_qualification.py |
 | tool.plot_compute_backend_comparison | tool | Plot Compute Backend Comparison | python tools/plot_compute_backend_comparison.py |
 | tool.prepare_delegate_merge_request | tool | Prepare Delegate Merge Request | python tools/prepare_delegate_merge_request.py |
+| tool.prepare_program_delegation | tool | Prepare Program Delegation | python tools/prepare_program_delegation.py |
 | tool.prepare_release_gate_input | tool | Prepare Release Gate Input | python tools/prepare_release_gate_input.py |
 | tool.prepare_release_impact_manifest | tool | Prepare Release Impact Manifest | python tools/prepare_release_impact_manifest.py |
 | tool.preview_world_overlay | tool | Preview World Overlay | python tools/preview_world_overlay.py |

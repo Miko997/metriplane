@@ -94,6 +94,16 @@ Activation needs a protected owner-signed grant, a qualified exact-main merge,
 the isolated credentials, and a live readback of the Linear query. Merely
 merging this software does not activate unattended execution.
 
+Miko can create the public grant without hand-composing JSON or digests by
+running `python -m tools.prepare_program_delegation` on a clean, exact,
+Main-Health-current `main` checkout, supplying the two distinct machine public
+keys and the existing encrypted owner key path. The command prompts locally
+for the owner key passphrase, passes it to OpenSSL through a private file
+descriptor, verifies the signature against the protected public keyring, and
+creates only `docs/status/v05-program-delegation.json` with no overwrite. The
+private key and passphrase stay outside Git, chat, Linear and logs. The output
+is still inert until its own protected PR is merged and exact-main qualified.
+
 ## Historical evidence
 
 `metriplane.task-assignment.v1` and `metriplane.task-work-order.v1` are retained

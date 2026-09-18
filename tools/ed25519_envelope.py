@@ -18,7 +18,12 @@ class EnvelopeSigningError(ValueError):
 
 
 def sign_envelope(
-    private_key_path: Path, *, provider: str, actor_id: str, subject_digest: str
+    private_key_path: Path,
+    *,
+    provider: str,
+    actor_id: str,
+    subject_digest: str,
+    passphrase: str | None = None,
 ) -> bytes:
     """Return only signature bytes; private key material never enters Python output."""
     if not private_key_path.is_absolute() or not provider or not actor_id:
@@ -40,25 +45,40 @@ def sign_envelope(
     envelope = canonical_json(
         {"actor_id": actor_id, "provider": provider, "subject_digest": subject_digest}
     )
-    with tempfile.NamedTemporaryFile(mode="wb", prefix="ed25519-envelope-") as input_file:
-        input_file.write(envelope)
-        input_file.flush()
-        completed = subprocess.run(
-            [
-                "openssl",
-                "pkeyutl",
-                "-sign",
-                "-rawin",
-                "-inkey",
-                str(private_key_path),
-                "-in",
-                input_file.name,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=10,
-        )
+    read_fd = write_fd = None
+    try:
+        command = ["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", str(private_key_path)]
+        if passphrase is not None:
+            encoded_passphrase = passphrase.encode()
+            if (
+                not passphrase
+                or len(encoded_passphrase) > 4095
+                or "\n" in passphrase
+                or "\r" in passphrase
+                or "\x00" in passphrase
+            ):
+                raise EnvelopeSigningError("signing passphrase is invalid")
+            read_fd, write_fd = os.pipe()
+            os.write(write_fd, encoded_passphrase + b"\n")
+            os.close(write_fd)
+            write_fd = None
+            command.extend(["-passin", f"fd:{read_fd}"])
+        with tempfile.NamedTemporaryFile(mode="wb", prefix="ed25519-envelope-") as input_file:
+            input_file.write(envelope)
+            input_file.flush()
+            completed = subprocess.run(
+                [*command, "-in", input_file.name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                pass_fds=() if read_fd is None else (read_fd,),
+                check=False,
+                timeout=10,
+            )
+    finally:
+        if read_fd is not None:
+            os.close(read_fd)
+        if write_fd is not None:
+            os.close(write_fd)
     if completed.returncode != 0 or len(completed.stdout) != 64:
         raise EnvelopeSigningError("Ed25519 signing failed")
     return completed.stdout
