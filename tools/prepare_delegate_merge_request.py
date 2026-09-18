@@ -281,8 +281,11 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     try:
+        root = args.repository_root.resolve(strict=True)
+        if args.out.resolve().is_relative_to(root):
+            raise RequestPreparationError("delegate request output must remain outside the repository")
         result = prepare(
-            repository_root=args.repository_root,
+            repository_root=root,
             pull_number=args.pull_request,
             work_order_path=args.work_order,
             delegation_path=args.delegation,
