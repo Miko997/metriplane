@@ -56,6 +56,35 @@ def test_complete_reciprocal_provider_observation() -> None:
     assert len(result["cursor"]) == 64
 
 
+def test_outside_downstream_issue_does_not_require_unqueried_inverse() -> None:
+    issues = {"MET-1": _issue("MET-1"), "MET-2": _issue("MET-2")}
+    outside = {
+        "id": "relation-outside",
+        "type": "blocks",
+        "issue": {"identifier": "MET-1"},
+        "relatedIssue": {"identifier": "MET-3"},
+    }
+    issues["MET-1"]["relations"]["nodes"].append(outside)
+    result = _observe(issues)
+    assert result["edges"] == [{"blocker": "MET-1", "blocked": "MET-2"}]
+    issues["MET-1"]["relations"]["nodes"].pop()
+    assert result["cursor"] != _observe(issues)["cursor"]
+
+
+def test_outside_blocker_of_catalog_issue_remains_not_ready() -> None:
+    issues = {"MET-1": _issue("MET-1"), "MET-2": _issue("MET-2")}
+    issues["MET-2"]["inverseRelations"]["nodes"].append(
+        {
+            "id": "relation-outside",
+            "type": "blocks",
+            "issue": {"identifier": "MET-3"},
+            "relatedIssue": {"identifier": "MET-2"},
+        }
+    )
+    with pytest.raises(LinearObservationError, match="reciprocally complete"):
+        _observe(issues)
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
