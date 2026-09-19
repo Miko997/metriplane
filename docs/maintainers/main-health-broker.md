@@ -91,6 +91,10 @@ python -m tools.main_health_broker validate-config \
 ## Host setup
 
 The host requires Python 3.12, Git, OpenSSL, and systemd credential support.
+The stdlib-only broker and task-attestor virtual environment verifies Ed25519
+provider envelopes with the host OpenSSL runtime when the optional Python
+`cryptography` package is absent. A user-scoped Node installation is not part
+of the service trust or runtime boundary.
 Set `APPROVED_SHA` to the independently approved exact commit. Install that
 detached commit in the root-owned `/home/metriplane-main-health-broker`, create
 its stdlib-only virtual environment, create the dedicated non-login account,

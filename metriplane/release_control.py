@@ -22,6 +22,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
@@ -133,6 +134,55 @@ def _verify_ed25519_with_node(
     return completed.returncode == 0
 
 
+def _verify_ed25519_with_openssl(
+    public_key: bytes,
+    signature: bytes,
+    message: bytes,
+) -> bool:
+    """Use the documented host OpenSSL runtime when Python crypto is absent."""
+
+    openssl = shutil.which("openssl")
+    if openssl is None or len(public_key) != 32 or len(signature) != 64:
+        return False
+    public_key_der = bytes.fromhex("302a300506032b6570032100") + public_key
+    try:
+        with (
+            tempfile.NamedTemporaryFile(mode="wb", prefix="ed25519-public-") as public_file,
+            tempfile.NamedTemporaryFile(mode="wb", prefix="ed25519-signature-") as signature_file,
+            tempfile.NamedTemporaryFile(mode="wb", prefix="ed25519-message-") as message_file,
+        ):
+            public_file.write(public_key_der)
+            public_file.flush()
+            signature_file.write(signature)
+            signature_file.flush()
+            message_file.write(message)
+            message_file.flush()
+            completed = subprocess.run(
+                [
+                    openssl,
+                    "pkeyutl",
+                    "-verify",
+                    "-rawin",
+                    "-pubin",
+                    "-keyform",
+                    "DER",
+                    "-inkey",
+                    public_file.name,
+                    "-sigfile",
+                    signature_file.name,
+                    "-in",
+                    message_file.name,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5.0,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
 @dataclass(frozen=True)
 class ProviderAttestationVerifier:
     """Verify Ed25519 provider attestations against a public trust root."""
@@ -221,11 +271,12 @@ class ProviderAttestationVerifier:
                 Ed25519PublicKey,
             )
         except ImportError:
-            return _verify_ed25519_with_node(
+            signature_bytes = bytes.fromhex(signature_value)
+            return _verify_ed25519_with_openssl(
                 key,
-                bytes.fromhex(signature_value),
+                signature_bytes,
                 message,
-            )
+            ) or _verify_ed25519_with_node(key, signature_bytes, message)
         try:
             Ed25519PublicKey.from_public_bytes(key).verify(bytes.fromhex(signature_value), message)
         except (InvalidSignature, TypeError, ValueError):
