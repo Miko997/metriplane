@@ -181,6 +181,7 @@ jobs:
           git diff --exit-code "$candidate_commit" HEAD -- \
             "${candidate_identity_paths[@]}"
           python - "$candidate_commit" <<'PY'
+          import copy
           import hashlib
           import json
           import subprocess
@@ -280,6 +281,27 @@ jobs:
               return lock
 
 
+          def normalized_setuptools(configuration, *, expect_build_identity):
+              configuration = copy.deepcopy(configuration)
+              package_data = configuration.get("package-data")
+              if not isinstance(package_data, dict):
+                  raise SystemExit("setuptools package-data is malformed")
+              if expect_build_identity:
+                  expected_cmdclass = {
+                      "build_py": "tools.release_artifacts.BoundBuildPy",
+                      "sdist": "tools.release_artifacts.BoundSdist",
+                  }
+                  if configuration.pop("cmdclass", None) != expected_cmdclass:
+                      raise SystemExit("checkout build-identity command classes differ")
+                  if package_data.pop("metriplane", None) != ["build-info.json"]:
+                      raise SystemExit("checkout build-info package data differs")
+              elif "cmdclass" in configuration or "metriplane" in package_data:
+                  raise SystemExit(
+                      "recorded candidate unexpectedly contains build-identity packaging"
+                  )
+              return configuration
+
+
           candidate_commit = sys.argv[1]
           if (
               hashlib.sha256(read_bytes(candidate_commit, EVIDENCE_LAKE_PATH)).hexdigest()
@@ -295,11 +317,16 @@ jobs:
           checkout_pyproject = read_toml("HEAD", "pyproject.toml")
           if candidate_pyproject["project"] != checkout_pyproject["project"]:
               raise SystemExit("candidate and checkout [project] tables differ")
-          if (
-              candidate_pyproject["tool"]["setuptools"]
-              != checkout_pyproject["tool"]["setuptools"]
+          if normalized_setuptools(
+              candidate_pyproject["tool"]["setuptools"],
+              expect_build_identity=False,
+          ) != normalized_setuptools(
+              checkout_pyproject["tool"]["setuptools"],
+              expect_build_identity=True,
           ):
-              raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
+              raise SystemExit(
+                  "candidate and checkout normalized [tool.setuptools] tables differ"
+              )
           if normalized_lock(
               candidate_commit, expect_release_setuptools=False
           ) != normalized_lock("HEAD", expect_release_setuptools=True):
@@ -420,6 +447,7 @@ jobs:
           git diff --exit-code "$candidate_commit" HEAD -- \
             "${candidate_identity_paths[@]}"
           python - "$candidate_commit" <<'PY'
+          import copy
           import hashlib
           import json
           import subprocess
@@ -519,6 +547,27 @@ jobs:
               return lock
 
 
+          def normalized_setuptools(configuration, *, expect_build_identity):
+              configuration = copy.deepcopy(configuration)
+              package_data = configuration.get("package-data")
+              if not isinstance(package_data, dict):
+                  raise SystemExit("setuptools package-data is malformed")
+              if expect_build_identity:
+                  expected_cmdclass = {
+                      "build_py": "tools.release_artifacts.BoundBuildPy",
+                      "sdist": "tools.release_artifacts.BoundSdist",
+                  }
+                  if configuration.pop("cmdclass", None) != expected_cmdclass:
+                      raise SystemExit("checkout build-identity command classes differ")
+                  if package_data.pop("metriplane", None) != ["build-info.json"]:
+                      raise SystemExit("checkout build-info package data differs")
+              elif "cmdclass" in configuration or "metriplane" in package_data:
+                  raise SystemExit(
+                      "recorded candidate unexpectedly contains build-identity packaging"
+                  )
+              return configuration
+
+
           candidate_commit = sys.argv[1]
           if (
               hashlib.sha256(read_bytes(candidate_commit, EVIDENCE_LAKE_PATH)).hexdigest()
@@ -534,11 +583,16 @@ jobs:
           checkout_pyproject = read_toml("HEAD", "pyproject.toml")
           if candidate_pyproject["project"] != checkout_pyproject["project"]:
               raise SystemExit("candidate and checkout [project] tables differ")
-          if (
-              candidate_pyproject["tool"]["setuptools"]
-              != checkout_pyproject["tool"]["setuptools"]
+          if normalized_setuptools(
+              candidate_pyproject["tool"]["setuptools"],
+              expect_build_identity=False,
+          ) != normalized_setuptools(
+              checkout_pyproject["tool"]["setuptools"],
+              expect_build_identity=True,
           ):
-              raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
+              raise SystemExit(
+                  "candidate and checkout normalized [tool.setuptools] tables differ"
+              )
           if normalized_lock(
               candidate_commit, expect_release_setuptools=False
           ) != normalized_lock("HEAD", expect_release_setuptools=True):

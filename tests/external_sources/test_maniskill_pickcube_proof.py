@@ -1277,6 +1277,12 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
         assert all(unrelated_path not in block for block in parsed_identity_blocks)
     assert text.count('candidate_pyproject["project"]') == 2
     assert text.count('candidate_pyproject["tool"]["setuptools"]') == 2
+    assert text.count("def normalized_setuptools(") == 2
+    assert text.count("expect_build_identity=False") == 2
+    assert text.count("expect_build_identity=True") == 2
+    assert text.count('"build_py": "tools.release_artifacts.BoundBuildPy"') == 2
+    assert text.count('"sdist": "tools.release_artifacts.BoundSdist"') == 2
+    assert text.count('package_data.pop("metriplane", None)') == 2
     assert text.count('metadata.pop("requires-dev")') == 2
     assert text.count(f'"{SETUPTOOLS_PACKAGE_SHA256}"') == 2
     assert text.count("expect_release_setuptools=False") == 2

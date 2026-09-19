@@ -357,11 +357,14 @@ def test_section_9b_parser_rejects_missing_blank_legacy_and_unknown_flags(
 def _deterministic_build_patch() -> str:
     # An instrumented build isolates manifest determinism. The separate real
     # pinned-build test below covers the archive/backend/metadata boundary.
-    return """import gzip,io,tarfile
+    return """import gzip,io,tarfile,zipfile
 from tools import build_release_artifacts as a
-from tools.release_artifacts import _REQUIRED_SDIST_PATHS
+from tools.release_artifacts import _REQUIRED_SDIST_PATHS, write_bound_build_info
 def deterministic(source_dir,dist_dir,**kwargs):
- (dist_dir/'metriplane-0.4.0-py3-none-any.whl').write_bytes(b'synthetic deterministic wheel')
+ write_bound_build_info(source_dir,kwargs['source_sha'],kwargs['source_tree'])
+ wheel=dist_dir/'metriplane-0.4.0-py3-none-any.whl'
+ info=zipfile.ZipInfo('metriplane/build-info.json',date_time=(1980,1,1,0,0,0)); info.external_attr=0o644<<16
+ with zipfile.ZipFile(wheel,'w',compression=zipfile.ZIP_STORED) as archive: archive.writestr(info,(source_dir/'metriplane/build-info.json').read_bytes())
  stream=io.BytesIO()
  with tarfile.open(fileobj=stream,mode='w',format=tarfile.USTAR_FORMAT) as archive:
   for name in sorted(_REQUIRED_SDIST_PATHS):
