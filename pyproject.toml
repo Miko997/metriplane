@@ -125,6 +125,10 @@ warning_allowlist = []
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.cmdclass]
+build_py = "tools.release_artifacts.BoundBuildPy"
+sdist = "tools.release_artifacts.BoundSdist"
+
 [tool.setuptools.dynamic]
 version = { attr = "metriplane.__version__" }
 
@@ -134,6 +138,9 @@ include = ["metriplane*", "integrations*"]
 exclude = ["integrations.ros2*"]
 
 [tool.setuptools.package-data]
+"metriplane" = [
+  "build-info.json",
+]
 "metriplane.demo" = [
   "assets/*.jsonl",
   "assets/assembly_cell/*.yaml",

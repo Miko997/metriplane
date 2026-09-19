@@ -26,6 +26,15 @@ also seeds the uv cache used by the suite's deliberately offline historical
 installation proof. Release builds then use `python -m build --no-isolation`
 from that environment, so the retained distributions execute the installed,
 lock-governed backend rather than a separately resolved build environment.
+The configured setuptools commands derive commit and tree from the exact clean
+checkout, ignore ambient Git declarations, and embed that bound identity in both
+the wheel and source distribution. A dirty checkout fails closed, and every
+packaged source byte from a checkout must match a tracked blob in its exact HEAD;
+ignored or untracked package data is rejected. Artifact inspection requires a
+canonical bound build-info record in both distributions and matches its commit
+and tree to the governed source freeze. The governed release builder supplies
+the already validated freeze commit/tree to its Git-archive source before
+invoking the same commands.
 
 Use the exact uv executable and ignore user or system uv configuration:
 
@@ -91,9 +100,9 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 5,844 items. In the exact core
+The ordered node-id stream must contain exactly 5,854 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the integrated source profile requires 5,575 passed and 15 expected skips.
+cache, the integrated source profile requires 5,585 passed and 15 expected skips.
 Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and

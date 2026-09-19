@@ -10,15 +10,21 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import tarfile
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlencode
+
+from setuptools.command.build_py import build_py as _SetuptoolsBuildPy  # type: ignore[import-untyped]
+from setuptools.command.sdist import sdist as _SetuptoolsSdist  # type: ignore[import-untyped]
 
 PROJECT_NAME = "metriplane"
 GITHUB_API_VERSION = "2022-11-28"
@@ -31,6 +37,18 @@ _VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z.!+_-]*")
 _GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _GIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _POSITIVE_INTEGER = re.compile(r"[1-9][0-9]*\Z")
+_BUILD_INFO_SCHEMA = "metriplane.build-info.v1"
+_BUILD_INFO_KEYS = {
+    "schema_version",
+    "source_commit",
+    "source_dirty",
+    "source_tree",
+    "status",
+}
+_UNBOUND_BUILD_INFO = (
+    b'{"schema_version":"metriplane.build-info.v1","source_commit":null,'
+    b'"source_dirty":null,"source_tree":null,"status":"unbound"}'
+)
 _FORBIDDEN_ARCHIVE_PARTS = {
     ".DS_Store",
     ".env",
@@ -73,6 +91,7 @@ _ALLOWED_SDIST_TOP_LEVEL = {
     "pyproject.toml",
     "setup.cfg",
     "tests",
+    "tools",
 }
 _REQUIRED_SDIST_PATHS = {
     "LICENSE",
@@ -80,6 +99,7 @@ _REQUIRED_SDIST_PATHS = {
     "README.md",
     "pyproject.toml",
     "metriplane/__init__.py",
+    "metriplane/build-info.json",
     "metriplane/cli.py",
     "metriplane/demo/__init__.py",
     "metriplane/demo/assets/assembly_cell_missing_tool.jsonl",
@@ -88,11 +108,256 @@ _REQUIRED_SDIST_PATHS = {
     "metriplane/demo/assets/assembly_cell/process.yaml",
     "metriplane/demo/assets/assembly_cell/work_orders.csv",
     "metriplane/demo/assets/assembly_cell/workspace.yaml",
+    "tools/release_artifacts.py",
 }
 
 
 class ReleaseArtifactError(ValueError):
     """Raised when release files do not satisfy the publication contract."""
+
+
+def _canonical_build_info(commit: str, tree: str) -> tuple[dict[str, object], bytes]:
+    if _GIT_SHA.fullmatch(commit) is None or _GIT_SHA.fullmatch(tree) is None:
+        raise ReleaseArtifactError("Build-info Git identity is malformed")
+    payload: dict[str, object] = {
+        "schema_version": _BUILD_INFO_SCHEMA,
+        "source_commit": commit,
+        "source_dirty": False,
+        "source_tree": tree,
+        "status": "bound",
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return payload, encoded
+
+
+def _read_bound_build_info(path: Path) -> tuple[dict[str, object], bytes]:
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ReleaseArtifactError(
+            "Build source has unreadable or non-canonical build info"
+        ) from exc
+    return _decode_bound_build_info(raw)
+
+
+def _decode_bound_build_info(raw: bytes) -> tuple[dict[str, object], bytes]:
+    try:
+        value = json.loads(raw)
+        canonical = json.dumps(
+            value,
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ReleaseArtifactError(
+            "Build source has unreadable or non-canonical build info"
+        ) from exc
+    if raw != canonical or not isinstance(value, dict) or set(value) != _BUILD_INFO_KEYS:
+        raise ReleaseArtifactError("Build source has malformed build info")
+    commit = value.get("source_commit")
+    tree = value.get("source_tree")
+    if (
+        value.get("schema_version") != _BUILD_INFO_SCHEMA
+        or value.get("status") != "bound"
+        or not isinstance(commit, str)
+        or _GIT_SHA.fullmatch(commit) is None
+        or not isinstance(tree, str)
+        or _GIT_SHA.fullmatch(tree) is None
+        or value.get("source_dirty") is not False
+    ):
+        raise ReleaseArtifactError("Build source does not contain one bound clean identity")
+    return value, raw
+
+
+def _require_build_identity(
+    value: Mapping[str, object],
+    *,
+    expected_commit: str | None,
+    expected_tree: str | None,
+) -> None:
+    if (expected_commit is None) != (expected_tree is None):
+        raise ReleaseArtifactError("Expected build identity must provide both commit and tree")
+    if expected_commit is not None and (
+        value.get("source_commit") != expected_commit or value.get("source_tree") != expected_tree
+    ):
+        raise ReleaseArtifactError(
+            "Artifact build info does not match the expected source identity"
+        )
+
+
+def _git_file_bytes(repository_root: Path, relative_path: Path) -> bytes:
+    path = relative_path.as_posix()
+    try:
+        subprocess.run(
+            ["git", "-C", str(repository_root), "ls-files", "--error-unmatch", "--", path],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        )
+        return subprocess.run(
+            ["git", "-C", str(repository_root), "show", f"HEAD:{path}"],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise ReleaseArtifactError(f"Packaged source is not tracked by Git: {path}") from exc
+
+
+def _validate_packaged_tree(repository_root: Path, packaged_root: Path) -> None:
+    """Require every package output byte to match one tracked HEAD blob."""
+
+    for packaged_path in sorted(packaged_root.rglob("*")):
+        if not packaged_path.is_file():
+            continue
+        relative = packaged_path.relative_to(packaged_root)
+        expected = _git_file_bytes(repository_root, relative)
+        if packaged_path.read_bytes() != expected:
+            raise ReleaseArtifactError(
+                f"Packaged source differs from its tracked Git blob: {relative.as_posix()}"
+            )
+
+
+def _validate_sdist_release_tree(repository_root: Path, release_root: Path) -> None:
+    """Require non-generated sdist members to match tracked HEAD blobs exactly."""
+
+    for packaged_path in sorted(release_root.rglob("*")):
+        if not packaged_path.is_file():
+            continue
+        relative = packaged_path.relative_to(release_root)
+        if relative.as_posix() in {"PKG-INFO", "setup.cfg"} or (
+            relative.parts and relative.parts[0] == "metriplane.egg-info"
+        ):
+            continue
+        expected = _git_file_bytes(repository_root, relative)
+        if packaged_path.read_bytes() != expected:
+            raise ReleaseArtifactError(
+                f"Source-distribution input differs from its tracked Git blob: "
+                f"{relative.as_posix()}"
+            )
+
+
+def _git_build_info(repository_root: Path) -> tuple[dict[str, object], bytes]:
+    root = repository_root.resolve(strict=True)
+    try:
+        top_level = Path(
+            subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            ).stdout.strip()
+        ).resolve(strict=True)
+        if top_level != root:
+            raise ReleaseArtifactError("Build-info root is not the exact Git checkout")
+
+        def git_output(*args: str) -> str:
+            return subprocess.run(
+                ["git", "-C", str(root), *args],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            ).stdout.strip()
+
+        commit = git_output("rev-parse", "HEAD")
+        tree = git_output("rev-parse", "HEAD^{tree}")
+        dirty = git_output("status", "--porcelain", "--untracked-files=all")
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise ReleaseArtifactError(f"Cannot derive build info from Git: {exc}") from exc
+    if dirty:
+        raise ReleaseArtifactError("Build-info checkout must be clean")
+    return _canonical_build_info(commit, tree)
+
+
+def _source_build_info(repository_root: Path) -> tuple[dict[str, object], bytes]:
+    root = repository_root.resolve(strict=True)
+    if (root / ".git").exists():
+        return _git_build_info(root)
+    return _read_bound_build_info(root / "metriplane" / "build-info.json")
+
+
+def _replace_packaged_build_info(path: Path, encoded: bytes) -> None:
+    try:
+        current = path.read_bytes()
+    except OSError as exc:
+        raise ReleaseArtifactError(f"Build-info destination is missing: {path}") from exc
+    if current not in {_UNBOUND_BUILD_INFO, encoded}:
+        raise ReleaseArtifactError("Refusing to replace malformed or conflicting build info")
+    path.write_bytes(encoded)
+
+
+def write_bound_build_info(repository_root: Path, commit: str, tree: str) -> dict[str, object]:
+    """Bind an exact already-validated source archive before its canonical build."""
+
+    root = repository_root.resolve(strict=True)
+    payload, encoded = _canonical_build_info(commit, tree)
+    _replace_packaged_build_info(root / "metriplane" / "build-info.json", encoded)
+    return payload
+
+
+class BoundBuildPy(_SetuptoolsBuildPy):  # type: ignore[misc]
+    """Copy package sources, then replace the placeholder with verified build identity."""
+
+    def run(self) -> None:
+        repository_root = Path.cwd().resolve(strict=True)
+        _payload, encoded = _source_build_info(repository_root)
+        super().run()
+        if (repository_root / ".git").exists():
+            _validate_packaged_tree(repository_root, Path(self.build_lib))
+        _replace_packaged_build_info(
+            Path(self.build_lib) / "metriplane" / "build-info.json",
+            encoded,
+        )
+
+
+class BoundSdist(_SetuptoolsSdist):  # type: ignore[misc]
+    """Create a self-hosting sdist with exact source identity and its build command."""
+
+    def make_release_tree(self, base_dir: str, files: list[str]) -> None:
+        repository_root = Path.cwd().resolve(strict=True)
+        _payload, encoded = _source_build_info(repository_root)
+        super().make_release_tree(base_dir, files)
+        backend = Path("tools/release_artifacts.py")
+        if not backend.is_file():
+            raise ReleaseArtifactError("Source distribution build backend is missing")
+        backend_destination = Path(base_dir) / backend
+        backend_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(backend, backend_destination)
+        if (repository_root / ".git").exists():
+            _validate_sdist_release_tree(repository_root, Path(base_dir))
+        _replace_packaged_build_info(
+            Path(base_dir) / "metriplane" / "build-info.json",
+            encoded,
+        )
+
+
+def create_build_info(repository_root: Path, output_path: Path) -> dict[str, object]:
+    """Write a deterministic clean-checkout source identity for package staging.
+
+    Ambient CI variables are deliberately ignored. The caller must point at the
+    actual checkout, and the output must be a new path outside that checkout's
+    tracked working tree (normally a package-staging directory).
+    """
+
+    payload, encoded = _git_build_info(repository_root)
+    output = output_path.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(encoded)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return payload
 
 
 @dataclass(frozen=True)
@@ -510,7 +775,13 @@ def verify_manifest(dist_dir: Path, manifest_path: Path, version: str) -> dict[s
     return actual
 
 
-def inspect_sdist(sdist_path: Path, version: str) -> None:
+def inspect_sdist(
+    sdist_path: Path,
+    version: str,
+    *,
+    expected_commit: str | None = None,
+    expected_tree: str | None = None,
+) -> None:
     """Reject unsafe or incomplete tar source distributions."""
 
     _validate_version(version)
@@ -521,6 +792,7 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
         )
 
     relative_files: set[str] = set()
+    build_info: bytes | None = None
     try:
         with tarfile.open(sdist_path, mode="r:gz") as archive:
             for member in archive.getmembers():
@@ -544,12 +816,31 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
                     raise ReleaseArtifactError(
                         f"Unexpected source-distribution top-level path: {member.name!r}"
                     )
+                if (
+                    relative.parts
+                    and relative.parts[0] == "tools"
+                    and relative.as_posix()
+                    not in {
+                        "tools",
+                        "tools/release_artifacts.py",
+                    }
+                ):
+                    raise ReleaseArtifactError(
+                        f"Unexpected source-distribution build-tool path: {member.name!r}"
+                    )
                 if member.isfile():
                     if relative.suffix.lower() in _FORBIDDEN_ARCHIVE_SUFFIXES:
                         raise ReleaseArtifactError(
                             f"Unintended source-distribution member: {member.name!r}"
                         )
                     relative_files.add(relative.as_posix())
+                    if relative.as_posix() == "metriplane/build-info.json":
+                        extracted = archive.extractfile(member)
+                        if extracted is None:
+                            raise ReleaseArtifactError(
+                                "Source distribution build info cannot be read"
+                            )
+                        build_info = extracted.read()
     except (tarfile.TarError, OSError) as exc:
         raise ReleaseArtifactError(f"Cannot inspect source distribution: {exc}") from exc
 
@@ -558,6 +849,42 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
         raise ReleaseArtifactError(
             "Source distribution is missing required files: " + ", ".join(missing)
         )
+    if build_info is None:
+        raise ReleaseArtifactError("Source distribution is missing build info")
+    value, _canonical = _decode_bound_build_info(build_info)
+    _require_build_identity(
+        value,
+        expected_commit=expected_commit,
+        expected_tree=expected_tree,
+    )
+
+
+def inspect_wheel(
+    wheel_path: Path,
+    version: str,
+    *,
+    expected_commit: str | None = None,
+    expected_tree: str | None = None,
+) -> None:
+    """Require one canonical, bound build identity in the release wheel."""
+
+    _validate_version(version)
+    if wheel_path.name != f"{PROJECT_NAME}-{version}-py3-none-any.whl":
+        raise ReleaseArtifactError(f"Only the canonical wheel is accepted: {wheel_path.name}")
+    try:
+        with zipfile.ZipFile(wheel_path) as archive:
+            matches = [name for name in archive.namelist() if name == "metriplane/build-info.json"]
+            if len(matches) != 1:
+                raise ReleaseArtifactError("Wheel must contain exactly one build-info record")
+            build_info = archive.read(matches[0])
+    except (OSError, zipfile.BadZipFile, KeyError) as exc:
+        raise ReleaseArtifactError(f"Cannot inspect wheel: {exc}") from exc
+    value, _canonical = _decode_bound_build_info(build_info)
+    _require_build_identity(
+        value,
+        expected_commit=expected_commit,
+        expected_tree=expected_tree,
+    )
 
 
 def registry_digests(payload: Mapping[str, Any], version: str) -> dict[str, str]:
@@ -656,6 +983,10 @@ def _parser() -> argparse.ArgumentParser:
     inspect.add_argument("--sdist", type=Path, required=True)
     inspect.add_argument("--version", required=True)
 
+    build_info = subparsers.add_parser("create-build-info")
+    build_info.add_argument("--repository-root", type=Path, required=True)
+    build_info.add_argument("--out", type=Path, required=True)
+
     registry = subparsers.add_parser("verify-registry")
     registry.add_argument("--repository", required=True)
     registry.add_argument("--project", default=PROJECT_NAME)
@@ -690,6 +1021,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             verify_manifest(args.dist, args.manifest, args.version)
         elif args.command == "inspect-sdist":
             inspect_sdist(args.sdist, args.version)
+        elif args.command == "create-build-info":
+            create_build_info(args.repository_root, args.out)
         elif args.command == "verify-registry":
             verify_registry(
                 args.repository,

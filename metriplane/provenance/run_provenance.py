@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import threading
+import tomllib
 import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -34,6 +35,9 @@ HEADER_TYPES = {"header", "run_header", "provenance"}
 _REDACTED = "<redacted>"
 _PRIVATE_DIRECTORY_MODE = 0o700
 _PRIVATE_FILE_MODE = 0o600
+_BUILD_INFO_SCHEMA = "metriplane.build-info.v1"
+_GIT_SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
+_SOURCE_CHECKOUT_PATH = Path("metriplane/provenance/run_provenance.py")
 _SENSITIVE_CONFIG_KEYS = {
     "access_token",
     "api_key",
@@ -114,8 +118,14 @@ def generate_run_id(prefix: str = "run") -> str:
     return f"{prefix}_{ts}_{rnd}"
 
 
+class BuildInfoError(ValueError):
+    """Raised when an installed build-info authority is malformed or tampered."""
+
+
 def _find_repo_root(start: Path | None = None) -> Path | None:
     cur = (start or Path.cwd()).resolve()
+    if cur.is_file():
+        cur = cur.parent
     for p in [cur, *cur.parents]:
         if (p / ".git").exists():
             return p
@@ -128,50 +138,177 @@ class GitInfo:
     dirty: bool | None
     describe: str | None
     repo_root: str | None
+    tree: str | None = None
+    authority: str = "unavailable"
+    declared_commit: str | None = None
+    declaration_matches: bool | None = None
+
+
+def _ambient_git_declaration() -> str | None:
+    for name in ("METRIPLANE_GIT_COMMIT", "GIT_COMMIT", "GITHUB_SHA"):
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            candidate = value.strip()
+            return candidate if _GIT_SHA_RE.fullmatch(candidate) else "<invalid>"
+    return None
+
+
+def _git_output(root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    return completed.stdout.strip()
+
+
+def _checkout_git_info(source_path: Path, declared: str | None) -> GitInfo | None:
+    root = _find_repo_root(source_path)
+    if root is None:
+        return None
+    try:
+        relative_source = source_path.resolve().relative_to(root)
+        top_level = Path(_git_output(root, "rev-parse", "--show-toplevel")).resolve()
+        if (
+            top_level != root.resolve()
+            or len(relative_source.parts) < 2
+            or relative_source.parts[0] != "metriplane"
+            or relative_source.suffix != ".py"
+        ):
+            return None
+        for tracked_path in (
+            relative_source.as_posix(),
+            _SOURCE_CHECKOUT_PATH.as_posix(),
+            "metriplane/build-info.json",
+            "pyproject.toml",
+        ):
+            _git_output(root, "ls-files", "--error-unmatch", "--", tracked_path)
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        project_table = project.get("project")
+        if not isinstance(project_table, dict) or project_table.get("name") != "metriplane":
+            return None
+        commit = _git_output(root, "rev-parse", "HEAD")
+        tree = _git_output(root, "rev-parse", "HEAD^{tree}")
+        if _GIT_SHA_RE.fullmatch(commit) is None or _GIT_SHA_RE.fullmatch(tree) is None:
+            return None
+        describe = _git_output(root, "describe", "--tags", "--always", "--dirty")
+        dirty = bool(_git_output(root, "status", "--porcelain", "--untracked-files=all"))
+    except (
+        OSError,
+        ValueError,
+        tomllib.TOMLDecodeError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
+        return None
+    return GitInfo(
+        commit=commit,
+        dirty=dirty,
+        describe=describe,
+        repo_root=str(root),
+        tree=tree,
+        authority="checkout",
+        declared_commit=declared,
+        declaration_matches=(declared == commit) if declared is not None else None,
+    )
+
+
+def _embedded_git_info(source_path: Path, declared: str | None) -> GitInfo | None:
+    resource = source_path.parent.parent / "build-info.json"
+    try:
+        raw = resource.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise BuildInfoError(f"cannot read embedded build info: {exc}") from exc
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BuildInfoError("embedded build info is not valid JSON") from exc
+    try:
+        canonical = json.dumps(
+            value,
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise BuildInfoError("embedded build info is not canonical JSON data") from exc
+    if (
+        raw != canonical
+        or not isinstance(value, dict)
+        or set(value)
+        != {
+            "schema_version",
+            "source_commit",
+            "source_dirty",
+            "source_tree",
+            "status",
+        }
+    ):
+        raise BuildInfoError("embedded build info is not exact canonical v1 data")
+    if value["schema_version"] != _BUILD_INFO_SCHEMA:
+        raise BuildInfoError("embedded build info schema is unsupported")
+    if value["status"] == "unbound":
+        if any(
+            value[field] is not None for field in ("source_commit", "source_dirty", "source_tree")
+        ):
+            raise BuildInfoError("unbound build info contains a source identity")
+        return None
+    source_commit = value.get("source_commit")
+    source_tree = value.get("source_tree")
+    if (
+        value["status"] != "bound"
+        or not isinstance(source_commit, str)
+        or _GIT_SHA_RE.fullmatch(source_commit) is None
+        or not isinstance(source_tree, str)
+        or _GIT_SHA_RE.fullmatch(source_tree) is None
+        or value.get("source_dirty") is not False
+    ):
+        raise BuildInfoError("embedded build info does not bind one clean Git source")
+    commit = source_commit
+    return GitInfo(
+        commit=commit,
+        dirty=False,
+        describe=None,
+        repo_root=None,
+        tree=source_tree,
+        authority="embedded-build-info",
+        declared_commit=declared,
+        declaration_matches=(declared == commit) if declared is not None else None,
+    )
 
 
 def get_git_info(*, start: Path | None = None) -> GitInfo:
-    # Explicit override for Docker/no-.git builds
-    env_commit = (
-        os.getenv("METRIPLANE_GIT_COMMIT") or os.getenv("GIT_COMMIT") or os.getenv("GITHUB_SHA")
+    """Resolve source identity without trusting ambient Git variables.
+
+    A verified checkout containing the inspected source file wins. Outside a
+    checkout, a strict embedded build-info record may supply the identity.
+    Ambient variables are retained only as declarations and never become the
+    authoritative ``commit`` value.
+    """
+
+    declared = _ambient_git_declaration()
+    candidate = Path(start).resolve() if start is not None else Path(__file__).resolve()
+    source_path = candidate if candidate.is_file() else Path(__file__).resolve()
+    checkout = _checkout_git_info(source_path, declared)
+    if checkout is not None:
+        return checkout
+    embedded = _embedded_git_info(source_path, declared)
+    if embedded is not None:
+        return embedded
+    return GitInfo(
+        commit=None,
+        dirty=None,
+        describe=None,
+        repo_root=None,
+        authority="unavailable",
+        declared_commit=declared,
+        declaration_matches=None,
     )
-    repo_root = _find_repo_root(start)
-
-    if env_commit:
-        return GitInfo(
-            commit=str(env_commit)[:40],
-            dirty=None,
-            describe=None,
-            repo_root=str(repo_root) if repo_root else None,
-        )
-
-    if repo_root is None:
-        return GitInfo(commit=None, dirty=None, describe=None, repo_root=None)
-
-    def _run(args: list[str]) -> str | None:
-        try:
-            p = subprocess.run(args, cwd=repo_root, check=True, capture_output=True, text=True)
-            return p.stdout.strip()
-        except Exception:
-            return None
-
-    commit = _run(["git", "rev-parse", "HEAD"])
-    describe = _run(["git", "describe", "--tags", "--always", "--dirty"])
-
-    dirty: bool | None
-    try:
-        p = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        dirty = bool(p.stdout.strip())
-    except Exception:
-        dirty = None
-
-    return GitInfo(commit=commit, dirty=dirty, describe=describe, repo_root=str(repo_root))
 
 
 def _redact_url_secrets(value: str) -> str:
@@ -774,6 +911,10 @@ class RunContext:
             "git_commit": self.git.commit,
             "git_dirty": self.git.dirty,
             "git_describe": self.git.describe,
+            "git_tree": self.git.tree,
+            "git_authority": self.git.authority,
+            "git_declared_commit": self.git.declared_commit,
+            "git_declaration_matches": self.git.declaration_matches,
             "argv": list(self.argv),
             "source_config_path": self.source_config_path,
             "resolved_profile": self.resolved_profile,
@@ -920,7 +1061,7 @@ def create_run_context(
         rid = validate_portable_run_id(run_dir.name)
 
         # Git + config hash
-        git = get_git_info(start=Path.cwd())
+        git = get_git_info(start=Path(__file__).resolve())
         cfg_hash, cfg_canon = compute_config_hash(cfg)
 
         # Resolved profile (captures calib/active_profile.yaml even if cfg.profile is None)
@@ -962,6 +1103,10 @@ def create_run_context(
                 "dirty": git.dirty,
                 "describe": git.describe,
                 "repo_root": git.repo_root,
+                "tree": git.tree,
+                "authority": git.authority,
+                "declared_commit": git.declared_commit,
+                "declaration_matches": git.declaration_matches,
             },
             "config": {
                 "hash_algo": "sha256",

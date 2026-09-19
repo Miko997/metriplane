@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -312,8 +313,23 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime_commit = "a" * 40
-    monkeypatch.setenv("METRIPLANE_GIT_COMMIT", runtime_commit)
+    ambient_declaration = "a" * 40
+    monkeypatch.setenv("METRIPLANE_GIT_COMMIT", ambient_declaration)
+    checkout_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=REPOSITORY_ROOT, text=True
+    ).strip()
+    checkout_dirty = bool(
+        subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=REPOSITORY_ROOT,
+            text=True,
+        ).strip()
+    )
+    checkout_describe = subprocess.check_output(
+        ["git", "describe", "--tags", "--always", "--dirty"],
+        cwd=REPOSITORY_ROOT,
+        text=True,
+    ).strip()
     fixture = _copy_fixture(tmp_path)
     before = _snapshot_files(fixture)
     out = tmp_path / "external-run"
@@ -359,9 +375,10 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
         "--run-id",
         "external_execution_positive",
     ]
-    assert provenance["evaluation"]["actual_metriplane_git_commit"] == runtime_commit
-    assert provenance["evaluation"]["actual_metriplane_git_dirty"] is None
-    assert provenance["evaluation"]["actual_metriplane_git_describe"] is None
+    assert provenance["evaluation"]["actual_metriplane_git_commit"] == checkout_commit
+    assert provenance["evaluation"]["actual_metriplane_git_commit"] != ambient_declaration
+    assert provenance["evaluation"]["actual_metriplane_git_dirty"] is checkout_dirty
+    assert provenance["evaluation"]["actual_metriplane_git_describe"] == checkout_describe
     provenance_strings = _string_values(provenance)
     assert str(fixture.resolve()) not in provenance_strings
     assert str(out.resolve()) not in provenance_strings
@@ -382,7 +399,7 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     assert bundled_provenance["fixture_id"] == "synthetic-inspection-bench-v1"
     assert bundled_provenance == provenance
     assert bundled_provenance["evaluation"]["command"] == provenance["evaluation"]["command"]
-    assert bundled_provenance["evaluation"]["actual_metriplane_git_commit"] == runtime_commit
+    assert bundled_provenance["evaluation"]["actual_metriplane_git_commit"] == checkout_commit
     bundled_provenance_strings = _string_values(bundled_provenance)
     assert str(fixture.resolve()) not in bundled_provenance_strings
     assert str(out.resolve()) not in bundled_provenance_strings

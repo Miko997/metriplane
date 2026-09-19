@@ -670,7 +670,13 @@ def test_locked_backend_mismatch_prevents_build(
     destination = tmp_path / "dist"
     destination.mkdir()
     with pytest.raises(control.ReleaseControlError, match="setuptools"):
-        artifact_cli._run_build(fixture["repository"], destination, source_date_epoch=1_700_000_000)
+        artifact_cli._run_build(
+            fixture["repository"],
+            destination,
+            source_date_epoch=1_700_000_000,
+            source_sha=fixture["sha"],
+            source_tree=fixture["tree"],
+        )
     assert list(destination.iterdir()) == []
 
 
@@ -687,7 +693,13 @@ def test_canonical_build_command_uses_installed_backend_without_isolation(
     monkeypatch.setattr(artifact_cli.subprocess, "run", recorded)
     destination = tmp_path / "dist"
     destination.mkdir()
-    artifact_cli._run_build(fixture["repository"], destination, source_date_epoch=1_700_000_000)
+    artifact_cli._run_build(
+        fixture["repository"],
+        destination,
+        source_date_epoch=1_700_000_000,
+        source_sha=fixture["sha"],
+        source_tree=fixture["tree"],
+    )
     assert calls[0][0] == [
         sys.executable,
         "-m",

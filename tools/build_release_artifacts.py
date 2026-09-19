@@ -40,15 +40,19 @@ if TYPE_CHECKING or __package__:
     from tools.release_artifacts import (
         create_manifest,
         inspect_sdist,
+        inspect_wheel,
         release_artifacts,
         verify_manifest,
+        write_bound_build_info,
     )
 else:
     from release_artifacts import (  # type: ignore[no-redef]
         create_manifest,
         inspect_sdist,
+        inspect_wheel,
         release_artifacts,
         verify_manifest,
+        write_bound_build_info,
     )
 
 
@@ -308,8 +312,16 @@ def _archive_source(
     return source_dir
 
 
-def _run_build(source_dir: Path, dist_dir: Path, *, source_date_epoch: int) -> None:
+def _run_build(
+    source_dir: Path,
+    dist_dir: Path,
+    *,
+    source_date_epoch: int,
+    source_sha: str,
+    source_tree: str,
+) -> None:
     validate_release_build_environment(source_dir)
+    write_bound_build_info(source_dir, source_sha, source_tree)
     environment = dict(os.environ)
     environment["PYTHONHASHSEED"] = "0"
     environment["SOURCE_DATE_EPOCH"] = str(source_date_epoch)
@@ -363,12 +375,26 @@ def _fingerprint_artifacts(
     dist_dir: Path,
     checksum_path: Path,
     package_version: str,
+    *,
+    source_sha: str,
+    source_tree: str,
 ) -> tuple[list[dict[str, object]], dict[str, str]]:
     digests = create_manifest(dist_dir, checksum_path, package_version)
     if verify_manifest(dist_dir, checksum_path, package_version) != digests:
         raise ArtifactBuildBlocked("artifact fingerprint read-back changed")
     wheel, sdist = release_artifacts(dist_dir, package_version)
-    inspect_sdist(sdist, package_version)
+    inspect_sdist(
+        sdist,
+        package_version,
+        expected_commit=source_sha,
+        expected_tree=source_tree,
+    )
+    inspect_wheel(
+        wheel,
+        package_version,
+        expected_commit=source_sha,
+        expected_tree=source_tree,
+    )
     artifacts = [
         {
             "media_type": _artifact_media_type(path),
@@ -491,9 +517,19 @@ def _execute(args: argparse.Namespace, *, context: ReleaseInvocation) -> None:
     source_dir = _archive_source(inputs.source_sha, temporary_root, repository=inputs.repository)
     staged_dist = context.directory / "staged" / "artifacts"
     staged_dist.mkdir()
-    _run_build(source_dir, staged_dist, source_date_epoch=source_date_epoch)
+    _run_build(
+        source_dir,
+        staged_dist,
+        source_date_epoch=source_date_epoch,
+        source_sha=inputs.source_sha,
+        source_tree=inputs.source_tree,
+    )
     artifacts, _ = _fingerprint_artifacts(
-        staged_dist, temporary_root / "SHA256SUMS", inputs.package_version
+        staged_dist,
+        temporary_root / "SHA256SUMS",
+        inputs.package_version,
+        source_sha=inputs.source_sha,
+        source_tree=inputs.source_tree,
     )
     _verify_frozen_source(inputs)
     manifest_record = _build_manifest(inputs, artifacts, context)
