@@ -8,12 +8,14 @@ import copy
 import errno
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import threading
 from collections.abc import Callable, Iterator
 from importlib import metadata as importlib_metadata
@@ -24,6 +26,7 @@ from typing import Any, cast
 import pytest
 
 from metriplane import __version__ as CURRENT_VERSION
+from tools.release_artifacts import write_bound_build_info
 
 AUDITED_BASE_SHA = "14c1befff886215d928f1c3f6b412b843b902671"
 AUDITED_BASE_TREE = "38dcd26db9a467c850c75d4af0e6c932c3d0ecd7"
@@ -4670,25 +4673,27 @@ def test_capture_validates_schema_and_semantics_before_publication(
 
 
 def _copy_source_for_build(source: Path, destination: Path) -> None:
-    ignored_names = {
-        ".git",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".mypy_cache",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-    }
-
-    def ignore(_directory: str, names: list[str]) -> set[str]:
-        return {
-            name
-            for name in names
-            if name in ignored_names or name.endswith((".egg-info", ".pyc", ".pyo"))
-        }
-
-    shutil.copytree(source, destination, ignore=ignore)
+    commit = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", f"{commit}^{{tree}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    archive = subprocess.run(
+        ["git", "-C", str(source), "archive", "--format=tar", commit],
+        check=True,
+        capture_output=True,
+    ).stdout
+    destination.mkdir()
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as source_archive:
+        source_archive.extractall(destination, filter="data")
+    write_bound_build_info(destination, commit, tree)
 
 
 @obligation("MP2-000.OBL.INSTALLED_HELP_AND_RESOURCES")

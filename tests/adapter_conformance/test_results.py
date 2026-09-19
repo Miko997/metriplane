@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +14,16 @@ import pytest
 
 from tools.cross_adapter_gate import (
     RESULT_SCHEMA_VERSION,
+    GateError,
+    _bind_root_build_info,
+    _canonical_root_build_info,
     _component_matrix,
     _expected_result_keys,
     _fixture_matrix,
     _run_command,
     _validate_result_semantics,
     _validate_result_shape,
+    _verify_root_wheel_build_info,
     load_registry,
     summarize,
 )
@@ -28,6 +33,73 @@ REQUIRES_JSONSCHEMA = pytest.mark.skipif(
     importlib.util.find_spec("jsonschema") is None,
     reason="result-schema tests run in the locked cross-adapter gate environment",
 )
+
+
+def test_root_build_info_binding_is_exact_and_fail_closed(tmp_path: Path) -> None:
+    destination = tmp_path / "metriplane" / "build-info.json"
+    destination.parent.mkdir()
+    unbound = (
+        b'{"schema_version":"metriplane.build-info.v1","source_commit":null,'
+        b'"source_dirty":null,"source_tree":null,"status":"unbound"}'
+    )
+    destination.write_bytes(unbound)
+
+    _bind_root_build_info(tmp_path, "a" * 40, "b" * 40)
+
+    assert destination.read_bytes() == (
+        b'{"schema_version":"metriplane.build-info.v1","source_commit":"'
+        + (b"a" * 40)
+        + b'","source_dirty":false,"source_tree":"'
+        + (b"b" * 40)
+        + b'","status":"bound"}'
+    )
+
+    for source_sha, source_tree, placeholder, error in (
+        ("invalid", "b" * 40, unbound, "identity is malformed"),
+        ("a" * 40, "invalid", unbound, "identity is malformed"),
+        ("a" * 40, "b" * 40, b"{}", "placeholder is not canonical and unbound"),
+    ):
+        destination.write_bytes(placeholder)
+        with pytest.raises(GateError, match=error):
+            _bind_root_build_info(tmp_path, source_sha, source_tree)
+
+
+def test_root_wheel_build_info_verification_rejects_every_identity_drift(
+    tmp_path: Path,
+) -> None:
+    source_sha = "a" * 40
+    source_tree = "b" * 40
+    expected = _canonical_root_build_info(source_sha, source_tree)
+
+    def write_wheel(name: str, records: list[bytes]) -> Path:
+        path = tmp_path / name
+        with zipfile.ZipFile(path, mode="w") as archive:
+            for record in records:
+                archive.writestr("metriplane/build-info.json", record)
+        return path
+
+    valid = write_wheel("valid.whl", [expected])
+    with zipfile.ZipFile(valid) as archive:
+        _verify_root_wheel_build_info(archive, source_sha, source_tree)
+
+    invalid = {
+        "missing.whl": [],
+        "malformed.whl": [b"{}"],
+        "wrong-commit.whl": [_canonical_root_build_info("c" * 40, source_tree)],
+        "wrong-tree.whl": [_canonical_root_build_info(source_sha, "d" * 40)],
+    }
+    for name, records in invalid.items():
+        path = write_wheel(name, records)
+        with zipfile.ZipFile(path) as archive, pytest.raises(GateError):
+            _verify_root_wheel_build_info(archive, source_sha, source_tree)
+
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        duplicate = write_wheel("duplicate.whl", [expected, expected])
+    with (
+        zipfile.ZipFile(duplicate) as archive,
+        pytest.raises(GateError, match="exactly one build-info"),
+    ):
+        _verify_root_wheel_build_info(archive, source_sha, source_tree)
 
 
 def _commit() -> str:

@@ -65,10 +65,55 @@ _ABSOLUTE_LEAKS = (
 _REQUIRED_JOB_IDS: Final = frozenset(
     {"registry", "sdk", "adapters", "fixtures", "shared-contract", "root-wheel"}
 )
+_UNBOUND_BUILD_INFO: Final = (
+    b'{"schema_version":"metriplane.build-info.v1","source_commit":null,'
+    b'"source_dirty":null,"source_tree":null,"status":"unbound"}'
+)
 
 
 class GateError(ValueError):
     """A deterministic registry, execution, or result-record failure."""
+
+
+def _bind_root_build_info(source: Path, source_sha: str, source_tree: str) -> None:
+    """Bind the exact archived source identity without importing build tooling."""
+
+    encoded = _canonical_root_build_info(source_sha, source_tree)
+    destination = source / "metriplane" / "build-info.json"
+    try:
+        current = destination.read_bytes()
+    except OSError as exc:
+        raise GateError("root wheel build-info placeholder is missing") from exc
+    if current != _UNBOUND_BUILD_INFO:
+        raise GateError("root wheel build-info placeholder is not canonical and unbound")
+    destination.write_bytes(encoded)
+
+
+def _canonical_root_build_info(source_sha: str, source_tree: str) -> bytes:
+    """Return the sole canonical root-wheel source identity."""
+
+    if _SHA40.fullmatch(source_sha) is None or _SHA40.fullmatch(source_tree) is None:
+        raise GateError("root wheel source identity is malformed")
+    payload = {
+        "schema_version": "metriplane.build-info.v1",
+        "source_commit": source_sha,
+        "source_dirty": False,
+        "source_tree": source_tree,
+        "status": "bound",
+    }
+    return _canonical_bytes(payload)[:-1]
+
+
+def _verify_root_wheel_build_info(
+    archive: zipfile.ZipFile, source_sha: str, source_tree: str
+) -> None:
+    """Require exactly one canonical record matching the archived Git source."""
+
+    matches = [name for name in archive.namelist() if name == "metriplane/build-info.json"]
+    if len(matches) != 1:
+        raise GateError("root wheel must contain exactly one build-info record")
+    if archive.read(matches[0]) != _canonical_root_build_info(source_sha, source_tree):
+        raise GateError("root wheel build-info does not match its exact source identity")
 
 
 def repository_root(start: Path | None = None) -> Path:
@@ -2056,7 +2101,14 @@ def check_shared(repo: Path, results_dir: Path) -> Path:
     return _write_result(results_dir, result)
 
 
-def _root_wheel_contents(repo: Path, wheel: Path, registry: Mapping[str, Any]) -> None:
+def _root_wheel_contents(
+    repo: Path,
+    wheel: Path,
+    registry: Mapping[str, Any],
+    *,
+    source_sha: str,
+    source_tree: str,
+) -> None:
     adapter_modules = {item["module_name"] for item in registry["adapters"]}
     prohibited_dependencies = {
         "mani-skill",
@@ -2072,6 +2124,7 @@ def _root_wheel_contents(repo: Path, wheel: Path, registry: Mapping[str, Any]) -
     prohibited_suffixes = (".mcap", ".h5", ".hdf5", ".pdf")
     forbidden_digests = _forbidden_referenced_digests(repo, registry)
     with zipfile.ZipFile(wheel) as archive:
+        _verify_root_wheel_build_info(archive, source_sha, source_tree)
         names = archive.namelist()
         for name in names:
             pure = PurePosixPath(name)
@@ -2114,20 +2167,33 @@ def check_root_wheel(repo: Path, results_dir: Path) -> Path:
     with tempfile.TemporaryDirectory(prefix="cross-adapter-root-wheel-") as temporary:
         root = Path(temporary)
         source = root / "source"
-        shutil.copytree(
-            repo,
-            source,
-            ignore=shutil.ignore_patterns(
-                ".git",
-                ".venv",
-                "build",
-                "dist",
-                "__pycache__",
-                ".pytest_cache",
-                ".ruff_cache",
-                ".mypy_cache",
-            ),
-        )
+        source_sha = _git(repo, "rev-parse", "HEAD")
+        source_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        if _git(repo, "status", "--porcelain", "--untracked-files=no"):
+            raise GateError("root wheel source checkout has tracked changes")
+        archive = root / "source.tar"
+        try:
+            subprocess.run(
+                [
+                    "git",
+                    "archive",
+                    "--format=tar",
+                    "--prefix=source/",
+                    f"--output={archive}",
+                    source_sha,
+                ],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            with tarfile.open(archive, mode="r:") as source_archive:
+                source_archive.extractall(root, filter="data")
+        except (OSError, subprocess.CalledProcessError, tarfile.TarError) as exc:
+            raise GateError("cannot materialize exact root wheel source") from exc
+        if not source.is_dir():
+            raise GateError("root wheel source archive is incomplete")
+        _bind_root_build_info(source, source_sha, source_tree)
         dist = root / "dist"
         dist.mkdir()
         build_command = (
@@ -2140,7 +2206,13 @@ def check_root_wheel(repo: Path, results_dir: Path) -> Path:
         if len(wheels) != 1:
             raise GateError(f"expected one root wheel, got {len(wheels)}")
         wheel = wheels[0]
-        _root_wheel_contents(repo, wheel, registry)
+        _root_wheel_contents(
+            repo,
+            wheel,
+            registry,
+            source_sha=source_sha,
+            source_tree=source_tree,
+        )
         result["source_provenance_identities"] = {
             "dependency_lock_sha256": _sha256(repo / "uv.lock"),
             "wheel_sha256": _sha256(wheel),

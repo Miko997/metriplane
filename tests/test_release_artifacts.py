@@ -4,7 +4,13 @@
 from __future__ import annotations
 
 import io
+import json
+import os
+import shutil
+import subprocess
+import sys
 import tarfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +26,10 @@ from tools.release_artifacts import (
     _publish_lease,
     acquire_publish_lease,
     assert_publish_lease,
+    create_build_info,
     create_manifest,
     inspect_sdist,
+    inspect_wheel,
     read_manifest,
     reconcile_publish_lease,
     verify_manifest,
@@ -31,6 +39,29 @@ from tools.release_artifacts import (
 VERSION = "0.3.0"
 REPOSITORY = "Miko997/metriplane"
 RELEASE_SHA = "a" * 40
+RELEASE_TREE = "b" * 40
+
+
+def test_editable_build_does_not_claim_an_embedded_distribution_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    command = object.__new__(release_tool.BoundBuildPy)
+    command.editable_mode = True
+    monkeypatch.setattr(
+        release_tool._SetuptoolsBuildPy,
+        "run",
+        lambda instance: calls.append(instance),
+    )
+    monkeypatch.setattr(
+        release_tool,
+        "_source_build_info",
+        lambda _root: pytest.fail("editable builds must use their live checkout at runtime"),
+    )
+
+    command.run()
+
+    assert calls == [command]
 
 
 class _LeaseApi:
@@ -111,6 +142,198 @@ def _artifact_set(tmp_path: Path) -> tuple[Path, Path]:
     (dist / f"metriplane-{VERSION}-py3-none-any.whl").write_bytes(b"wheel")
     (dist / f"metriplane-{VERSION}.tar.gz").write_bytes(b"sdist")
     return dist, tmp_path / "SHA256SUMS"
+
+
+def _clean_git_checkout(root: Path) -> tuple[str, str]:
+    root.mkdir()
+    (root / "tracked.txt").write_text("source\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "Metriplane Test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+    subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=root, check=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=root, text=True).strip()
+    return commit, tree
+
+
+def test_create_build_info_uses_clean_checkout_not_ambient_variables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path / "checkout"
+    commit, tree = _clean_git_checkout(checkout)
+    output = tmp_path / "stage" / "metriplane" / "build-info.json"
+    monkeypatch.setenv("GITHUB_SHA", "f" * 40)
+
+    payload = create_build_info(checkout, output)
+
+    assert payload == {
+        "schema_version": "metriplane.build-info.v1",
+        "source_commit": commit,
+        "source_dirty": False,
+        "source_tree": tree,
+        "status": "bound",
+    }
+    assert output.read_bytes() == json.dumps(
+        payload, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+
+def test_create_build_info_rejects_dirty_or_reused_output(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    _clean_git_checkout(checkout)
+    output = tmp_path / "stage" / "metriplane" / "build-info.json"
+    create_build_info(checkout, output)
+    with pytest.raises(FileExistsError):
+        create_build_info(checkout, output)
+
+    (checkout / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+    with pytest.raises(ReleaseArtifactError, match="must be clean"):
+        create_build_info(checkout, tmp_path / "other" / "build-info.json")
+
+
+def test_standard_build_embeds_exact_identity_in_installed_wheel_and_sdist(
+    tmp_path: Path,
+) -> None:
+    repository_root = Path(__file__).parents[1]
+    checkout = tmp_path / "checkout"
+    shutil.copytree(
+        repository_root / "metriplane",
+        checkout / "metriplane",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    (checkout / "tools").mkdir()
+    shutil.copy2(repository_root / "tools" / "release_artifacts.py", checkout / "tools")
+    (checkout / ".gitignore").write_text(
+        "*.egg-info/\nbuild/\n__pycache__/\n*.pyc\ninjected-review.jsonl\n",
+        encoding="utf-8",
+    )
+    (checkout / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools==82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metriplane"
+version = "0.0.0"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.cmdclass]
+build_py = "tools.release_artifacts.BoundBuildPy"
+sdist = "tools.release_artifacts.BoundSdist"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["metriplane*"]
+
+[tool.setuptools.package-data]
+metriplane = ["build-info.json"]
+"metriplane.demo" = ["assets/*.jsonl"]
+""",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(["git", "config", "user.name", "Metriplane Test"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"], cwd=checkout, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=checkout, check=True)
+    subprocess.run(["git", "commit", "-qm", "build fixture"], cwd=checkout, check=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout, text=True).strip()
+    tree = subprocess.check_output(
+        ["git", "rev-parse", "HEAD^{tree}"], cwd=checkout, text=True
+    ).strip()
+
+    injected = checkout / "metriplane" / "demo" / "assets" / "injected-review.jsonl"
+    injected.write_text('{"ignored":"but packageable"}\n', encoding="utf-8")
+    assert not subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=all"], cwd=checkout, text=True
+    ).strip()
+    rejected = subprocess.run(
+        [sys.executable, "-m", "build", "--no-isolation", "--wheel"],
+        cwd=checkout,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
+        capture_output=True,
+        text=True,
+    )
+    assert rejected.returncode != 0
+    assert "Packaged source is not tracked by Git" in (rejected.stdout + rejected.stderr)
+    injected.unlink()
+    shutil.rmtree(checkout / "build")
+
+    dist = tmp_path / "dist"
+    environment = dict(os.environ)
+    environment["PYTHONHASHSEED"] = "0"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--no-isolation",
+            "--sdist",
+            "--wheel",
+            "--outdir",
+            str(dist),
+        ],
+        cwd=checkout,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    expected = json.dumps(
+        {
+            "schema_version": "metriplane.build-info.v1",
+            "source_commit": commit,
+            "source_dirty": False,
+            "source_tree": tree,
+            "status": "bound",
+        },
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    wheel = next(dist.glob("*.whl"))
+    sdist = next(dist.glob("*.tar.gz"))
+    with zipfile.ZipFile(wheel) as archive:
+        assert archive.read("metriplane/build-info.json") == expected
+        archive.extractall(tmp_path / "installed")
+    with tarfile.open(sdist, mode="r:gz") as archive:
+        names = archive.getnames()
+        build_info = next(name for name in names if name.endswith("/metriplane/build-info.json"))
+        assert archive.extractfile(build_info).read() == expected
+        assert any(name.endswith("/tools/release_artifacts.py") for name in names)
+    inspect_wheel(wheel, "0.0.0", expected_commit=commit, expected_tree=tree)
+    assert (checkout / "metriplane" / "build-info.json").read_bytes() == (
+        b'{"schema_version":"metriplane.build-info.v1","source_commit":null,'
+        b'"source_dirty":null,"source_tree":null,"status":"unbound"}'
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json; "
+                "from dataclasses import asdict; "
+                "from metriplane.provenance.run_provenance import get_git_info; "
+                "print(json.dumps(asdict(get_git_info()), sort_keys=True))"
+            ),
+        ],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tmp_path / "installed")},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    installed = json.loads(completed.stdout)
+    assert installed["authority"] == "embedded-build-info"
+    assert installed["commit"] == commit
+    assert installed["tree"] == tree
+    assert installed["dirty"] is False
 
 
 def test_publish_lease_identity_is_exact() -> None:
@@ -300,10 +523,33 @@ def test_registry_payload_must_match_both_build_hashes(tmp_path: Path) -> None:
         verify_registry_payload(payload, expected, VERSION)
 
 
-def _write_tar(path: Path, names: set[str], *, root: str) -> None:
+def _write_tar(
+    path: Path,
+    names: set[str],
+    *,
+    root: str,
+    build_info: bytes | None = None,
+) -> None:
+    canonical_build_info = json.dumps(
+        {
+            "schema_version": "metriplane.build-info.v1",
+            "source_commit": RELEASE_SHA,
+            "source_dirty": False,
+            "source_tree": RELEASE_TREE,
+            "status": "bound",
+        },
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
     with tarfile.open(path, mode="w:gz") as archive:
         for name in sorted(names):
-            payload = name.encode("utf-8") or b"x"
+            payload = (
+                (build_info if build_info is not None else canonical_build_info)
+                if name == "metriplane/build-info.json"
+                else (name.encode("utf-8") or b"x")
+            )
             info = tarfile.TarInfo(f"{root}/{name}")
             info.size = len(payload)
             archive.addfile(info, io.BytesIO(payload))
@@ -315,7 +561,53 @@ def test_sdist_inspection_requires_resources_and_rejects_unsafe_paths(
     sdist = tmp_path / f"metriplane-{VERSION}.tar.gz"
     root = f"metriplane-{VERSION}"
     _write_tar(sdist, set(_REQUIRED_SDIST_PATHS), root=root)
-    inspect_sdist(sdist, VERSION)
+    inspect_sdist(
+        sdist,
+        VERSION,
+        expected_commit=RELEASE_SHA,
+        expected_tree=RELEASE_TREE,
+    )
+
+    for invalid_build_info in (
+        b"not-json",
+        b'{"schema_version":"metriplane.build-info.v1","source_commit":null,'
+        b'"source_dirty":null,"source_tree":null,"status":"unbound"}',
+        json.dumps(
+            {
+                "schema_version": "metriplane.build-info.v1",
+                "source_commit": "c" * 40,
+                "source_dirty": False,
+                "source_tree": RELEASE_TREE,
+                "status": "bound",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8"),
+        json.dumps(
+            {
+                "schema_version": "metriplane.build-info.v1",
+                "source_commit": RELEASE_SHA,
+                "source_dirty": False,
+                "source_tree": "d" * 40,
+                "status": "bound",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8"),
+    ):
+        _write_tar(
+            sdist,
+            set(_REQUIRED_SDIST_PATHS),
+            root=root,
+            build_info=invalid_build_info,
+        )
+        with pytest.raises(ReleaseArtifactError):
+            inspect_sdist(
+                sdist,
+                VERSION,
+                expected_commit=RELEASE_SHA,
+                expected_tree=RELEASE_TREE,
+            )
 
     missing = set(_REQUIRED_SDIST_PATHS) - {"NOTICE"}
     _write_tar(sdist, missing, root=root)
@@ -332,4 +624,12 @@ def test_sdist_inspection_requires_resources_and_rejects_unsafe_paths(
         root=root,
     )
     with pytest.raises(ReleaseArtifactError, match="top-level path"):
+        inspect_sdist(sdist, VERSION)
+
+    _write_tar(
+        sdist,
+        set(_REQUIRED_SDIST_PATHS) | {"tools/unreviewed.py"},
+        root=root,
+    )
+    with pytest.raises(ReleaseArtifactError, match="build-tool path"):
         inspect_sdist(sdist, VERSION)

@@ -1089,13 +1089,50 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
             expect_release_setuptools=expect_release_setuptools,
         )
 
+    def normalize_setuptools(
+        configuration: dict[str, Any], *, expect_build_identity: bool
+    ) -> dict[str, Any]:
+        configuration = copy.deepcopy(configuration)
+        package_data = configuration.get("package-data")
+        assert isinstance(package_data, dict)
+        if expect_build_identity:
+            assert "cmdclass" in configuration
+            assert configuration.pop("cmdclass") == {
+                "build_py": "tools.release_artifacts.BoundBuildPy",
+                "sdist": "tools.release_artifacts.BoundSdist",
+            }
+            assert "metriplane" in package_data
+            assert package_data.pop("metriplane") == ["build-info.json"]
+        else:
+            assert "cmdclass" not in configuration
+            assert "metriplane" not in package_data
+        return configuration
+
     candidate_pyproject = read_git_toml(candidate, "pyproject.toml")
     checkout_pyproject = read_git_toml("HEAD", "pyproject.toml")
     assert candidate_pyproject["project"] == checkout_pyproject["project"]
-    assert candidate_pyproject["tool"]["setuptools"] == checkout_pyproject["tool"]["setuptools"]
+    assert normalize_setuptools(
+        candidate_pyproject["tool"]["setuptools"], expect_build_identity=False
+    ) == normalize_setuptools(checkout_pyproject["tool"]["setuptools"], expect_build_identity=True)
     assert normalized_lock(candidate, expect_release_setuptools=False) == normalized_lock(
         "HEAD", expect_release_setuptools=True
     )
+
+    checkout_setuptools = checkout_pyproject["tool"]["setuptools"]
+    invalid_setuptools: list[dict[str, Any]] = []
+    for field in ("build_py", "sdist"):
+        wrong_command = copy.deepcopy(checkout_setuptools)
+        wrong_command["cmdclass"][field] = "tools.release_artifacts.MissingCommand"
+        invalid_setuptools.append(wrong_command)
+    missing_resource = copy.deepcopy(checkout_setuptools)
+    missing_resource["package-data"].pop("metriplane")
+    invalid_setuptools.append(missing_resource)
+    extra_resource = copy.deepcopy(checkout_setuptools)
+    extra_resource["package-data"]["metriplane"].append("unexpected.json")
+    invalid_setuptools.append(extra_resource)
+    for invalid_configuration in invalid_setuptools:
+        with pytest.raises(AssertionError):
+            normalize_setuptools(invalid_configuration, expect_build_identity=True)
 
     checkout_lock = read_git_toml("HEAD", "uv.lock")
     invalid_locks: list[dict[str, Any]] = []
@@ -1240,6 +1277,12 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
         assert all(unrelated_path not in block for block in parsed_identity_blocks)
     assert text.count('candidate_pyproject["project"]') == 2
     assert text.count('candidate_pyproject["tool"]["setuptools"]') == 2
+    assert text.count("def normalized_setuptools(") == 2
+    assert text.count("expect_build_identity=False") == 2
+    assert text.count("expect_build_identity=True") == 2
+    assert text.count('"build_py": "tools.release_artifacts.BoundBuildPy"') == 2
+    assert text.count('"sdist": "tools.release_artifacts.BoundSdist"') == 2
+    assert text.count('package_data.pop("metriplane", None)') == 2
     assert text.count('metadata.pop("requires-dev")') == 2
     assert text.count(f'"{SETUPTOOLS_PACKAGE_SHA256}"') == 2
     assert text.count("expect_release_setuptools=False") == 2
