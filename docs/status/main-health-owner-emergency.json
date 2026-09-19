@@ -1,41 +1,31 @@
 {
-  "authorization_mode": "single-maintainer-owner-emergency",
   "allowed_paths": [
-    "docs/maintainers/main-health-broker.md",
-    "docs/maintainers/main-health.md",
-    "docs/maintainers/testing-policy.md",
     "docs/requirements/requirements.json",
     "docs/status/capability-test-ledger.json",
     "docs/status/functional-inventory.json",
     "docs/status/main-health-owner-emergency.json",
     "docs/status/public-surface-inventory.md",
-    "docs/status/schemas/main-health-result-summary.schema.json",
-    "tests/test_main_health.py",
-    "tests/test_main_health_broker.py",
-    "tests/test_toolchain_policy.py",
-    "tools/main_health_broker.py",
-    "tools/stop_the_line.py"
+    "tests/external_sources/test_maniskill_pickcube_fixture.py",
+    "tests/external_sources/test_robomimic_lowdim_fixture.py"
   ],
-  "base_sha": "3fd763816c9493475083adcd1299d2eed0daa0b2",
+  "authorization_mode": "single-maintainer-owner-emergency",
+  "base_sha": "2505cfc6c1cbbc3e7e6695de13d4420a567ac2fc",
   "collaboration_digest": "97956f2c016d6323f4e7921877599536bc72d63f26a73a3ab9e2d91abaf909d4",
-  "expires_at": "2026-09-14T23:59:59Z",
+  "expires_at": "2026-09-21T23:59:59Z",
   "failing_obligations": [
-    "Provider stall / Bounded MassRobotics AMR Offline Replay",
-    "Provider stall / CI",
-    "Provider stall / ManiSkill PickCube Proof",
-    "Provider stall / robomimic Low-Dimensional Fixture"
+    "Metriplane / required"
   ],
-  "incident_digest": "c19598c316f5096e0e7f04de16706007ac9333ff35a75b71edc34419ea0df0df",
+  "incident_digest": "00b42d15899204fbd4ea9919ef5ed5bc2694163388f27add12a4479f7384484c",
   "issue": "MET-77",
   "policy_amendment": {
     "amended_rule": "repair_requires_non_author",
     "authorization_mode": "single-maintainer-owner-emergency",
-    "incident_digest": "c19598c316f5096e0e7f04de16706007ac9333ff35a75b71edc34419ea0df0df",
+    "incident_digest": "00b42d15899204fbd4ea9919ef5ed5bc2694163388f27add12a4479f7384484c",
     "reason": "single-maintainer-no-independent-collaborator",
     "schema_version": 1,
     "scope": "incident-only"
   },
-  "pull_request": "132",
+  "pull_request": "140",
   "repository": "Miko997/metriplane",
   "required_cadences": [
     "nightly",

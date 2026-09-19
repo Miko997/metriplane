@@ -282,13 +282,11 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        raw = path.read_bytes()
-        assert all(item not in raw for item in values), path
-        assert _PRIVATE_PATH.search(raw) is None, path
-        if path.suffix == ".zip":
+        if path.suffix.lower() == ".zip":
             with zipfile.ZipFile(path) as archive:
                 for info in archive.infolist():
                     member = info.filename.encode()
+                    assert all(item not in member for item in values), (path, info.filename)
                     assert _PRIVATE_PATH.search(member) is None
                     assert not info.filename.startswith(("/", "\\"))
                     assert ".." not in Path(info.filename).parts
@@ -296,6 +294,10 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
                         body = archive.read(info)
                         assert all(item not in body for item in values)
                         assert _PRIVATE_PATH.search(body) is None
+            continue
+        raw = path.read_bytes()
+        assert all(item not in raw for item in values), path
+        assert _PRIVATE_PATH.search(raw) is None, path
 
 
 @pytest.mark.parametrize("variant", ["incident", "control"])
@@ -332,12 +334,23 @@ def test_runs_are_movable_and_path_clean(
     )
 
 
-def test_fixture_inventory_has_no_source_payload_or_local_path() -> None:
+def test_fixture_inventory_has_no_source_payload_or_local_path(tmp_path: Path) -> None:
     prohibited = {".hdf5", ".h5", ".png", ".mp4", ".xml", ".zip", ".pt", ".urdf"}
     _assert_no_path_leak(FIXTURE_ROOT, ["/tmp/", "/workspace/", str(REPOSITORY_ROOT.resolve())])
     assert not any(
         path.suffix.lower() in prohibited for path in FIXTURE_ROOT.rglob("*") if path.is_file()
     )
+
+    for archive_name, member_name, member in (
+        ("name.zip", "C:/private/data.json", b"{}"),
+        ("content.zip", "data.json", b'{"source":"/home/private/data.json"}'),
+    ):
+        root = tmp_path / archive_name.removesuffix(".zip")
+        root.mkdir()
+        with zipfile.ZipFile(root / archive_name, "w") as archive:
+            archive.writestr(member_name, member)
+        with pytest.raises(AssertionError):
+            _assert_no_path_leak(root, [])
 
 
 def test_root_package_boundary_and_frozen_contract() -> None:
