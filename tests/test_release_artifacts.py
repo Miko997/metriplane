@@ -42,6 +42,28 @@ RELEASE_SHA = "a" * 40
 RELEASE_TREE = "b" * 40
 
 
+def test_editable_build_does_not_claim_an_embedded_distribution_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    command = object.__new__(release_tool.BoundBuildPy)
+    command.editable_mode = True
+    monkeypatch.setattr(
+        release_tool._SetuptoolsBuildPy,
+        "run",
+        lambda instance: calls.append(instance),
+    )
+    monkeypatch.setattr(
+        release_tool,
+        "_source_build_info",
+        lambda _root: pytest.fail("editable builds must use their live checkout at runtime"),
+    )
+
+    command.run()
+
+    assert calls == [command]
+
+
 class _LeaseApi:
     def __init__(
         self,

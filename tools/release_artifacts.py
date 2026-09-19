@@ -309,6 +309,9 @@ class BoundBuildPy(_SetuptoolsBuildPy):  # type: ignore[misc]
     """Copy package sources, then replace the placeholder with verified build identity."""
 
     def run(self) -> None:
+        if self.editable_mode:
+            super().run()
+            return
         repository_root = Path.cwd().resolve(strict=True)
         _payload, encoded = _source_build_info(repository_root)
         super().run()
