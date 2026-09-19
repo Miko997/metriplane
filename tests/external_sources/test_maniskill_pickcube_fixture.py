@@ -475,9 +475,6 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        raw = path.read_bytes()
-        assert all(value not in raw for value in forbidden_bytes), path
-        _assert_no_generic_private_path(raw, path)
         if path.suffix.lower() == ".zip":
             with zipfile.ZipFile(path) as archive:
                 for info in archive.infolist():
@@ -498,6 +495,10 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
                         name,
                     )
                     _assert_no_generic_private_path(member, (path, name))
+            continue
+        raw = path.read_bytes()
+        assert all(value not in raw for value in forbidden_bytes), path
+        _assert_no_generic_private_path(raw, path)
 
 
 def _assert_durable_outputs(root: Path, *, external: bool, incident: bool) -> None:
@@ -646,7 +647,7 @@ def test_run_is_movable_and_contains_no_operational_path(
     )
 
 
-def test_checked_in_fixtures_contain_no_local_paths() -> None:
+def test_checked_in_fixtures_contain_no_local_paths(tmp_path: Path) -> None:
     forbidden = [
         "PRIVATE_USER_HOME_SENTINEL",
         "PRIVATE_SOURCE_ROOT_SENTINEL",
@@ -662,6 +663,17 @@ def test_checked_in_fixtures_contain_no_local_paths() -> None:
     ]
     for root in (INCIDENT_FIXTURE, CONTROL_FIXTURE):
         _assert_no_path_leak(root, forbidden)
+
+    for archive_name, member_name, member in (
+        ("name.zip", "C:/private/data.json", b"{}"),
+        ("content.zip", "data.json", b'{"source":"/home/private/data.json"}'),
+    ):
+        root = tmp_path / archive_name.removesuffix(".zip")
+        root.mkdir()
+        with zipfile.ZipFile(root / archive_name, "w") as archive:
+            archive.writestr(member_name, member)
+        with pytest.raises(AssertionError):
+            _assert_no_path_leak(root, [])
 
 
 def test_raw_source_and_source_assets_are_absent_from_portable_fixtures() -> None:
