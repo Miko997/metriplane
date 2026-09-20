@@ -23,6 +23,7 @@ from tools.materialize_task_work_order import (
     _validate_live_program_grant,
     build,
 )
+from tools.main_health_broker import DurableSpool, digest as broker_digest
 from tools.program_delegation import program_grant_id, validate_program_grant
 from tools.task_attestation_builder import prepare_task_observation
 from tools.task_delegation import (
@@ -795,12 +796,24 @@ def _merge(
     )
 
 
-def test_delegate_merge_admission_is_machine_distinct_and_exact() -> None:
+def test_delegate_merge_admission_is_machine_distinct_and_exact(tmp_path: Path) -> None:
     values = _merge_fixture()
     admitted = _merge(*values)
     assert admitted["kind"] == "delegate-normal"
     assert admitted["work_order_id"] == "1" * 64
     assert "approval_review_id" not in admitted
+    assert admitted["request_digest"] == broker_digest(admitted["request"])
+
+    spool = DurableSpool(tmp_path / "spool")
+    spool.record_request(
+        request_digest=admitted["request_digest"],
+        nonce=admitted["nonce"],
+        pull_request=admitted["pull_request"],
+        request=admitted["request"],
+        status="merging",
+        updated_at=NOW,
+    )
+    assert spool.request_status(admitted["request_digest"]) == "merging"
 
 
 def test_delegate_merge_rejects_state_scope_or_signature_change() -> None:

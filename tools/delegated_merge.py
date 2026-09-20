@@ -27,6 +27,12 @@ def merge_request_id(subject: Mapping[str, Any]) -> str:
     return sha256_json({key: value for key, value in subject.items() if key != "request_id"})
 
 
+def durable_request_digest(request: Mapping[str, Any]) -> str:
+    """Match the broker spool's canonical JSON-plus-newline identity."""
+
+    return hashlib.sha256(canonical_json(request) + b"\n").hexdigest()
+
+
 def validate_delegate_package_at_base(
     package: Mapping[str, Any],
     *,
@@ -309,7 +315,7 @@ def select_delegate_admission(
         "program_grant_id": program["grant_id"],
         "pull_request": subject["pull_request"],
         "request": dict(subject),
-        "request_digest": sha256_json(subject),
+        "request_digest": durable_request_digest(subject),
         "ruleset_digests": subject["ruleset_digests"],
         "schema_version": 1,
         "state_commit": subject["state_commit"],
