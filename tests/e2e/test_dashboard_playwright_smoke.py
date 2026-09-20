@@ -229,10 +229,11 @@ def test_generated_active_html_is_sandboxed_away_from_capability(tmp_path: Path)
     generated.mkdir(parents=True)
     (dashboard / "index.html").write_text("dashboard", encoding="utf-8")
     (generated / "hostile.html").write_text(
-        "<p>generated report remains readable</p>"
+        '<p>generated report remains readable</p><a id="bundle" href="evidence.zip" download>bundle</a>'
         "<script>window.__stolen = sessionStorage.getItem('metriplane.runner.capability')</script>",
         encoding="utf-8",
     )
+    (generated / "evidence.zip").write_bytes(b"bounded-evidence-bundle")
 
     with bounded_dashboard_server(dashboard) as base_url, sync_playwright() as pw:
         executable = chromium_executable(pw)
@@ -248,9 +249,14 @@ def test_generated_active_html_is_sandboxed_away_from_capability(tmp_path: Path)
         page.wait_for_load_state("domcontentloaded")
 
         assert response is not None
-        assert response.headers["content-security-policy"].startswith("sandbox;")
+        assert response.headers["content-security-policy"].startswith("sandbox allow-downloads;")
         assert page.locator("p").text_content() == "generated report remains readable"
         assert page.evaluate("window.__stolen") is None
+        with page.expect_download() as download_info:
+            page.locator("#bundle").click()
+        download = download_info.value
+        assert download.suggested_filename == "evidence.zip"
+        assert download.path().read_bytes() == b"bounded-evidence-bundle"
         browser.close()
 
 

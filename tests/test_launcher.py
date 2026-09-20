@@ -204,11 +204,13 @@ def test_dashboard_generated_artifact_boundary_and_numeric_bind_are_fail_closed(
     with _dashboard_server(dashboard) as base:
         with urllib.request.urlopen(f"{base}/atlas_run/atlas_manifest.json", timeout=5) as response:
             assert response.read() == b"{}"
-            assert response.headers["Content-Security-Policy"].startswith("sandbox;")
+            assert response.headers["Content-Security-Policy"].startswith(
+                "sandbox allow-downloads;"
+            )
         with urllib.request.urlopen(f"{base}/atlas_run/report.html", timeout=5) as response:
             assert response.read() == b"<p>report</p>"
             csp = response.headers["Content-Security-Policy"]
-            assert csp.startswith("sandbox;")
+            assert csp.startswith("sandbox allow-downloads;")
             assert "script-src" not in csp
         for path in ("/private.txt", "/atlas_run/escape.txt", "/atlas_run/../index.html"):
             with pytest.raises(urllib.error.HTTPError) as exc_info:

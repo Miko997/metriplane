@@ -110,7 +110,7 @@ class DashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         generated_artifact = urlsplit(self.path).path.startswith("/atlas_run/")
         content_security_policy = (
-            "sandbox; default-src 'none'; img-src 'self' data:; "
+            "sandbox allow-downloads; default-src 'none'; img-src 'self' data:; "
             "style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; "
             "base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
             if generated_artifact
