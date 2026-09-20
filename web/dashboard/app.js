@@ -9,7 +9,7 @@ const CONFIG = {
     WS_URL: 'ws://localhost:8765',
     HEALTH_URL: 'http://127.0.0.1:8000/health',
     METRICS_URL: 'http://127.0.0.1:8000/metrics',
-    MANIFEST_URLS: ['../../evidence/manifest.csv', 'evidence/manifest.csv'],
+    MANIFEST_URLS: ['atlas_run/manifest.csv'],
     HEALTH_POLL_INTERVAL: 2000,  // 2 seconds
     METRICS_POLL_INTERVAL: 5000, // 5 seconds
     WS_RECONNECT_INTERVAL: 2000,  // 2 seconds

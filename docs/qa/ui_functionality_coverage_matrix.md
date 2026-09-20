@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `20232bba45883e84e643b7ace9016bf84441cec18beac3ecfc52f13c01f305bf`
+Canonical projection SHA-256: `359413e03e769baa8032b6d6759b211b9b3ddaab16c5b79e07931ea0a37fd808`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -206,7 +206,7 @@ Canonical projection SHA-256: `20232bba45883e84e643b7ace9016bf84441cec18beac3ecf
 | tool.run_fusion_preview | Run Fusion Preview | tools/run_fusion_preview.py | python tools/run_fusion_preview.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_fusion_yaml | Run Fusion Yaml | tools/run_fusion_yaml.py | python tools/run_fusion_yaml.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_live_yaml | Run Live Yaml | tools/run_live_yaml.py | python tools/run_live_yaml.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
-| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | web/dashboard/* | run_ui_demo_replay.py | ui_copy_command_only | P1 |  |
+| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 | tool.run_ui_timing_check | Run Ui Timing Check | tools/run_ui_timing_check.py | python tools/run_ui_timing_check.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

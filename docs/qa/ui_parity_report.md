@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `20232bba45883e84e643b7ace9016bf84441cec18beac3ecfc52f13c01f305bf`
+Canonical projection SHA-256: `359413e03e769baa8032b6d6759b211b9b3ddaab16c5b79e07931ea0a37fd808`
 
 Static inventory result: **FAIL**
 
@@ -18,9 +18,9 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | metric | value |
 | --- | --- |
 | total_discovered_features | 238 |
-| ui_full | 58 |
+| ui_full | 59 |
 | ui_partial | 2 |
-| ui_copy_command_only | 12 |
+| ui_copy_command_only | 11 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
 | cli_only_documented | 152 |
@@ -34,7 +34,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | data_needs_atlas_buttons_never_enabled | 0 |
 | read_only_fallback_endpoints | 0 |
 | critical_bugs | 4 |
-| high_bugs | 15 |
+| high_bugs | 14 |
 
 ## Stable Features Fully Available In UI
 
@@ -97,6 +97,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | runner.run-demo-replay | Run Demo Replay | metriplane/runner/allowlist.py | _PYTHON tools/run_ui_demo_replay.py --runs-dir {metriplane_platform_runs_dir} | web/dashboard/help.html; web/dashboard/help.html; web/dashboard/index.html; web/dashboard/index.html; web/dashboard/report.html; web/dashboard/run.html; web/dashboard/run.html | Run Demo Replay; Run; Run Demo Replay; Run; Run Demo Replay; Run Demo Replay; Run | ui_full | P0 | Build the camera-free demo replay, Command Center sample, evidence workspace, and USD export |
 | runner.sentinel-demo | Build Command Center Sample | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli sentinel run --config configs/sentinel_operator_demo.yaml --runs-dir {metriplane_platform_runs_dir} | web/dashboard/command_center_live.html | Build Command Center Sample | ui_full | P0 | Run the camera-free incident sample and write a run the Command Center can display |
 | runner.timing-breakdown | Camera-Free Latency Check | metriplane/runner/allowlist.py | _PYTHON tools/run_ui_timing_check.py | web/dashboard/benchmarks.html | Run | ui_full | P1 | Measure replay/rule-engine latency without opening local cameras |
+| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 | tool.ui_safe_cleanup | Ui Safe Cleanup | tools/ui_safe_cleanup.py | python tools/ui_safe_cleanup.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 
 ## Stable Features Partially Available
@@ -115,7 +116,6 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
 | tool.mp | Mp | tools/mp.sh | tools/mp.sh | web/dashboard/* | mp.sh | ui_copy_command_only | P2 |  |
 | tool.report_alignment | Report Alignment | tools/report_alignment.py | python tools/report_alignment.py | web/dashboard/* | report_alignment.py | ui_copy_command_only | P2 |  |
-| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | web/dashboard/* | run_ui_demo_replay.py | ui_copy_command_only | P1 |  |
 | tool.zones_report_jsonl | Zones Report Jsonl | tools/zones_report_jsonl.py | python tools/zones_report_jsonl.py | web/dashboard/* | zones_report_jsonl.py | ui_copy_command_only | P2 |  |
 
 ## Stable Features Missing From UI

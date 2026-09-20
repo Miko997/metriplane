@@ -44,7 +44,7 @@ metriplane restart --config configs/fusion_health_300fps.yaml --open
 ./tools/start_metriplane.sh cleanup
 ```
 
-The launcher starts the runner (port 9000) and static dashboard server (port 8088), then opens `http://127.0.0.1:8088/web/dashboard/` automatically. Runtime streams on ports 8000/8765 start only when you click the Setup/Run workflow or pass `--live`, so demo pages and Command Center are not overwritten by an automatic startup run.
+The launcher starts the runner (port 9000) and bounded static dashboard server (port 8088), then opens `http://127.0.0.1:8088/index.html` automatically. Runtime streams on ports 8000/8765 start only when you click the Setup/Run workflow or pass `--live`, so demo pages and Command Center are not overwritten by an automatic startup run.
 
 **Stop guarantees port release:** uses `os.killpg()` (process group kill) and polls until all owned ports are unbound. `restart` automatically runs cleanup if ports are still occupied after stop.
 
@@ -112,13 +112,13 @@ python -m metriplane.runner.service --port 9000
 ### Terminal 2: Dashboard HTTP Server
 ```bash
 cd <repo>
-python -m http.server 8088
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 
 # Open browser:
-# http://localhost:8088/web/dashboard/
+# http://127.0.0.1:8088/index.html
 ```
 **Port**: 8088  
-**URL**: http://localhost:8088/web/dashboard/
+**URL**: http://127.0.0.1:8088/index.html
 
 ---
 
@@ -307,7 +307,7 @@ curl http://localhost:8000/health | jq .
 ```
 
 ### 4. Verify Dashboard
-Open: http://localhost:8088/web/dashboard/
+Open: http://127.0.0.1:8088/index.html
 
 **Expected Display**:
 - ✅ WebSocket: Connected (green)
@@ -361,12 +361,12 @@ ffplay /dev/video1  # May fail if companion node
 ./tools/dashboard_runner.sh
 
 # Terminal 2: Dashboard
-python -m http.server 8088
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 
 # Terminal 3: Fusion (60s)
 CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 multicam_test
 
-# Browser: http://localhost:8088/web/dashboard/
+# Browser: http://127.0.0.1:8088/index.html
 # Watch world map populate with:
 #   - Blue squares (cam0 raw)
 #   - Purple diamonds (cam1 raw)
@@ -391,7 +391,7 @@ CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 multicam_test
 
 ## How to Verify Two-Camera Fusion
 
-When you open the dashboard at http://localhost:8088/web/dashboard/, you should see clear visual indicators that multi-camera fusion is working:
+When you open the dashboard at http://127.0.0.1:8088/index.html, you should see clear visual indicators that multi-camera fusion is working:
 
 ### ✅ Fusion Status Badge (Top of World State)
 **Location**: Above the world map canvas

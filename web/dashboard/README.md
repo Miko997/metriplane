@@ -29,7 +29,7 @@ metriplane start
 Then open:
 
 ```text
-http://localhost:8088/web/dashboard/index.html
+http://127.0.0.1:8088/index.html
 ```
 
 The old helper script now delegates to the same launcher:
@@ -41,7 +41,7 @@ The old helper script now delegates to the same launcher:
 Then open:
 
 ```text
-http://localhost:8088/web/dashboard/index.html
+http://127.0.0.1:8088/index.html
 ```
 
 ## UI Actions
@@ -57,4 +57,6 @@ Current UI-runnable actions include:
 - Evidence sample generation under `web/dashboard/atlas_run/`.
 - Incident archive verification, regression replay, event query, evidence index build, protocol export, edge readiness, field review kit, audit snapshot, USD replay export, and ROS 2 adapter checks.
 
-Generated evidence artifacts are local and gitignored.
+Generated evidence artifacts are local and gitignored. The launcher serves only the
+declared dashboard assets plus regular files beneath `atlas_run/`; it does not expose
+the repository checkout, source files, documentation tree, or retained evidence tree.

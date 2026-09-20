@@ -156,7 +156,7 @@ source .venv/bin/activate
 ./tools/dashboard_runner.sh &
 
 # 2. Serve the operator dashboard
-python -m http.server 8088 --directory web/dashboard &
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard &
 
 # 3. Open in browser
 #    http://localhost:8088/operator.html

@@ -1439,9 +1439,9 @@ def cmd_status(*, paths: PlatformPaths | None = None) -> int:
     dport = dash_info.get("port", _DEFAULT_DASHBOARD_PORT)
     dhost = dash_info.get("host", _DEFAULT_DASHBOARD_HOST)
     print(f"  Dashboard    : {_pid_badge(dpid, dpgid)}")
-    dash_url = f"http://{dhost}:{dport}/web/dashboard/"
+    dash_url = f"http://{dhost}:{dport}/index.html"
     print(f"    Dashboard  : {dash_url}  {_http_badge(dash_url)}")
-    op_url = f"http://{dhost}:{dport}/web/dashboard/operator.html"
+    op_url = f"http://{dhost}:{dport}/operator.html"
     print(f"    Operator   : {op_url}  {_http_badge(op_url)}")
     if dpid is None:
         _show_port_owner(dport, "  ")

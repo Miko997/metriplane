@@ -58,7 +58,7 @@ metriplane stop
 | Process | Port | Description |
 |---------|------|-------------|
 | Dashboard runner | 9000 | REST API for operator commands |
-| Static dashboard server | 8088 | Serves `web/dashboard/` and `evidence/` from repo root |
+| Static dashboard server | 8088 | Serves declared dashboard assets and bounded `atlas_run/` outputs only |
 | Runtime stream | 8000/8765 | Metrics, health, WebSocket stream; starts from Setup, Run, or `--live` |
 
 ### Flags
@@ -290,19 +290,17 @@ curl http://localhost:9000/status
 
 ### Serve Dashboard Web App
 
-**Important**: Serve from repo root to allow evidence/manifest.csv loading:
+Use the same bounded local server as the launcher:
 
 ```bash
 cd <repo>
-python -m http.server 8088
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 ```
 
-**Access**: http://localhost:8088/web/dashboard/
+**Access**: http://127.0.0.1:8088/index.html
 
-**Why serve from root**:
-- Dashboard tries to load: `../../evidence/manifest.csv` and `evidence/manifest.csv`
-- Serving from root makes both paths accessible
-- Evidence manifest will display properly
+The local server intentionally does not expose the checkout or retained repository
+evidence. Dashboard-generated artifacts remain available only below `atlas_run/`.
 
 **Alternative ports**:
 - 8088 (recommended, avoids common conflicts)
@@ -581,8 +579,8 @@ websocat ws://localhost:8765
 curl http://localhost:8000/health | jq
 
 # Terminal 4: Dashboard
-python -m http.server 8088
-# Open browser: http://localhost:8088/web/dashboard/
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
+# Open browser: http://127.0.0.1:8088/index.html
 ```
 
 ### 3. Profile Performance
@@ -681,12 +679,12 @@ lsof -i :8000
 **Restart services**:
 ```bash
 # Kill old processes
-pkill -f "http.server 8088"
+pkill -f "metriplane._local_http 8088"
 pkill -f "metriplane"
 
 # Restart
 CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 test &
-python -m http.server 8088 &
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard &
 ```
 
 ### Issue: Import Error for metriplane

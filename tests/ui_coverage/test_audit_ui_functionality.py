@@ -529,7 +529,7 @@ def test_current_governed_surface_has_exact_measured_counts():
         "ui_partial": 2,
         "ui_missing": 14,
         "critical_bugs": 4,
-        "high_bugs": 15,
+            "high_bugs": 14,
     }
     by_id = {action.action_id: action for action in audit.actions}
     assert by_id["cli.doctor"].coverage_status == "ui_full"
@@ -736,7 +736,7 @@ def test_committed_status_matches_current_governed_surface():
     assert stale_output_paths(ROOT, outputs) == []
     assert b"Static inventory result: **FAIL**" in outputs[Path("docs/qa/ui_parity_report.md")]
     assert (
-        b"Release-blocking P0/P1 coverage rows: `19`"
+        b"Release-blocking P0/P1 coverage rows: `18`"
         in outputs[Path("docs/qa/ui_missing_features_report.md")]
     )
     assert b"export PLAYWRIGHT_BROWSERS_PATH=" in outputs[Path("docs/qa/ui_testing.md")]

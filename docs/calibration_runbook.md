@@ -329,12 +329,12 @@ cameras:
 **Start Dashboard**:
 ```bash
 # Terminal 1: Dashboard server
-python -m http.server 8088
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 
 # Terminal 2: Fusion (if not already running)
 CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 verify_calib
 
-# Browser: http://localhost:8088/web/dashboard/
+# Browser: http://127.0.0.1:8088/index.html
 ```
 
 **What to Check**:
@@ -631,9 +631,9 @@ CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 test_recalibra
 ### STEP 9: Verify in Dashboard
 ```bash
 # Terminal 1: Dashboard (if not already running)
-python -m http.server 8088
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 
-# Browser: http://localhost:8088/web/dashboard/
+# Browser: http://127.0.0.1:8088/index.html
 ```
 
 **Dashboard Verification Checklist**:
@@ -715,8 +715,8 @@ python tools/debug_alignment.py \
 CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 test_recalibrated
 
 # View in dashboard
-python -m http.server 8088
-# Open: http://localhost:8088/web/dashboard/
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
+# Open: http://127.0.0.1:8088/index.html
 ```
 
 ---

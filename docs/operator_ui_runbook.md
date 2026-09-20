@@ -42,7 +42,7 @@ This starts:
 
 By default, no active run is started. Use the guided setup flow for camera-backed fusion, or use `--live --config configs/fusion_health_300fps.yaml` only when you intentionally want the runtime stream to start at launch.
 
-Browser opens automatically to `http://127.0.0.1:8088/web/dashboard/operator.html`.
+Browser opens automatically to `http://127.0.0.1:8088/operator.html`.
 
 State file: `launcher-state.json` in the active platform state directory
 Logs: `_launcher/<timestamp>/` in the active platform runs directory
@@ -59,7 +59,7 @@ source .venv/bin/activate
 ./tools/dashboard_runner.sh
 
 # 3. Serve the dashboard (localhost :8088)
-python -m http.server 8088 --directory web/dashboard
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 
 # 4. Open Operator Setup
 # http://localhost:8088/operator.html

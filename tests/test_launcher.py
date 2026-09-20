@@ -48,6 +48,7 @@ import pytest
 
 from metriplane.cli import main as cli_main
 from metriplane._local_http import (
+    DASHBOARD_ASSETS,
     DashboardHTTPRequestHandler,
     LocalHTTPServer,
     _is_numeric_loopback,
@@ -147,6 +148,19 @@ def test_dashboard_server_exposes_only_declared_assets_with_secure_headers():
                 urllib.request.urlopen(f"{base}{path}", timeout=5)
             assert exc_info.value.code == 404
             exc_info.value.close()
+
+
+def test_dashboard_assets_do_not_link_outside_the_bounded_server_root():
+    dashboard = Path.cwd() / "web" / "dashboard"
+    for relative in sorted(DASHBOARD_ASSETS):
+        if not relative.endswith(".html"):
+            continue
+        source = (dashboard / relative).read_text(encoding="utf-8")
+        assert "../" not in source, relative
+
+    app_source = (dashboard / "app.js").read_text(encoding="utf-8")
+    assert "MANIFEST_URLS: ['atlas_run/manifest.csv']" in app_source
+    assert "evidence/manifest.csv" not in app_source
 
 
 def test_dashboard_request_log_never_contains_query_capability(capsys):
@@ -593,6 +607,24 @@ class TestNoState:
         out = capsys.readouterr().out
         # Should always show port scan section even without state
         assert "Runner" in out or "Dashboard" in out or "port scan" in out.lower()
+
+    def test_status_probes_the_bounded_dashboard_routes(self, tmp_path, monkeypatch, capsys):
+        import metriplane.launcher as lm
+
+        probed: list[str] = []
+        monkeypatch.setattr(lm, "_probe_http", lambda url: probed.append(url) or True)
+        monkeypatch.setattr(lm, "_show_port_owner", lambda *_args: None)
+        monkeypatch.setattr(lm, "_find_port_owner", lambda _port: None)
+
+        assert lm.cmd_status(paths=_test_platform_paths(tmp_path)) == 0
+        output = capsys.readouterr().out
+        dashboard = "http://127.0.0.1:8088/index.html"
+        operator = "http://127.0.0.1:8088/operator.html"
+        assert dashboard in probed
+        assert operator in probed
+        assert dashboard in output
+        assert operator in output
+        assert all("/web/dashboard" not in url for url in probed)
 
     def test_cleanup_no_state_returns_zero(self, capsys):
         rc = cmd_cleanup()

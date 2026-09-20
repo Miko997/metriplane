@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `20232bba45883e84e643b7ace9016bf84441cec18beac3ecfc52f13c01f305bf`
+Canonical projection SHA-256: `359413e03e769baa8032b6d6759b211b9b3ddaab16c5b79e07931ea0a37fd808`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -522,7 +522,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | web/dashboard/benchmarks.html | Benchmarks | benchmarks.html |
 | web/dashboard/benchmarks.html | Settings | settings.html |
 | web/dashboard/benchmarks.html | Help | help.html |
-| web/dashboard/benchmarks.html | Open | ../../docs/eval/evidence_matrix.md |
+| web/dashboard/benchmarks.html | Help | help.html |
 | web/dashboard/command_center.html | Open Live | command_center_live.html |
 | web/dashboard/command_center.html | Open live Command Center | command_center_live.html |
 | web/dashboard/command_center_live.html | Open snapshot | command_center.html |
@@ -538,7 +538,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | web/dashboard/help.html | Benchmarks | benchmarks.html |
 | web/dashboard/help.html | Settings | settings.html |
 | web/dashboard/help.html | Help | help.html |
-| web/dashboard/help.html | Open full runbook | ../../docs/operator_ui_runbook.md |
+| web/dashboard/help.html | Open guided setup | operator.html |
 | web/dashboard/help.html | Settings | settings.html |
 | web/dashboard/help.html | Run | run.html |
 | web/dashboard/help.html | Integrations | integrations.html |
@@ -576,19 +576,19 @@ This is a static source census. It does not characterize runtime behavior or exp
 | web/dashboard/integrations.html | Benchmarks | benchmarks.html |
 | web/dashboard/integrations.html | Settings | settings.html |
 | web/dashboard/integrations.html | Help | help.html |
-| web/dashboard/integrations.html | Open instructions | ../../docs/ros2_bridge.md |
+| web/dashboard/integrations.html | Help | help.html |
 | web/dashboard/integrations.html | Open Omniverse file | atlas_run/omniverse/metriplane_replay.usda |
 | web/dashboard/integrations.html | Open Isaac file | atlas_run/isaac/metriplane_replay.usda |
-| web/dashboard/integrations.html | Instructions | ../../docs/isaac_omniverse_replay.md |
+| web/dashboard/integrations.html | Help | help.html |
 | web/dashboard/integrations.html | Open report | atlas_run/cell_truth_report.html |
 | web/dashboard/integrations.html | Download proof | atlas_run/evidence_bundles/INC-0001.zip |
 | web/dashboard/integrations.html | Evidence | atlas.html |
-| web/dashboard/integrations.html | Report | ../../docs/gpu_compute_backend.md |
+| web/dashboard/integrations.html | Help | help.html |
 | web/dashboard/integrations.html | Open snapshot | atlas_run/connectors/rest_snapshot.json |
 | web/dashboard/operator.html | ← Runtime Console | runtime.html |
 | web/dashboard/operator.html | ← Back to Config | # |
-| web/dashboard/operator.html | Full Runbook | ../../docs/operator_ui_runbook.md |
-| web/dashboard/operator.html | Open full runbook → | ../../docs/operator_ui_runbook.md |
+| web/dashboard/operator.html | Help | help.html |
+| web/dashboard/operator.html | Open help → | help.html |
 | web/dashboard/report.html | Metri plane | index.html |
 | web/dashboard/report.html | Start | index.html |
 | web/dashboard/report.html | Setup | operator.html |
@@ -627,10 +627,10 @@ This is a static source census. It does not characterize runtime behavior or exp
 | web/dashboard/run.html | Open Report | report.html |
 | web/dashboard/run.html | Setup | operator.html |
 | web/dashboard/run.html | Open | atlas.html |
-| web/dashboard/run.html | Command helper Open script | ../../tools/run_ui_demo_replay.py |
-| web/dashboard/run.html | Action registry Open allowlist | ../../metriplane/runner/allowlist.py |
+| web/dashboard/run.html | Command helper Open help | help.html |
+| web/dashboard/run.html | Action registry Open help | help.html |
 | web/dashboard/run.html | Run data Open manifest | atlas_run/atlas_manifest.json |
-| web/dashboard/run.html | Runbook Open guide | ../../docs/operator_ui_runbook.md |
+| web/dashboard/run.html | Runbook Open help | help.html |
 | web/dashboard/runtime.html | Start | index.html |
 | web/dashboard/runtime.html | Setup | operator.html |
 | web/dashboard/runtime.html | Run | run.html |
@@ -646,13 +646,13 @@ This is a static source census. It does not characterize runtime behavior or exp
 | web/dashboard/runtime.html | Evidence | #evidence |
 | web/dashboard/runtime.html | Runbook | #runbook |
 | web/dashboard/runtime.html | Open Command Center | command_center_live.html |
-| web/dashboard/runtime.html | View Runbook | ../../docs/operator_ui_runbook.md |
-| web/dashboard/runtime.html | Full Runbook | ../../docs/operator_ui_runbook.md |
-| web/dashboard/runtime.html | View Full Runbook | ../../docs/operator_ui_runbook.md |
+| web/dashboard/runtime.html | View Help | help.html |
+| web/dashboard/runtime.html | Help | help.html |
+| web/dashboard/runtime.html | View Help | help.html |
 | web/dashboard/runtime.html | Start from Operator Setup | operator.html |
 | web/dashboard/runtime.html | Home | index.html |
 | web/dashboard/runtime.html | Command Center | command_center_live.html |
-| web/dashboard/runtime.html | Runbook | ../../docs/operator_ui_runbook.md |
+| web/dashboard/runtime.html | Help | help.html |
 | web/dashboard/settings.html | Metri plane | index.html |
 | web/dashboard/settings.html | Start | index.html |
 | web/dashboard/settings.html | Setup | operator.html |
@@ -666,10 +666,10 @@ This is a static source census. It does not characterize runtime behavior or exp
 | web/dashboard/settings.html | Settings | settings.html |
 | web/dashboard/settings.html | Help | help.html |
 | web/dashboard/settings.html | Open | operator.html |
-| web/dashboard/settings.html | Action registry Open allowlist | ../../metriplane/runner/allowlist.py |
-| web/dashboard/settings.html | Runbook Open operator guide | ../../docs/operator_ui_runbook.md |
-| web/dashboard/settings.html | Config Open example | ../../config.example.yaml |
-| web/dashboard/settings.html | Calibration Open folder | ../../calib/ |
+| web/dashboard/settings.html | Action registry Open help | help.html |
+| web/dashboard/settings.html | Runbook Open help | help.html |
+| web/dashboard/settings.html | Config Open help | help.html |
+| web/dashboard/settings.html | Calibration Open help | help.html |
 
 ## Duplicate HTML IDs
 
