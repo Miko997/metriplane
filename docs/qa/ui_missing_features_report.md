@@ -7,10 +7,10 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902edca924a90bde1a43`
+Canonical projection SHA-256: `8c4e77e87aaa16abb7a96a783002c7aded17aaea2833b3ff28d1b14583bd56a9`
 
 - Missing features total: `14`
-- Release-blocking P0/P1 coverage rows: `19`
+- Release-blocking P0/P1 coverage rows: `18`
 
 ## Release-Blocking P0/P1 Coverage
 
@@ -34,7 +34,6 @@ Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902ed
 | cli.stop | metriplane stop | metriplane/cli.py | python -m metriplane.cli stop | - | - | ui_missing | P0 |  |
 | cli.traces | metriplane traces | metriplane/cli.py | python -m metriplane.cli traces | - | - | ui_missing | P1 |  |
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
-| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | web/dashboard/* | run_ui_demo_replay.py | ui_copy_command_only | P1 |  |
 
 ## Missing Features
 

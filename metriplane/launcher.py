@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import signal
 import socket
 import stat
@@ -36,6 +37,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -650,6 +652,7 @@ def _start_runner(
     log_file: Path,
     repo_root: Path,
     paths: PlatformPaths,
+    session_capability: str,
 ) -> subprocess.Popen[bytes]:
     cmd = [
         sys.executable,
@@ -676,7 +679,9 @@ def _start_runner(
         "--runs-dir",
         str(paths.runs_dir),
     ]
-    return _launch(cmd, log_file, repo_root)
+    env = dict(os.environ)
+    env["METRIPLANE_RUNNER_SESSION_TOKEN"] = session_capability
+    return _launch(cmd, log_file, repo_root, env=env)
 
 
 def _start_dashboard(
@@ -690,7 +695,7 @@ def _start_dashboard(
         "--bind",
         host,
         "--directory",
-        str(repo_root),
+        str(repo_root / "web" / "dashboard"),
     ]
     return _launch(cmd, log_file, repo_root)
 
@@ -936,6 +941,7 @@ def _cmd_start_locked(
             return 2
 
     repo_root = _find_repo_root()
+    session_capability = secrets.token_urlsafe(32)
     try:
         log_d = _log_dir_path(effective_runs_dir, timestamp)
     except (OSError, _LauncherStateError) as exc:
@@ -986,6 +992,7 @@ def _cmd_start_locked(
         log_file=log_d / "runner.log",
         repo_root=repo_root,
         paths=resolved_paths,
+        session_capability=session_capability,
     )
     if not _wait_for_port(runner_host, runner_port, timeout=8.0):
         print(f"  ❌ Runner did not start within 8s (pid={rp.pid})")
@@ -1085,8 +1092,8 @@ def _cmd_start_locked(
         return 2
 
     # --- Print URLs ---
-    dash_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/index.html"
-    op_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/operator.html"
+    dash_url = f"http://{dashboard_host}:{dashboard_port}/index.html"
+    op_url = f"http://{dashboard_host}:{dashboard_port}/operator.html"
     open_url = op_url if operator else dash_url
 
     print(f"\n{'=' * 60}")
@@ -1107,7 +1114,8 @@ def _cmd_start_locked(
     print(f"{'=' * 60}")
 
     if open_browser:
-        _open_browser(open_url)
+        capability_fragment = urllib.parse.urlencode({"capability": session_capability})
+        _open_browser(f"{open_url}#{capability_fragment}")
         print(f"\n🌐 Opened {open_url}")
 
     return 0
@@ -1431,9 +1439,9 @@ def cmd_status(*, paths: PlatformPaths | None = None) -> int:
     dport = dash_info.get("port", _DEFAULT_DASHBOARD_PORT)
     dhost = dash_info.get("host", _DEFAULT_DASHBOARD_HOST)
     print(f"  Dashboard    : {_pid_badge(dpid, dpgid)}")
-    dash_url = f"http://{dhost}:{dport}/web/dashboard/"
+    dash_url = f"http://{dhost}:{dport}/index.html"
     print(f"    Dashboard  : {dash_url}  {_http_badge(dash_url)}")
-    op_url = f"http://{dhost}:{dport}/web/dashboard/operator.html"
+    op_url = f"http://{dhost}:{dport}/operator.html"
     print(f"    Operator   : {op_url}  {_http_badge(op_url)}")
     if dpid is None:
         _show_port_owner(dport, "  ")

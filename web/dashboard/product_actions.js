@@ -6,7 +6,20 @@
   const DONE = new Set(["succeeded", "failed", "timed_out", "cancelled"]);
   const jobs = new Map();
   const commandRegistry = new Map();
-  let runnerSessionToken = null;
+  let runnerSessionToken = consumeRunnerCapability();
+
+  function consumeRunnerCapability() {
+    const key = "metriplane.runner.capability";
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const supplied = fragment.get("capability");
+    try {
+      if (supplied) window.sessionStorage.setItem(key, supplied);
+      if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      return supplied || window.sessionStorage.getItem(key);
+    } catch (_error) {
+      return supplied;
+    }
+  }
 
   function all(selector) {
     return Array.from(document.querySelectorAll(selector));
@@ -49,11 +62,7 @@
   async function jsonFetch(url, options) {
     options = options ? { ...options } : {};
     if ((options.method || "GET").toUpperCase() !== "GET") {
-      if (!runnerSessionToken) {
-        const statusResponse = await fetch(`${RUNNER}/status`, { cache: "no-store" });
-        const statusData = await statusResponse.json();
-        runnerSessionToken = statusData.session_token || null;
-      }
+      if (!runnerSessionToken) throw new Error("Runner session capability is unavailable; restart with metriplane start");
       options.headers = {
         ...(options.headers || {}),
         "X-Metriplane-Token": runnerSessionToken || "",
@@ -66,7 +75,6 @@
     } catch (err) {
       data = {};
     }
-    if (data.session_token) runnerSessionToken = data.session_token;
     if (!res.ok) {
       throw new Error(data.error || `${res.status} ${res.statusText}`);
     }
@@ -134,16 +142,30 @@
   function renderJobs(payload) {
     for (const el of all("[data-jobs-list]")) {
       const jobs = (payload && payload.jobs) || [];
+      el.replaceChildren();
       if (!jobs.length) {
-        el.innerHTML = `<div class="mp-empty-line">No recent runner jobs.</div>`;
+        const empty = document.createElement("div");
+        empty.className = "mp-empty-line";
+        empty.textContent = "No recent runner jobs.";
+        el.appendChild(empty);
         continue;
       }
-      el.innerHTML = jobs.slice(0, 5).map((job) => {
+      jobs.slice(0, 5).forEach((job) => {
         const status = job.status || "unknown";
         const command = job.command_id || "unknown";
         const exit = job.exit_code == null ? "" : `exit ${job.exit_code}`;
-        return `<div class="mp-job-history-row"><strong>${command}</strong><span data-state="${statusTone(status)}">${status}</span><small>${exit}</small></div>`;
-      }).join("");
+        const row = document.createElement("div");
+        row.className = "mp-job-history-row";
+        const commandEl = document.createElement("strong");
+        commandEl.textContent = command;
+        const statusEl = document.createElement("span");
+        statusEl.dataset.state = statusTone(status);
+        statusEl.textContent = status;
+        const exitEl = document.createElement("small");
+        exitEl.textContent = exit;
+        row.append(commandEl, statusEl, exitEl);
+        el.appendChild(row);
+      });
     }
   }
 

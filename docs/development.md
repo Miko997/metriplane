@@ -58,7 +58,7 @@ metriplane stop
 | Process | Port | Description |
 |---------|------|-------------|
 | Dashboard runner | 9000 | REST API for operator commands |
-| Static dashboard server | 8088 | Serves `web/dashboard/` and `evidence/` from repo root |
+| Static dashboard server | 8088 | Serves declared dashboard assets and bounded `atlas_run/` outputs only |
 | Runtime stream | 8000/8765 | Metrics, health, WebSocket stream; starts from Setup, Run, or `--live` |
 
 ### Flags
@@ -271,16 +271,16 @@ Ready for the bundled camera-free demo.
 
 ## Dashboard Development
 
-### Start Dashboard Runner Service
+### Start the capability-bearing local stack
 
 ```bash
-./tools/dashboard_runner.sh
+metriplane start
 ```
 
 **What it does**:
-- Starts runner service on port 9000
-- Enables "Run" buttons in dashboard
-- Allows command execution from web UI
+- Starts the runner on port 9000 and the bounded dashboard on port 8088
+- Opens a localhost URL carrying a one-time fragment capability into browser session storage
+- Enables allowlisted dashboard mutations without exposing the capability through a GET response
 
 **Check status**:
 ```bash
@@ -288,21 +288,10 @@ curl http://localhost:9000/status
 # {"status": "idle", "running_jobs": 0}
 ```
 
-### Serve Dashboard Web App
-
-**Important**: Serve from repo root to allow evidence/manifest.csv loading:
-
-```bash
-cd <repo>
-python -m http.server 8088
-```
-
-**Access**: http://localhost:8088/web/dashboard/
-
-**Why serve from root**:
-- Dashboard tries to load: `../../evidence/manifest.csv` and `evidence/manifest.csv`
-- Serving from root makes both paths accessible
-- Evidence manifest will display properly
+The launcher intentionally does not expose the checkout or retained repository evidence.
+Dashboard-generated artifacts remain available only below `atlas_run/`. Do not replace
+the launcher with separate runner and static-server commands: they cannot perform the
+capability handoff required for mutation requests.
 
 **Alternative ports**:
 - 8088 (recommended, avoids common conflicts)
@@ -581,8 +570,8 @@ websocat ws://localhost:8765
 curl http://localhost:8000/health | jq
 
 # Terminal 4: Dashboard
-python -m http.server 8088
-# Open browser: http://localhost:8088/web/dashboard/
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
+# Open browser: http://127.0.0.1:8088/index.html
 ```
 
 ### 3. Profile Performance
@@ -681,12 +670,12 @@ lsof -i :8000
 **Restart services**:
 ```bash
 # Kill old processes
-pkill -f "http.server 8088"
+pkill -f "metriplane._local_http 8088"
 pkill -f "metriplane"
 
 # Restart
 CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 test &
-python -m http.server 8088 &
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard &
 ```
 
 ### Issue: Import Error for metriplane
@@ -916,7 +905,7 @@ CONFIG=configs/fusion_health_local.yaml ./tools/mp.sh timing-breakdown
 
 **Tools**:
 - [tools/mp.sh](../tools/mp.sh) - Main CLI wrapper
-- [tools/dashboard_runner.sh](../tools/dashboard_runner.sh) - Runner service
+- [tools/dashboard_runner.sh](../tools/dashboard_runner.sh) - Compatibility wrapper for `metriplane start`
 - [tools/debug_alignment.py](../tools/debug_alignment.py) - Calibration diagnostics
 
 **Web UI**:

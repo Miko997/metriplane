@@ -27,7 +27,7 @@ artifacts are missing (never 500).
 
 ```bash
 metriplane command-center export <run-or-bundle> --out web/dashboard/command_center_data.json
-python -m http.server 8088 --directory web/dashboard
+python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
 # open http://localhost:8088/command_center.html
 ```
 
@@ -61,12 +61,13 @@ auto-refreshes the **latest run** under the active platform runs directory every
 "Ask the operator assistant" box. A non-technical operator never touches the CLI:
 
 ```bash
-# 1) start the runner (serves the read-only endpoints, localhost only)
-python -m metriplane.runner.service --port 9000
-# 2) serve the dashboard
-python -m http.server 8088 --directory web/dashboard
-# 3) open http://localhost:8088/command_center_live.html
+# Start the complete localhost stack and use the capability-bearing browser tab
+metriplane start
 ```
+
+Open **Command Center** from that tab. Do not split the runner and dashboard into
+separate processes: operator mutations require the launcher's fragment capability
+handoff, and the bounded dashboard server intentionally does not expose the checkout.
 
 To populate a run, click **"Run Sentinel Demo"** in the operator dashboard (an allowlisted
 one-click command) or run `metriplane sentinel run ...` with an optional explicit `--runs-dir`. A

@@ -5,7 +5,7 @@
 # Compatibility wrapper for the single-command Metriplane launcher.
 #
 #   ./tools/command_center_up.sh
-#   -> opens http://localhost:8088/web/dashboard/index.html
+#   -> opens http://127.0.0.1:8088/index.html with a fragment-delivered capability
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

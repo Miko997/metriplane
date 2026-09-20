@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902edca924a90bde1a43`
+Canonical projection SHA-256: `8c4e77e87aaa16abb7a96a783002c7aded17aaea2833b3ff28d1b14583bd56a9`
 
 Static inventory result: **FAIL**
 
@@ -18,12 +18,12 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | metric | value |
 | --- | --- |
 | total_discovered_features | 238 |
-| ui_full | 58 |
+| ui_full | 59 |
 | ui_partial | 2 |
-| ui_copy_command_only | 12 |
+| ui_copy_command_only | 10 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 152 |
+| cli_only_documented | 153 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -34,7 +34,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | data_needs_atlas_buttons_never_enabled | 0 |
 | read_only_fallback_endpoints | 0 |
 | critical_bugs | 4 |
-| high_bugs | 15 |
+| high_bugs | 14 |
 
 ## Stable Features Fully Available In UI
 
@@ -97,6 +97,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | runner.run-demo-replay | Run Demo Replay | metriplane/runner/allowlist.py | _PYTHON tools/run_ui_demo_replay.py --runs-dir {metriplane_platform_runs_dir} | web/dashboard/help.html; web/dashboard/help.html; web/dashboard/index.html; web/dashboard/index.html; web/dashboard/report.html; web/dashboard/run.html; web/dashboard/run.html | Run Demo Replay; Run; Run Demo Replay; Run; Run Demo Replay; Run Demo Replay; Run | ui_full | P0 | Build the camera-free demo replay, Command Center sample, evidence workspace, and USD export |
 | runner.sentinel-demo | Build Command Center Sample | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli sentinel run --config configs/sentinel_operator_demo.yaml --runs-dir {metriplane_platform_runs_dir} | web/dashboard/command_center_live.html | Build Command Center Sample | ui_full | P0 | Run the camera-free incident sample and write a run the Command Center can display |
 | runner.timing-breakdown | Camera-Free Latency Check | metriplane/runner/allowlist.py | _PYTHON tools/run_ui_timing_check.py | web/dashboard/benchmarks.html | Run | ui_full | P1 | Measure replay/rule-engine latency without opening local cameras |
+| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 | tool.ui_safe_cleanup | Ui Safe Cleanup | tools/ui_safe_cleanup.py | python tools/ui_safe_cleanup.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 
 ## Stable Features Partially Available
@@ -110,12 +111,10 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.calibrate_intrinsics_chessboard | Calibrate Intrinsics Chessboard | tools/calibrate_intrinsics_chessboard.py | python tools/calibrate_intrinsics_chessboard.py | web/dashboard/* | calibrate_intrinsics_chessboard.py | ui_copy_command_only | P2 |  |
 | tool.calibrate_planar_homography | Calibrate Planar Homography | tools/calibrate_planar_homography.py | python tools/calibrate_planar_homography.py | web/dashboard/* | calibrate_planar_homography.py | ui_copy_command_only | P2 |  |
 | tool.command_center_up | Command Center Up | tools/command_center_up.sh | tools/command_center_up.sh | web/dashboard/* | command_center_up.sh | ui_copy_command_only | P2 |  |
-| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | web/dashboard/* | dashboard_runner.sh | ui_copy_command_only | P2 |  |
 | tool.debug_alignment | Debug Alignment | tools/debug_alignment.py | python tools/debug_alignment.py | web/dashboard/* | debug_alignment.py | ui_copy_command_only | P2 |  |
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
 | tool.mp | Mp | tools/mp.sh | tools/mp.sh | web/dashboard/* | mp.sh | ui_copy_command_only | P2 |  |
 | tool.report_alignment | Report Alignment | tools/report_alignment.py | python tools/report_alignment.py | web/dashboard/* | report_alignment.py | ui_copy_command_only | P2 |  |
-| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | web/dashboard/* | run_ui_demo_replay.py | ui_copy_command_only | P1 |  |
 | tool.zones_report_jsonl | Zones Report Jsonl | tools/zones_report_jsonl.py | python tools/zones_report_jsonl.py | web/dashboard/* | zones_report_jsonl.py | ui_copy_command_only | P2 |  |
 
 ## Stable Features Missing From UI
@@ -199,6 +198,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.complete_delegated_task | Complete Delegated Task | tools/complete_delegated_task.py | python tools/complete_delegated_task.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.delegated_merge | Delegated Merge | tools/delegated_merge.py | python tools/delegated_merge.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.delegated_task_authority | Delegated Task Authority | tools/delegated_task_authority.py | python tools/delegated_task_authority.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.demo4_everything | Demo4 Everything | tools/demo4_everything.sh | tools/demo4_everything.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

@@ -83,7 +83,7 @@ SPDX-License-Identifier: MIT
     <div class="sidebar-cta-title">Need live controls?</div>
     <div class="sidebar-cta-sub">Use Command Center for incidents, replay, camera trust, and assistant context.</div>
     <a href="command_center_live.html" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">Open Command Center</a>
-    <a href="../../docs/operator_ui_runbook.md" target="_blank" style="display:block;text-align:center;margin-top:8px;font-size:10px;color:var(--text-muted);text-decoration:none;">View Runbook</a>
+    <a href="help.html" style="display:block;text-align:center;margin-top:8px;font-size:10px;color:var(--text-muted);text-decoration:none;">View Help</a>
   </div>
 </aside>
 
@@ -239,7 +239,7 @@ SPDX-License-Identifier: MIT
         <div class="panel-header" style="cursor:pointer;" onclick="document.getElementById('guide-details').toggleAttribute('open');this.querySelector('.guide-chevron').classList.toggle('guide-chevron-closed')">
           <h2>Quick Guide</h2>
           <span class="guide-chevron" style="font-size:12px;color:var(--mp-text-dim);margin-right:6px;transition:transform 0.18s;">▾</span>
-          <a href="../../docs/operator_ui_runbook.md" target="_blank" class="refresh-btn" onclick="event.stopPropagation()">Full Runbook</a>
+          <a href="help.html" class="refresh-btn" onclick="event.stopPropagation()">Help</a>
         </div>
         <details id="guide-details" open>
         <summary style="display:none;"></summary>
@@ -276,7 +276,7 @@ SPDX-License-Identifier: MIT
 
         <!-- Runbook CTA -->
         <div style="padding:0 20px 20px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="../../docs/operator_ui_runbook.md" target="_blank" class="btn btn-secondary" style="text-decoration:none;">View Full Runbook</a>
+          <a href="help.html" class="btn btn-secondary" style="text-decoration:none;">View Help</a>
         </div>
 
         <!-- Benchmark Commands -->
@@ -398,7 +398,7 @@ SPDX-License-Identifier: MIT
           </table>
         </div>
         <div class="manifest-note" id="manifest-help" style="display:none;">
-          <small>Serve from repo root or copy manifest.csv to web/dashboard/</small>
+          <small>Repository files are not exposed. Generate a local artifact at atlas_run/manifest.csv to load it here.</small>
         </div>
       </div>
 
@@ -409,7 +409,7 @@ SPDX-License-Identifier: MIT
     Metri<span style="color:var(--mp-primary-bright)">plane</span> v0.1.0 &nbsp;·&nbsp;
     <a href="index.html">Home</a> &nbsp;·&nbsp;
     <a href="command_center_live.html">Command Center</a> &nbsp;·&nbsp;
-    <a href="../../docs/operator_ui_runbook.md" target="_blank">Runbook</a>
+    <a href="help.html">Help</a>
   </footer>
 
 </div><!-- /main -->

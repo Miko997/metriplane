@@ -9,7 +9,7 @@ const CONFIG = {
     WS_URL: 'ws://localhost:8765',
     HEALTH_URL: 'http://127.0.0.1:8000/health',
     METRICS_URL: 'http://127.0.0.1:8000/metrics',
-    MANIFEST_URLS: ['../../evidence/manifest.csv', 'evidence/manifest.csv'],
+    MANIFEST_URLS: ['atlas_run/manifest.csv'],
     HEALTH_POLL_INTERVAL: 2000,  // 2 seconds
     METRICS_POLL_INTERVAL: 5000, // 5 seconds
     WS_RECONNECT_INTERVAL: 2000,  // 2 seconds
@@ -21,7 +21,20 @@ let wsReconnectTimer = null;
 let healthPollTimer = null;
 let metricsPollTimer = null;
 let lastFrameData = null;
-let runnerSessionToken = null;
+let runnerSessionToken = consumeRunnerCapability();
+
+function consumeRunnerCapability() {
+    const key = 'metriplane.runner.capability';
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const supplied = fragment.get('capability');
+    try {
+        if (supplied) window.sessionStorage.setItem(key, supplied);
+        if (window.location.hash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+        return supplied || window.sessionStorage.getItem(key);
+    } catch (_error) {
+        return supplied;
+    }
+}
 
 // Trail tracking: Map<object_id, {points: [{x, y, ts}], lastSeen: timestamp}>
 const objectTrails = new Map();
@@ -107,16 +120,23 @@ function handleFrameData(data) {
 
 function updateObjectsTable(objects) {
     const tbody = document.getElementById('objects-tbody');
-    
+    tbody.replaceChildren();
+
     if (!objects || objects.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty">No objects</td></tr>';
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 4;
+        cell.className = 'empty';
+        cell.textContent = 'No objects';
+        row.appendChild(cell);
+        tbody.appendChild(row);
         return;
     }
 
     // Take last 20 objects to avoid DOM bloat
     const recentObjects = objects.slice(-20);
 
-    tbody.innerHTML = recentObjects.map(obj => {
+    recentObjects.forEach(obj => {
         // Support different object shapes
         let x = '—', y = '—', conf = '—';
         
@@ -140,34 +160,40 @@ function updateObjectsTable(objects) {
 
         const id = obj.id || obj.object_id || '?';
 
-        return `
-            <tr>
-                <td>${id}</td>
-                <td>${x}</td>
-                <td>${y}</td>
-                <td>${conf}</td>
-            </tr>
-        `;
-    }).join('');
+        const row = document.createElement('tr');
+        [id, x, y, conf].forEach(value => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
+        tbody.appendChild(row);
+    });
 }
 
 function updateZoneEvents(events) {
     const container = document.getElementById('zone-events');
-    
+    container.replaceChildren();
+
     if (!events || events.length === 0) {
-        container.innerHTML = '<p class="empty">No zone events</p>';
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'No zone events';
+        container.appendChild(empty);
         return;
     }
 
     // Take last 10 events
     const recentEvents = events.slice(-10);
 
-    container.innerHTML = recentEvents.map(event => {
+    recentEvents.forEach(event => {
         const type = event.event_type || event.type || '?';
         const zone = event.zone_id || '?';
         const obj = event.object_id || '?';
-        return `<div class="event-item">• ${type}: obj ${obj} in zone ${zone}</div>`;
-    }).join('');
+        const item = document.createElement('div');
+        item.className = 'event-item';
+        item.textContent = `• ${type}: obj ${obj} in zone ${zone}`;
+        container.appendChild(item);
+    });
 }
 
 // ========================================
@@ -185,7 +211,6 @@ async function fetchHealth() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
-        runnerSessionToken = data.session_token || null;
         updateHealth(data);
         updateStatus('health', 'online', 'Online');
     } catch (err) {
@@ -203,7 +228,11 @@ function updateHealth(data) {
     if (!data) {
         overallEl.textContent = '—';
         overallEl.className = 'badge';
-        componentsEl.innerHTML = '<p class="empty">No runtime session active</p>';
+        componentsEl.replaceChildren();
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'No runtime session active';
+        componentsEl.appendChild(empty);
         timestampEl.textContent = '—';
         return;
     }
@@ -216,26 +245,37 @@ function updateHealth(data) {
     // Components
     if (data.components && typeof data.components === 'object') {
         const components = Object.entries(data.components);
-        componentsEl.innerHTML = `
-            <table>
-                <thead>
-                    <tr><th>Component</th><th>Status</th></tr>
-                </thead>
-                <tbody>
-                    ${components.map(([name, comp]) => {
-                        const status = comp.status || comp || '?';
-                        return `
-                            <tr>
-                                <td>${name}</td>
-                                <td><span class="badge badge-small badge-${status.toLowerCase()}">${status}</span></td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        `;
+        const table = document.createElement('table');
+        const head = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        ['Component', 'Status'].forEach(label => {
+            const th = document.createElement('th');
+            th.textContent = label;
+            headRow.appendChild(th);
+        });
+        head.appendChild(headRow);
+        const body = document.createElement('tbody');
+        components.forEach(([name, comp]) => {
+            const status = comp.status || comp || '?';
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
+            nameCell.textContent = name;
+            const statusCell = document.createElement('td');
+            const badge = document.createElement('span');
+            badge.className = `badge badge-small badge-${safeCssToken(status)}`;
+            badge.textContent = status;
+            statusCell.appendChild(badge);
+            row.append(nameCell, statusCell);
+            body.appendChild(row);
+        });
+        table.append(head, body);
+        componentsEl.replaceChildren(table);
     } else {
-        componentsEl.innerHTML = '<p class="empty">No component data</p>';
+        componentsEl.replaceChildren();
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'No component data';
+        componentsEl.appendChild(empty);
     }
 
     // Timestamp
@@ -327,6 +367,10 @@ function renderMetric(label, value) {
     `;
 }
 
+function safeCssToken(value) {
+    return String(value == null ? 'unknown' : value).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+}
+
 // ========================================
 // Evidence Manifest Loading
 // ========================================
@@ -363,26 +407,33 @@ function parseManifest(csvText) {
     const tbody = document.getElementById('manifest-tbody');
     const rows = lines.slice(1); // Skip header
 
-    tbody.innerHTML = rows.map(line => {
+    tbody.replaceChildren();
+    rows.forEach(line => {
         const cols = line.split(',');
-        if (cols.length < 4) return '';
+        if (cols.length < 4) return;
 
         const demo_id = cols[0] || '—';
         const status = cols[2] || '—';
         const metric_key = cols[10] || '—';
         const metric_value = cols[11] || '—';
 
-        const statusClass = status.toLowerCase();
-
-        return `
-            <tr>
-                <td>${demo_id}</td>
-                <td><span class="badge badge-small badge-${statusClass}">${status}</span></td>
-                <td><code>${metric_key}</code></td>
-                <td>${metric_value}</td>
-            </tr>
-        `;
-    }).join('');
+        const row = document.createElement('tr');
+        const demoCell = document.createElement('td');
+        demoCell.textContent = demo_id;
+        const statusCell = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `badge badge-small badge-${safeCssToken(status)}`;
+        badge.textContent = status;
+        statusCell.appendChild(badge);
+        const keyCell = document.createElement('td');
+        const code = document.createElement('code');
+        code.textContent = metric_key;
+        keyCell.appendChild(code);
+        const valueCell = document.createElement('td');
+        valueCell.textContent = metric_value;
+        row.append(demoCell, statusCell, keyCell, valueCell);
+        tbody.appendChild(row);
+    });
 
     document.getElementById('manifest-help').style.display = 'none';
 }
@@ -581,7 +632,7 @@ async function runCommand(commandId) {
     
     if (!runnerAvailable) {
         showToast('Runner service not available');
-        showCommandError(commandId, 'Runner service not available. Start with: ./tools/dashboard_runner.sh');
+        showCommandError(commandId, 'Runner service not available. Run metriplane start and use the browser tab it opens.');
         return;
     }
     
@@ -591,7 +642,7 @@ async function runCommand(commandId) {
     }
     
     try {
-        if (!runnerSessionToken) await checkRunnerStatus();
+        if (!runnerSessionToken) throw new Error('Runner session capability is unavailable; restart with metriplane start');
         console.log('[Runner] Sending POST to', `${RUNNER_URL}/execute`);
         const response = await fetch(`${RUNNER_URL}/execute`, {
             method: 'POST',
@@ -716,7 +767,7 @@ async function cancelCommand(commandId) {
     if (!jobId) return;
     
     try {
-        if (!runnerSessionToken) await checkRunnerStatus();
+        if (!runnerSessionToken) throw new Error('Runner session capability is unavailable; restart with metriplane start');
         const response = await fetch(`${RUNNER_URL}/jobs/${jobId}/cancel`, {
             method: 'POST',
             headers: { 'X-Metriplane-Token': runnerSessionToken || '' },
@@ -1217,13 +1268,17 @@ function updateWorldCanvas(fusedObjects, rawPerCamera) {
 function updateCameraTelemetry(camerasData) {
     const container = document.getElementById('camera-telemetry');
     if (!container) return;
-    
+    container.replaceChildren();
+
     if (!camerasData || camerasData.length === 0) {
-        container.innerHTML = '<div class="empty-state">No camera data</div>';
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = 'No camera data';
+        container.appendChild(empty);
         return;
     }
-    
-    container.innerHTML = camerasData.map(cam => {
+
+    camerasData.forEach(cam => {
         const camId = cam.camera_id || cam.cam_id || '?';
         const detections = cam.detections !== undefined ? cam.detections : cam.detection_count;
         const stale = cam.stale_for_fusion !== undefined ? cam.stale_for_fusion : false;
@@ -1233,32 +1288,30 @@ function updateCameraTelemetry(camerasData) {
         const staleClass = stale ? 'stale' : 'healthy';
         const staleText = stale ? 'STALE' : 'OK';
         
-        return `
-            <div class="camera-card">
-                <div class="camera-card-header">Camera ${camId}</div>
-                <div class="camera-stat">
-                    <span class="camera-stat-label">Detections</span>
-                    <span class="camera-stat-value">${detections !== undefined ? detections : '—'}</span>
-                </div>
-                ${mapped !== undefined ? `
-                <div class="camera-stat">
-                    <span class="camera-stat-label">Mapped</span>
-                    <span class="camera-stat-value">${mapped}</span>
-                </div>
-                ` : ''}
-                ${kept !== undefined ? `
-                <div class="camera-stat">
-                    <span class="camera-stat-label">Kept</span>
-                    <span class="camera-stat-value">${kept}</span>
-                </div>
-                ` : ''}
-                <div class="camera-stat">
-                    <span class="camera-stat-label">Fusion</span>
-                    <span class="camera-stat-value ${staleClass}">${staleText}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const card = document.createElement('div');
+        card.className = 'camera-card';
+        const header = document.createElement('div');
+        header.className = 'camera-card-header';
+        header.textContent = `Camera ${camId}`;
+        card.appendChild(header);
+        const appendStat = (label, value, extraClass = '') => {
+            const stat = document.createElement('div');
+            stat.className = 'camera-stat';
+            const statLabel = document.createElement('span');
+            statLabel.className = 'camera-stat-label';
+            statLabel.textContent = label;
+            const statValue = document.createElement('span');
+            statValue.className = `camera-stat-value ${extraClass}`.trim();
+            statValue.textContent = value;
+            stat.append(statLabel, statValue);
+            card.appendChild(stat);
+        };
+        appendStat('Detections', detections !== undefined ? detections : '—');
+        if (mapped !== undefined) appendStat('Mapped', mapped);
+        if (kept !== undefined) appendStat('Kept', kept);
+        appendStat('Fusion', staleText, staleClass);
+        container.appendChild(card);
+    });
 }
 
 // ========================================

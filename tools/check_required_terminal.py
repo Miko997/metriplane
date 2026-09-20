@@ -343,6 +343,26 @@ def _expected_skips(system: str) -> dict[str, tuple[str, str]]:
                     "call",
                     "Playwright Chromium browser is not installed",
                 ),
+                "tests/e2e/test_dashboard_playwright_smoke.py::"
+                "test_hostile_run_fields_cannot_execute_or_read_runner_capability": (
+                    "call",
+                    "Playwright Chromium browser is not installed",
+                ),
+                "tests/e2e/test_dashboard_playwright_smoke.py::"
+                "test_hostile_runtime_and_job_fields_remain_text": (
+                    "call",
+                    "Playwright Chromium browser is not installed",
+                ),
+                "tests/e2e/test_dashboard_playwright_smoke.py::"
+                "test_generated_active_html_is_sandboxed_away_from_capability": (
+                    "call",
+                    "Playwright Chromium browser is not installed",
+                ),
+                "tests/e2e/test_dashboard_playwright_smoke.py::"
+                "test_hostile_operator_names_cannot_become_inline_handlers": (
+                    "call",
+                    "Playwright Chromium browser is not installed",
+                ),
                 "tests/ui_api/test_operator_api_safety.py::"
                 "test_generate_report_async_child_reads_pinned_inode_after_parent_swap": (
                     "setup",

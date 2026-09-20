@@ -18,17 +18,29 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const W = 480, H = 360, PAD = 34;
 
 let replay = { frames: [], incidents: [], workspace: null, bounds: null, i: 0, playing: false, timer: null };
-let runnerSessionToken = null;
+let runnerSessionToken = consumeRunnerCapability();
+
+function consumeRunnerCapability() {
+  const key = "metriplane.runner.capability";
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const supplied = fragment.get("capability");
+  try {
+    if (supplied) window.sessionStorage.setItem(key, supplied);
+    if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    return supplied || window.sessionStorage.getItem(key);
+  } catch (_error) {
+    return supplied;
+  }
+}
 
 async function getJSON(p) {
   const r = await fetch(RUNNER + p);
   if (!r.ok) throw new Error(p + " " + r.status);
   const data = await r.json();
-  if (data.session_token) runnerSessionToken = data.session_token;
   return data;
 }
 async function postJSON(p, b) {
-  if (!runnerSessionToken) await getJSON("/status");
+  if (!runnerSessionToken) throw new Error("Runner session capability is unavailable; restart with metriplane start");
   const r = await fetch(RUNNER + p, { method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -61,17 +73,31 @@ async function refresh() {
   }
 }
 
-function stat(k, v, cls) {
-  return `<div class="cc-stat"><span class="k">${k}</span><span class="v ${cls || ""}">${v}</span></div>`;
+function appendStat(parent, key, value, cls) {
+  const stat = document.createElement("div");
+  stat.className = "cc-stat";
+  const label = document.createElement("span");
+  label.className = "k";
+  label.textContent = key;
+  const display = document.createElement("span");
+  display.className = `v ${cls || ""}`.trim();
+  display.textContent = value;
+  stat.append(label, display);
+  parent.appendChild(stat);
 }
 function renderStats(s) {
   const has = s && (s.run_dir || s.latest_run_dir || s.run_id);
-  document.getElementById("stats").innerHTML = has
-    ? stat("run", s.run_id || "--") + stat("objects", s.objects_count ?? 0) +
-      stat("alerts", s.alerts_count ?? 0, (s.alerts_count ? "warn" : "ok")) +
-      stat("health", (s.health && s.health.overall) || "--",
-           (s.health && s.health.overall) === "OK" ? "ok" : "warn")
-    : stat("status", "no run yet");
+  const stats = document.getElementById("stats");
+  stats.replaceChildren();
+  if (!has) {
+    appendStat(stats, "status", "no run yet");
+    return;
+  }
+  appendStat(stats, "run", s.run_id || "--");
+  appendStat(stats, "objects", s.objects_count ?? 0);
+  appendStat(stats, "alerts", s.alerts_count ?? 0, s.alerts_count ? "warn" : "ok");
+  const health = (s.health && s.health.overall) || "--";
+  appendStat(stats, "health", health, health === "OK" ? "ok" : "warn");
 }
 
 // ---- replay -------------------------------------------------------------
@@ -123,7 +149,7 @@ function safeClass(value) {
 
 function typeChip(type) {
   const cls = safeClass(type);
-  return { html: `<span class="cc-type type-${cls}">${type || "unknown"}</span>` };
+  return { text: type || "unknown", className: `cc-type type-${cls}` };
 }
 
 function escapeHtml(value) {
@@ -431,7 +457,12 @@ function fillTable(id, rows) {
     if (!Array.isArray(row) && row.rowClass) tr.className = row.rowClass;
     for (const c of cells) {
       const td = document.createElement("td");
-      if (c && c.html) td.innerHTML = c.html; else td.textContent = c == null ? "--" : c;
+      if (c && typeof c === "object" && Object.hasOwn(c, "text")) {
+        td.textContent = c.text == null ? "--" : c.text;
+        if (c.className) td.className = c.className;
+      } else {
+        td.textContent = c == null ? "--" : c;
+      }
       tr.appendChild(td);
     }
     tb.appendChild(tr);
@@ -442,7 +473,7 @@ function renderIncidents(incidents) {
     rowClass: `cc-row-${safeClass(i.severity)}`,
     cells: [
       i.incident_id, i.rule_id,
-      { html: `<span class="sev-${safeClass(i.severity)}">${i.severity}</span>` },
+      { text: i.severity || "--", className: `sev-${safeClass(i.severity)}` },
       (i.object_ids || []).join(", "),
     ],
   })));
@@ -487,7 +518,12 @@ function renderTimeline(incidents) {
 function renderCameraTrust(ct) {
   if (!ct) { fillTable("camera-trust", []); document.getElementById("ct-recs").textContent = ""; return; }
   fillTable("camera-trust", Object.values(ct.camera_scores || {}).map((s) => [
-    s.camera_id, { html: `<span class="st-${s.status}">${s.status}</span>` }, s.score,
+    s.camera_id,
+    {
+      text: s.status || "--",
+      className: `st-${String(s.status || "unknown").replace(/[^A-Za-z0-9_-]/g, "_")}`,
+    },
+    s.score,
     s.dropout_rate != null ? s.dropout_rate : "--",
     s.mean_disagreement_m != null ? s.mean_disagreement_m : "--",
   ]));
@@ -507,13 +543,15 @@ async function ask() {
   const out = document.getElementById("ask-answer"); out.textContent = "...";
   try {
     const a = await postJSON("/operator/ask", { question: q });
-    let html = (a.answer || "(no answer)").replace(/</g, "&lt;");
+    out.textContent = a.answer || "(no answer)";
     if (a.citations && a.citations.length) {
-      html += `\n<span class="cite">Evidence: ` +
-        a.citations.map((c) => c.source_path + (c.record_id ? ` [${c.record_id}]` : "")).join(", ") +
-        `</span>`;
+      const cite = document.createElement("span");
+      cite.className = "cite";
+      cite.textContent = `Evidence: ${a.citations
+        .map((c) => c.source_path + (c.record_id ? ` [${c.record_id}]` : ""))
+        .join(", ")}`;
+      out.append(document.createTextNode("\n"), cite);
     }
-    out.innerHTML = html;
   } catch (e) { out.textContent = "Ask failed: " + e; }
 }
 document.getElementById("ask-btn").addEventListener("click", ask);

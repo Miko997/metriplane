@@ -32,14 +32,25 @@ async function main() {
   renderTraces(data.traces || []);
 }
 
-function stat(k, v, cls) {
-  return `<div class="cc-stat"><span class="k">${k}</span><span class="v ${cls || ""}">${v}</span></div>`;
+function appendStat(parent, key, value, cls) {
+  const stat = document.createElement("div");
+  stat.className = "cc-stat";
+  const label = document.createElement("span");
+  label.className = "k";
+  label.textContent = key;
+  const display = document.createElement("span");
+  display.className = `v ${cls || ""}`.trim();
+  display.textContent = value;
+  stat.append(label, display);
+  parent.appendChild(stat);
 }
 function renderStats(s) {
-  document.getElementById("stats").innerHTML =
-    stat("run", s.run_id || "--") + stat("objects", s.objects_count ?? 0) +
-    stat("alerts", s.alerts_count ?? 0, s.alerts_count ? "warn" : "ok") +
-    stat("health", (s.health && s.health.overall) || "--", "ok");
+  const stats = document.getElementById("stats");
+  stats.replaceChildren();
+  appendStat(stats, "run", s.run_id || "--");
+  appendStat(stats, "objects", s.objects_count ?? 0);
+  appendStat(stats, "alerts", s.alerts_count ?? 0, s.alerts_count ? "warn" : "ok");
+  appendStat(stats, "health", (s.health && s.health.overall) || "--", "ok");
 }
 
 function svgEl(name, attrs) {
@@ -66,7 +77,7 @@ function safeClass(value) {
 
 function typeChip(type) {
   const cls = safeClass(type);
-  return { html: `<span class="cc-type type-${cls}">${type || "unknown"}</span>` };
+  return { text: type || "unknown", className: `cc-type type-${cls}` };
 }
 
 function escapeHtml(value) {
@@ -232,7 +243,12 @@ function fillTable(id, rows) {
     if (!Array.isArray(row) && row.rowClass) tr.className = row.rowClass;
     for (const c of cells) {
       const td = document.createElement("td");
-      if (c && c.html) td.innerHTML = c.html; else td.textContent = c == null ? "--" : c;
+      if (c && typeof c === "object" && Object.hasOwn(c, "text")) {
+        td.textContent = c.text == null ? "--" : c.text;
+        if (c.className) td.className = c.className;
+      } else {
+        td.textContent = c == null ? "--" : c;
+      }
       tr.appendChild(td);
     }
     tb.appendChild(tr);
@@ -248,7 +264,7 @@ function renderIncidents(inc) {
     rowClass: `cc-row-${safeClass(i.severity)}`,
     cells: [
       i.incident_id, i.rule_id,
-      { html: `<span class="sev-${safeClass(i.severity)}">${i.severity}</span>` },
+      { text: i.severity || "--", className: `sev-${safeClass(i.severity)}` },
       i.status, i.summary,
     ],
   })));

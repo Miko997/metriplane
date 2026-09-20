@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902edca924a90bde1a43`
+Canonical projection SHA-256: `8c4e77e87aaa16abb7a96a783002c7aded17aaea2833b3ff28d1b14583bd56a9`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -147,7 +147,7 @@ Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902ed
 | tool.complete_delegated_task | Complete Delegated Task | tools/complete_delegated_task.py | python tools/complete_delegated_task.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
-| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | web/dashboard/* | dashboard_runner.sh | ui_copy_command_only | P2 |  |
+| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.debug_alignment | Debug Alignment | tools/debug_alignment.py | python tools/debug_alignment.py | web/dashboard/* | debug_alignment.py | ui_copy_command_only | P2 |  |
 | tool.delegated_merge | Delegated Merge | tools/delegated_merge.py | python tools/delegated_merge.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.delegated_task_authority | Delegated Task Authority | tools/delegated_task_authority.py | python tools/delegated_task_authority.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -206,7 +206,7 @@ Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902ed
 | tool.run_fusion_preview | Run Fusion Preview | tools/run_fusion_preview.py | python tools/run_fusion_preview.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_fusion_yaml | Run Fusion Yaml | tools/run_fusion_yaml.py | python tools/run_fusion_yaml.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_live_yaml | Run Live Yaml | tools/run_live_yaml.py | python tools/run_live_yaml.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
-| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | web/dashboard/* | run_ui_demo_replay.py | ui_copy_command_only | P1 |  |
+| tool.run_ui_demo_replay | Run Ui Demo Replay | tools/run_ui_demo_replay.py | python tools/run_ui_demo_replay.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 | tool.run_ui_timing_check | Run Ui Timing Check | tools/run_ui_timing_check.py | python tools/run_ui_timing_check.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
