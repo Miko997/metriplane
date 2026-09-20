@@ -424,13 +424,13 @@ def test_complete_ten_report_suite_proves_each_platform_and_partition(tmp_path: 
     assert result["result"] == "success"
     assert result["sha"] == SHA
     assert len(result["reports"]) == 10
-    assert result["collection_count"] == 25
+    assert result["collection_count"] == 29
     assert result["source"] == source
     assert result["totals"] == {
-        "linux-py3.12": {"passed": 10, "skipped": 15, "failed": 0, "total": 25},
-        "linux-py3.13": {"passed": 10, "skipped": 15, "failed": 0, "total": 25},
-        "macos-py3.12": {"passed": 8, "skipped": 17, "failed": 0, "total": 25},
-        "macos-py3.13": {"passed": 8, "skipped": 17, "failed": 0, "total": 25},
+        "linux-py3.12": {"passed": 14, "skipped": 15, "failed": 0, "total": 29},
+        "linux-py3.13": {"passed": 14, "skipped": 15, "failed": 0, "total": 29},
+        "macos-py3.12": {"passed": 8, "skipped": 21, "failed": 0, "total": 29},
+        "macos-py3.13": {"passed": 8, "skipped": 21, "failed": 0, "total": 29},
     }
 
 
