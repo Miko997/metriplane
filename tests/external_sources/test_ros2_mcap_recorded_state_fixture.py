@@ -497,10 +497,7 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        raw = path.read_bytes()
-        assert all(item not in raw for item in values), path
-        assert _PRIVATE_PATH.search(raw) is None, path
-        if path.suffix == ".zip":
+        if path.suffix.lower() == ".zip":
             with zipfile.ZipFile(path) as archive:
                 for info in archive.infolist():
                     assert not info.filename.startswith(("/", "\\"))
@@ -510,6 +507,10 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
                         member = archive.read(info)
                         assert all(item not in member for item in values)
                         assert _PRIVATE_PATH.search(member) is None
+            continue
+        raw = path.read_bytes()
+        assert all(item not in raw for item in values), path
+        assert _PRIVATE_PATH.search(raw) is None, path
 
 
 @pytest.mark.parametrize("variant", ["incident", "control"])
@@ -546,7 +547,7 @@ def test_installed_fixture_output_is_movable_and_path_clean(
     )
 
 
-def test_fixture_inventory_excludes_source_runtime_and_machine_paths() -> None:
+def test_fixture_inventory_excludes_source_runtime_and_machine_paths(tmp_path: Path) -> None:
     prohibited_suffixes = {
         ".mcap",
         ".db3",
@@ -567,6 +568,28 @@ def test_fixture_inventory_excludes_source_runtime_and_machine_paths() -> None:
         FIXTURE_ROOT,
         ["/tmp/", "/workspace/", str(REPOSITORY_ROOT.resolve())],
     )
+
+    for archive_name, member_name, member, compression in (
+        ("name.zip", "C:/private/data.json", b"{}", zipfile.ZIP_STORED),
+        (
+            "content.zip",
+            "data.json",
+            b'{"source":"/home/private/data.json"}',
+            zipfile.ZIP_DEFLATED,
+        ),
+        (
+            "content.ZIP",
+            "data.json",
+            b'{"source":"/home/private/data.json"}',
+            zipfile.ZIP_DEFLATED,
+        ),
+    ):
+        root = tmp_path / archive_name.removesuffix(".zip")
+        root.mkdir()
+        with zipfile.ZipFile(root / archive_name, "w", compression=compression) as archive:
+            archive.writestr(member_name, member)
+        with pytest.raises(AssertionError):
+            _assert_no_path_leak(root, [])
 
 
 def test_frozen_git_lineage_and_subtrees_are_preserved() -> None:
