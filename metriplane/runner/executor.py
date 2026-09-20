@@ -109,6 +109,7 @@ class CommandExecutor:
 
     def _command_environment(self) -> dict[str, str]:
         environment = os.environ.copy()
+        environment.pop("METRIPLANE_RUNNER_SESSION_TOKEN", None)
         paths = self.platform_paths
         if paths is not None:
             environment["RUNS"] = str(paths.runs_dir)

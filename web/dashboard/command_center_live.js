@@ -18,17 +18,29 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const W = 480, H = 360, PAD = 34;
 
 let replay = { frames: [], incidents: [], workspace: null, bounds: null, i: 0, playing: false, timer: null };
-let runnerSessionToken = null;
+let runnerSessionToken = consumeRunnerCapability();
+
+function consumeRunnerCapability() {
+  const key = "metriplane.runner.capability";
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const supplied = fragment.get("capability");
+  try {
+    if (supplied) window.sessionStorage.setItem(key, supplied);
+    if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    return supplied || window.sessionStorage.getItem(key);
+  } catch (_error) {
+    return supplied;
+  }
+}
 
 async function getJSON(p) {
   const r = await fetch(RUNNER + p);
   if (!r.ok) throw new Error(p + " " + r.status);
   const data = await r.json();
-  if (data.session_token) runnerSessionToken = data.session_token;
   return data;
 }
 async function postJSON(p, b) {
-  if (!runnerSessionToken) await getJSON("/status");
+  if (!runnerSessionToken) throw new Error("Runner session capability is unavailable; restart with metriplane start");
   const r = await fetch(RUNNER + p, { method: "POST",
     headers: {
       "Content-Type": "application/json",

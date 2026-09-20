@@ -37,12 +37,21 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from metriplane.cli import main as cli_main
+from metriplane._local_http import (
+    DashboardHTTPRequestHandler,
+    LocalHTTPServer,
+    _is_numeric_loopback,
+)
 from metriplane.launcher import (
     _DEFAULT_FUSION_CONFIG,
     _STATE_SCHEMA_VERSION,
@@ -61,6 +70,7 @@ from metriplane.launcher import (
     _runtime_module_for_config,
     _save_state,
     _start_fusion,
+    _start_dashboard,
     _start_runner,
     _state_file,
     _state_lock_file,
@@ -102,6 +112,75 @@ def _test_platform_paths(root: Path) -> PlatformPaths:
         cache_dir=root / "cache",
         state_dir=root / "state",
     )
+
+
+@contextmanager
+def _dashboard_server(directory: Path | None = None):
+    handler = partial(
+        DashboardHTTPRequestHandler,
+        directory=str(directory or Path.cwd() / "web" / "dashboard"),
+    )
+    server = LocalHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_dashboard_server_exposes_only_declared_assets_with_secure_headers():
+    with _dashboard_server() as base:
+        with urllib.request.urlopen(f"{base}/", timeout=5) as response:
+            assert response.status == 200
+            assert response.headers["Cache-Control"] == "no-store"
+            assert response.headers["Referrer-Policy"] == "no-referrer"
+            assert response.headers["X-Content-Type-Options"] == "nosniff"
+            assert response.headers["X-Frame-Options"] == "DENY"
+        with urllib.request.urlopen(f"{base}/style.css", timeout=5) as response:
+            assert response.status == 200
+
+        for path in ("/README.md", "/web/dashboard/index.html", "/%2e%2e/pyproject.toml"):
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{base}{path}", timeout=5)
+            assert exc_info.value.code == 404
+            exc_info.value.close()
+
+
+def test_dashboard_request_log_never_contains_query_capability(capsys):
+    marker = "must-not-enter-logs"
+    with _dashboard_server() as base:
+        with urllib.request.urlopen(f"{base}/index.html?capability={marker}", timeout=5):
+            pass
+    assert marker not in capsys.readouterr().out
+
+
+def test_dashboard_generated_artifact_boundary_and_numeric_bind_are_fail_closed(tmp_path):
+    dashboard = tmp_path / "dashboard"
+    generated = dashboard / "atlas_run"
+    generated.mkdir(parents=True)
+    (dashboard / "index.html").write_text("dashboard", encoding="utf-8")
+    (generated / "atlas_manifest.json").write_text("{}", encoding="utf-8")
+    outside = tmp_path / "private.txt"
+    outside.write_text("private", encoding="utf-8")
+    (generated / "escape.txt").symlink_to(outside)
+
+    with _dashboard_server(dashboard) as base:
+        with urllib.request.urlopen(f"{base}/atlas_run/atlas_manifest.json", timeout=5) as response:
+            assert response.read() == b"{}"
+        for path in ("/private.txt", "/atlas_run/escape.txt", "/atlas_run/../index.html"):
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{base}{path}", timeout=5)
+            assert exc_info.value.code == 404
+            exc_info.value.close()
+
+    assert _is_numeric_loopback("127.0.0.1")
+    assert not _is_numeric_loopback("localhost")
+    assert not _is_numeric_loopback("::1")
+    assert not _is_numeric_loopback("::ffff:127.0.0.1")
+    assert not _is_numeric_loopback("0.0.0.0")
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +325,7 @@ class TestLauncherDefaults:
 
         def fake_launch(cmd, log_file, repo_root, env=None):
             captured["cmd"] = cmd
+            captured["env"] = env
             return object()
 
         monkeypatch.setattr(lm, "_launch", fake_launch)
@@ -268,6 +348,7 @@ class TestLauncherDefaults:
 
         def fake_launch(cmd, log_file, repo_root, env=None):
             captured["cmd"] = cmd
+            captured["env"] = env
             return object()
 
         monkeypatch.setattr("metriplane.launcher._launch", fake_launch)
@@ -280,6 +361,7 @@ class TestLauncherDefaults:
             log_file=tmp_path / "runner.log",
             repo_root=Path.cwd(),
             paths=paths,
+            session_capability="test-session-capability",
         )
 
         command = captured["cmd"]
@@ -288,6 +370,25 @@ class TestLauncherDefaults:
         assert command[command.index("--cache-dir") + 1] == str(paths.cache_dir)
         assert command[command.index("--state-dir") + 1] == str(paths.state_dir)
         assert command[command.index("--runs-dir") + 1] == str(paths.runs_dir)
+        assert captured["env"]["METRIPLANE_RUNNER_SESSION_TOKEN"] == "test-session-capability"
+
+    def test_dashboard_serves_only_dashboard_root(self, monkeypatch, tmp_path):
+        captured = {}
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["cmd"] = cmd
+            return object()
+
+        monkeypatch.setattr("metriplane.launcher._launch", fake_launch)
+        _start_dashboard(
+            host="127.0.0.1",
+            port=8088,
+            log_file=tmp_path / "dashboard.log",
+            repo_root=Path("/checkout"),
+        )
+
+        command = captured["cmd"]
+        assert command[command.index("--directory") + 1] == "/checkout/web/dashboard"
 
     def test_start_canonicalizes_explicit_runs_dir_before_runner_start(
         self,
@@ -1369,6 +1470,31 @@ class TestStartStatusStop:
         assert stopped == [212, 211]
         assert not paths.launcher_state_file.exists()
         assert "dashboard.host is invalid" in capsys.readouterr().out
+
+    def test_browser_capability_is_fragment_only_and_not_persisted_or_printed(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        import metriplane.launcher as lm
+
+        capability = "private-launch-capability"
+        paths = _test_platform_paths(tmp_path)
+        processes = iter((SimpleNamespace(pid=221), SimpleNamespace(pid=222)))
+        opened_urls: list[str] = []
+        monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
+        monkeypatch.setattr(lm, "_log_dir_path", lambda _runs_dir, _timestamp: tmp_path)
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
+        monkeypatch.setattr(lm, "_start_runner", lambda **_kwargs: next(processes))
+        monkeypatch.setattr(lm, "_start_dashboard", lambda **_kwargs: next(processes))
+        monkeypatch.setattr(lm, "_wait_for_port", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(lm, "_get_pgid", lambda pid: pid)
+        monkeypatch.setattr(lm.secrets, "token_urlsafe", lambda _length: capability)
+        monkeypatch.setattr(lm, "_open_browser", opened_urls.append)
+
+        assert lm.cmd_start(paths=paths, open_browser=True) == 0
+
+        assert opened_urls == [f"http://127.0.0.1:8088/index.html#capability={capability}"]
+        assert capability not in capsys.readouterr().out
+        assert capability not in paths.launcher_state_file.read_text(encoding="utf-8")
 
     def test_concurrent_start_lifecycle_retains_exactly_one_process_pair(
         self, monkeypatch, tmp_path

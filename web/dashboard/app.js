@@ -21,7 +21,20 @@ let wsReconnectTimer = null;
 let healthPollTimer = null;
 let metricsPollTimer = null;
 let lastFrameData = null;
-let runnerSessionToken = null;
+let runnerSessionToken = consumeRunnerCapability();
+
+function consumeRunnerCapability() {
+    const key = 'metriplane.runner.capability';
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const supplied = fragment.get('capability');
+    try {
+        if (supplied) window.sessionStorage.setItem(key, supplied);
+        if (window.location.hash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+        return supplied || window.sessionStorage.getItem(key);
+    } catch (_error) {
+        return supplied;
+    }
+}
 
 // Trail tracking: Map<object_id, {points: [{x, y, ts}], lastSeen: timestamp}>
 const objectTrails = new Map();
@@ -185,7 +198,6 @@ async function fetchHealth() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
-        runnerSessionToken = data.session_token || null;
         updateHealth(data);
         updateStatus('health', 'online', 'Online');
     } catch (err) {
@@ -591,7 +603,7 @@ async function runCommand(commandId) {
     }
     
     try {
-        if (!runnerSessionToken) await checkRunnerStatus();
+        if (!runnerSessionToken) throw new Error('Runner session capability is unavailable; restart with metriplane start');
         console.log('[Runner] Sending POST to', `${RUNNER_URL}/execute`);
         const response = await fetch(`${RUNNER_URL}/execute`, {
             method: 'POST',
@@ -716,7 +728,7 @@ async function cancelCommand(commandId) {
     if (!jobId) return;
     
     try {
-        if (!runnerSessionToken) await checkRunnerStatus();
+        if (!runnerSessionToken) throw new Error('Runner session capability is unavailable; restart with metriplane start');
         const response = await fetch(`${RUNNER_URL}/jobs/${jobId}/cancel`, {
             method: 'POST',
             headers: { 'X-Metriplane-Token': runnerSessionToken || '' },

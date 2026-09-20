@@ -25,8 +25,8 @@ def test_operator_refreshes_run_root_when_runner_connects_late():
     assert match is not None
     body = match.group("body")
     assert "const wasConnected = state.runnerConnected;" in body
-    assert "const previousRunnerSessionToken = runnerSessionToken;" in body
-    assert "d.session_token !== previousRunnerSessionToken" in body
+    assert "const currentUptimeS = Number.isFinite(d.uptime_s) ? d.uptime_s : null;" in body
+    assert "currentUptimeS < previousRunnerUptimeS" in body
     assert "if (!wasConnected || runnerRestarted) await refreshLatestRun();" in body
 
 

@@ -8,7 +8,21 @@
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const RUNNER = 'http://localhost:9000';
-let runnerSessionToken = null;
+let runnerSessionToken = consumeRunnerCapability();
+let previousRunnerUptimeS = null;
+
+function consumeRunnerCapability() {
+  const key = 'metriplane.runner.capability';
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const supplied = fragment.get('capability');
+  try {
+    if (supplied) window.sessionStorage.setItem(key, supplied);
+    if (window.location.hash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    return supplied || window.sessionStorage.getItem(key);
+  } catch (_error) {
+    return supplied;
+  }
+}
 
 // ── Embedded Runbook Data ─────────────────────────────────────────────────────
 // Shown in the right panel; one entry per step number.
@@ -179,11 +193,7 @@ function setActiveProfile(name) {
 
 async function opApi(method, path, body) {
   try {
-    if (method !== 'GET' && !runnerSessionToken) {
-      const statusResp = await fetch(RUNNER + '/status', { cache: 'no-store' });
-      const status = await statusResp.json();
-      runnerSessionToken = status.session_token || null;
-    }
+    if (method !== 'GET' && !runnerSessionToken) return { error: 'Runner session capability is unavailable; restart with metriplane start' };
     const opts = {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -194,7 +204,6 @@ async function opApi(method, path, body) {
     if (body && method !== 'GET') opts.body = JSON.stringify(body);
     const resp = await fetch(RUNNER + path, opts);
     const data = await resp.json();
-    if (data.session_token) runnerSessionToken = data.session_token;
     return data;
   } catch (e) {
     return { error: String(e) };
@@ -209,16 +218,17 @@ async function runnerPost(path, body = {}) {
 
 async function checkRunner() {
   const wasConnected = state.runnerConnected;
-  const previousRunnerSessionToken = runnerSessionToken;
   try {
     const d = await opApi('GET', '/status');
     if (d && d.service) {
+      const currentUptimeS = Number.isFinite(d.uptime_s) ? d.uptime_s : null;
       const runnerRestarted = Boolean(
         wasConnected &&
-        previousRunnerSessionToken &&
-        d.session_token &&
-        d.session_token !== previousRunnerSessionToken
+        previousRunnerUptimeS !== null &&
+        currentUptimeS !== null &&
+        currentUptimeS < previousRunnerUptimeS
       );
+      previousRunnerUptimeS = currentUptimeS;
       state.runnerConnected = true;
       const pill = document.getElementById('runner-pill');
       const lbl = document.getElementById('runner-label');
@@ -1556,7 +1566,7 @@ async function runPreflightDrawer(command) {
   hidePreflightSummary();
 
   try {
-    if (!runnerSessionToken) await opApi('GET', '/status');
+    if (!runnerSessionToken) throw new Error('Runner session capability is unavailable; restart with metriplane start');
     const resp = await fetch(`${RUNNER}/execute`, {
       method: 'POST',
       headers: {

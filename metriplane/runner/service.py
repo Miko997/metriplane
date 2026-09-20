@@ -14,7 +14,6 @@ import ipaddress
 import json
 import os
 import secrets
-import socket
 import sys
 import time
 from datetime import datetime
@@ -88,26 +87,17 @@ class RequestBodyError(ValueError):
 
 
 def _address_is_loopback(value: str) -> bool:
-    """Accept native and IPv4-mapped loopback address literals."""
+    """Accept only numeric IPv4 loopback address literals."""
     try:
         address = ipaddress.ip_address(str(value).split("%", 1)[0])
     except ValueError:
         return False
-    if address.is_loopback:
-        return True
-    mapped = getattr(address, "ipv4_mapped", None)
-    return bool(mapped is not None and mapped.is_loopback)
+    return isinstance(address, ipaddress.IPv4Address) and address.is_loopback
 
 
-def _is_loopback_bind_host(host: str, port: int) -> bool:
-    """Validate a bind host without resolving numeric address literals."""
-    if _address_is_loopback(host):
-        return True
-    try:
-        addresses = {info[4][0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
-    except OSError:
-        return False
-    return bool(addresses) and all(_address_is_loopback(str(address)) for address in addresses)
+def _is_loopback_bind_host(host: str, _port: int) -> bool:
+    """Validate a numeric IPv4 loopback bind without name resolution."""
+    return _address_is_loopback(host)
 
 
 class RunnerHTTPHandler(BaseHTTPRequestHandler):
@@ -115,7 +105,8 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         """Override to customize logging"""
-        print(f"[Runner] {self.address_string()} - {format % args}")
+        status = str(args[1]) if len(args) > 1 else "-"
+        print(f"[Runner] {self.client_address[0]} - {self.command} {status}")
 
     def add_cors_headers(self) -> None:
         """Allow browser access only from the local dashboard origin."""
@@ -134,6 +125,12 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.add_cors_headers()
         self.end_headers()
         self.wfile.write(payload)
@@ -295,7 +292,6 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
                 "uptime_s": round(time.time() - start_time, 2),
                 "repo_root": str(executor.repo_root),
                 "runs_dir": str(runner_paths.runs_dir) if runner_paths is not None else None,
-                "session_token": runner_session_token,
             },
         )
 
@@ -457,7 +453,7 @@ def start_runner(
         port: Port number (default: 9000)
     """
     if not _is_loopback_bind_host(host, port):
-        print("[Runner] Refusing non-loopback bind address. Use 127.0.0.1 or ::1.", file=sys.stderr)
+        print("[Runner] Refusing non-loopback bind address. Use 127.0.0.1.", file=sys.stderr)
         return 64
 
     try:
@@ -467,7 +463,9 @@ def start_runner(
         return 2
 
     global runner_session_token, trusted_origins, start_time
-    runner_session_token = secrets.token_urlsafe(32)
+    runner_session_token = os.environ.pop(
+        "METRIPLANE_RUNNER_SESSION_TOKEN", ""
+    ) or secrets.token_urlsafe(32)
     start_time = time.time()
     trusted_origins = _default_trusted_origins()
     if allowed_origins:

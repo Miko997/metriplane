@@ -6,7 +6,20 @@
   const DONE = new Set(["succeeded", "failed", "timed_out", "cancelled"]);
   const jobs = new Map();
   const commandRegistry = new Map();
-  let runnerSessionToken = null;
+  let runnerSessionToken = consumeRunnerCapability();
+
+  function consumeRunnerCapability() {
+    const key = "metriplane.runner.capability";
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const supplied = fragment.get("capability");
+    try {
+      if (supplied) window.sessionStorage.setItem(key, supplied);
+      if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      return supplied || window.sessionStorage.getItem(key);
+    } catch (_error) {
+      return supplied;
+    }
+  }
 
   function all(selector) {
     return Array.from(document.querySelectorAll(selector));
@@ -49,11 +62,7 @@
   async function jsonFetch(url, options) {
     options = options ? { ...options } : {};
     if ((options.method || "GET").toUpperCase() !== "GET") {
-      if (!runnerSessionToken) {
-        const statusResponse = await fetch(`${RUNNER}/status`, { cache: "no-store" });
-        const statusData = await statusResponse.json();
-        runnerSessionToken = statusData.session_token || null;
-      }
+      if (!runnerSessionToken) throw new Error("Runner session capability is unavailable; restart with metriplane start");
       options.headers = {
         ...(options.headers || {}),
         "X-Metriplane-Token": runnerSessionToken || "",
@@ -66,7 +75,6 @@
     } catch (err) {
       data = {};
     }
-    if (data.session_token) runnerSessionToken = data.session_token;
     if (!res.ok) {
       throw new Error(data.error || `${res.status} ${res.statusText}`);
     }

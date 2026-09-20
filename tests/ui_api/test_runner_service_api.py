@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -64,7 +65,26 @@ def test_status_shape_is_stable():
     assert payload["status"] in {"idle", "running"}
     assert "repo_root" in payload
     assert "job_history_size" in payload
-    assert payload["session_token"]
+    assert "session_token" not in payload
+
+
+def test_status_has_secure_headers_and_never_discloses_mutation_capability():
+    with runner_server() as base:
+        request = urllib.request.Request(f"{base}/status")
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = response.read()
+            headers = response.headers
+    assert service.runner_session_token.encode("utf-8") not in payload
+    assert headers["Cache-Control"] == "no-store"
+    assert headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
+    assert headers["Referrer-Policy"] == "no-referrer"
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["X-Frame-Options"] == "DENY"
+
+
+def test_runner_capability_is_never_inherited_by_operator_jobs(monkeypatch):
+    monkeypatch.setenv("METRIPLANE_RUNNER_SESSION_TOKEN", "private-runner-capability")
+    assert "METRIPLANE_RUNNER_SESSION_TOKEN" not in CommandExecutor()._command_environment()
 
 
 def test_commands_shape_exposes_allowlist_metadata():
@@ -210,12 +230,11 @@ def test_runner_cli_rejects_symlink_loop_runs_dir(tmp_path: Path, capsys) -> Non
 )
 def test_execute_rejects_bad_or_disabled_command_ids(payload: dict, expected: str):
     with runner_server() as base:
-        _, runner_status = request_json(f"{base}/status")
         status, body = request_json(
             f"{base}/execute",
             method="POST",
             payload=payload,
-            headers={service.TOKEN_HEADER: runner_status["session_token"]},
+            headers={service.TOKEN_HEADER: service.runner_session_token},
         )
     assert status == 400
     assert expected in body["error"]
@@ -246,7 +265,7 @@ def test_trusted_origin_is_echoed_and_untrusted_origin_is_rejected():
         request = urllib.request.Request(f"{base}/status", headers={"Origin": trusted})
         with urllib.request.urlopen(request, timeout=5) as response:
             assert response.headers["Access-Control-Allow-Origin"] == trusted
-            token = json.loads(response.read())["session_token"]
+            assert "session_token" not in json.loads(response.read())
 
         status, body = request_json(
             f"{base}/execute",
@@ -254,7 +273,7 @@ def test_trusted_origin_is_echoed_and_untrusted_origin_is_rejected():
             payload={"command_id": "doctor"},
             headers={
                 "Origin": "https://attacker.example",
-                service.TOKEN_HEADER: token,
+                service.TOKEN_HEADER: service.runner_session_token,
             },
         )
     assert status == 403
@@ -263,12 +282,11 @@ def test_trusted_origin_is_echoed_and_untrusted_origin_is_rejected():
 
 def test_request_body_size_is_limited():
     with runner_server() as base:
-        _, runner_status = request_json(f"{base}/status")
         status, body = request_json(
             f"{base}/execute",
             method="POST",
             headers={
-                service.TOKEN_HEADER: runner_status["session_token"],
+                service.TOKEN_HEADER: service.runner_session_token,
                 "Content-Length": str(service.MAX_REQUEST_BODY_BYTES + 1),
             },
         )
@@ -277,26 +295,29 @@ def test_request_body_size_is_limited():
 
 
 def test_runner_refuses_non_loopback_bind():
-    assert service.start_runner("0.0.0.0", 0) == 64
+    for host in ("0.0.0.0", "localhost", "::1", "::ffff:127.0.0.1"):
+        assert service.start_runner(host, 0) == 64
 
 
 def test_numeric_loopback_validation_does_not_require_name_resolution(monkeypatch):
     monkeypatch.setattr(
-        service.socket,
+        socket,
         "getaddrinfo",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("resolver unavailable")),
     )
 
     assert service._is_loopback_bind_host("127.0.0.1", 9000) is True
-    assert service._is_loopback_bind_host("::1", 9000) is True
-    assert service._is_loopback_bind_host("::ffff:127.0.0.1", 9000) is True
+    assert service._is_loopback_bind_host("127.255.255.254", 9000) is True
+    assert service._is_loopback_bind_host("localhost", 9000) is False
+    assert service._is_loopback_bind_host("::1", 9000) is False
+    assert service._is_loopback_bind_host("::ffff:127.0.0.1", 9000) is False
 
 
 def test_local_runner_bind_does_not_require_reverse_dns(monkeypatch):
     def fail_lookup(_host):
         raise AssertionError("reverse DNS must not run for a loopback server")
 
-    monkeypatch.setattr(service.socket, "getfqdn", fail_lookup)
+    monkeypatch.setattr(socket, "getfqdn", fail_lookup)
     server = service.LocalHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
     try:
         assert server.server_name == "127.0.0.1"

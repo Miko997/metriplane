@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f7f1ae961c44284e301f01ca89738f042ad026f4220b902edca924a90bde1a43`
+Canonical projection SHA-256: `20232bba45883e84e643b7ace9016bf84441cec18beac3ecfc52f13c01f305bf`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -54,19 +54,19 @@ This is a static source census. It does not characterize runtime behavior or exp
 | api.operator.post.validate_alignment | POST | /operator/validate-alignment | metriplane/runner/operator_api.py:366 |
 | api.operator.post.validate_alignment_full | POST | /operator/validate-alignment-full | metriplane/runner/operator_api.py:368 |
 | api.operator.post.write_zones | POST | /operator/write-zones | metriplane/runner/operator_api.py:358 |
-| api.runner.cancel_job | POST | /jobs/{job_id}/cancel | metriplane/runner/service.py:253 |
-| api.runner.commands | GET | /commands | metriplane/runner/service.py:216 |
-| api.runner.execute | POST | /execute | metriplane/runner/service.py:251 |
-| api.runner.job_detail | GET | /jobs/{job_id} | metriplane/runner/service.py:221 |
-| api.runner.jobs | GET | /jobs | metriplane/runner/service.py:218 |
-| api.runner.status | GET | /status | metriplane/runner/service.py:214 |
+| api.runner.cancel_job | POST | /jobs/{job_id}/cancel | metriplane/runner/service.py:250 |
+| api.runner.commands | GET | /commands | metriplane/runner/service.py:213 |
+| api.runner.execute | POST | /execute | metriplane/runner/service.py:248 |
+| api.runner.job_detail | GET | /jobs/{job_id} | metriplane/runner/service.py:218 |
+| api.runner.jobs | GET | /jobs | metriplane/runner/service.py:215 |
+| api.runner.status | GET | /status | metriplane/runner/service.py:211 |
 
 ## Local Services
 
 | id | name | protocol | source |
 | --- | --- | --- | --- |
-| MP2-012.UI.SERVICE.DASHBOARD_STATIC_HTTP | Dashboard static HTTP | http | metriplane/_local_http.py:33 |
-| MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP | Local runner HTTP | http | metriplane/runner/service.py:477 |
+| MP2-012.UI.SERVICE.DASHBOARD_STATIC_HTTP | Dashboard static HTTP | http | metriplane/_local_http.py:157 |
+| MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP | Local runner HTTP | http | metriplane/runner/service.py:475 |
 | MP2-012.UI.SERVICE.RUNTIME_FRAME_WEBSOCKET | Runtime frame WebSocket | websocket | metriplane/streaming/ws_server.py:49 |
 | MP2-012.UI.SERVICE.RUNTIME_HEALTH_METRICS_HTTP | Runtime health and metrics HTTP | http | metriplane/metrics.py:314 |
 
