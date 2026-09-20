@@ -148,20 +148,14 @@ the platform is reusable across both operator-guided and script-driven workflows
 ## Reproduction Steps
 
 ```bash
-# Prerequisites: venv active, runner service running
+# Prerequisites: venv active
 cd <repo>
 source .venv/bin/activate
 
-# 1. Start the runner service
-./tools/dashboard_runner.sh &
+# 1. Start the complete localhost stack and open the capability-bearing operator tab
+metriplane start --operator
 
-# 2. Serve the operator dashboard
-python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard &
-
-# 3. Open in browser
-#    http://localhost:8088/operator.html
-
-# 4. Follow Steps 1–10 in the wizard.
+# 2. Follow Steps 1–10 in the wizard.
 #    Use /dev/video0 (cam0), /dev/video2 (cam1)
 #    Profile: board_55x40_warehouse_story_v1_fusion
 #    Duration: 60 s

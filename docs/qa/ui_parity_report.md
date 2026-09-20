@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `359413e03e769baa8032b6d6759b211b9b3ddaab16c5b79e07931ea0a37fd808`
+Canonical projection SHA-256: `4c350a29dc5a49192ab0e1d9f712cf6815aed84fa59ac4e07037751af58cf69a`
 
 Static inventory result: **FAIL**
 
@@ -20,10 +20,10 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | total_discovered_features | 238 |
 | ui_full | 59 |
 | ui_partial | 2 |
-| ui_copy_command_only | 11 |
+| ui_copy_command_only | 10 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 152 |
+| cli_only_documented | 153 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -111,7 +111,6 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.calibrate_intrinsics_chessboard | Calibrate Intrinsics Chessboard | tools/calibrate_intrinsics_chessboard.py | python tools/calibrate_intrinsics_chessboard.py | web/dashboard/* | calibrate_intrinsics_chessboard.py | ui_copy_command_only | P2 |  |
 | tool.calibrate_planar_homography | Calibrate Planar Homography | tools/calibrate_planar_homography.py | python tools/calibrate_planar_homography.py | web/dashboard/* | calibrate_planar_homography.py | ui_copy_command_only | P2 |  |
 | tool.command_center_up | Command Center Up | tools/command_center_up.sh | tools/command_center_up.sh | web/dashboard/* | command_center_up.sh | ui_copy_command_only | P2 |  |
-| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | web/dashboard/* | dashboard_runner.sh | ui_copy_command_only | P2 |  |
 | tool.debug_alignment | Debug Alignment | tools/debug_alignment.py | python tools/debug_alignment.py | web/dashboard/* | debug_alignment.py | ui_copy_command_only | P2 |  |
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
 | tool.mp | Mp | tools/mp.sh | tools/mp.sh | web/dashboard/* | mp.sh | ui_copy_command_only | P2 |  |
@@ -199,6 +198,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.complete_delegated_task | Complete Delegated Task | tools/complete_delegated_task.py | python tools/complete_delegated_task.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.delegated_merge | Delegated Merge | tools/delegated_merge.py | python tools/delegated_merge.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.delegated_task_authority | Delegated Task Authority | tools/delegated_task_authority.py | python tools/delegated_task_authority.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.demo4_everything | Demo4 Everything | tools/demo4_everything.sh | tools/demo4_everything.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

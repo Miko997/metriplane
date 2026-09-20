@@ -49,20 +49,15 @@ Logs: `_launcher/<timestamp>/` in the active platform runs directory
 
 ---
 
-## Quick Start (Manual)
+## Quick Start
 
 ```bash
 # 1. Activate venv (if not already)
 source .venv/bin/activate
 
-# 2. Start the runner service (localhost :9000)
-./tools/dashboard_runner.sh
-
-# 3. Serve the dashboard (localhost :8088)
-python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
-
-# 4. Open Operator Setup
-# http://localhost:8088/operator.html
+# 2. Start the complete localhost stack and open the operator UI with its
+# fragment-delivered session capability
+metriplane start --operator
 ```
 
 ---
@@ -309,7 +304,8 @@ python -m metriplane.runner.service --help
 ```
 
 **"runner :9000 — not connected" in UI**:
-- Start the runner: `./tools/dashboard_runner.sh`
+- Start the complete stack: `metriplane start --operator`
+- Use the browser tab opened by that command so the session capability is present
 - Check no other process is using port 9000: `ss -tlnp | grep 9000`
 
 **Calibration times out**:

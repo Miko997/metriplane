@@ -897,7 +897,7 @@ class OperatorAPI:
                 "fix_command": (
                     "source .venv/bin/activate && python -m pip install opencv-contrib-python"
                 ),
-                "hint": "Restart ./tools/dashboard_runner.sh after installing.",
+                "hint": "Restart the complete local stack with metriplane start --operator.",
             }
 
         out_dir = profile_dir / cam_name

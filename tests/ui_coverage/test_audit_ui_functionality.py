@@ -529,7 +529,7 @@ def test_current_governed_surface_has_exact_measured_counts():
         "ui_partial": 2,
         "ui_missing": 14,
         "critical_bugs": 4,
-            "high_bugs": 14,
+        "high_bugs": 14,
     }
     by_id = {action.action_id: action for action in audit.actions}
     assert by_id["cli.doctor"].coverage_status == "ui_full"

@@ -31,12 +31,12 @@ const RUNBOOK_STEPS = {
   1: {
     title: 'Environment',
     purpose: 'Verify Python, git commit, GPU availability, and that the runner service is reachable on :9000.',
-    prerequisites: ['venv activated: source .venv/bin/activate', 'Runner started: ./tools/dashboard_runner.sh'],
+    prerequisites: ['venv activated: source .venv/bin/activate', 'Capability-bearing stack started: metriplane start --operator'],
     happens: ['Refresh Info fetches /operator/env', 'Run Doctor checks 8 system components', 'Run Preflight checks Python deps and GPU'],
     success: 'Doctor and Preflight both show PASS. GPU listed if CUDA is available.',
     tip: 'If the runner dot is red, start it first. All other buttons depend on the runner.',
     troubleshooting: [
-      { q: 'Runner shows "not connected"', a: 'Run: ./tools/dashboard_runner.sh — it must stay open in a terminal.' },
+      { q: 'Runner shows "not connected"', a: 'Run metriplane start --operator and use the browser tab it opens.' },
       { q: 'Doctor fails for GPU', a: 'GPU is optional. CPU mode works for all steps 3–10.' },
     ],
   },
@@ -422,7 +422,7 @@ function pollJob(jobId, logId, stepId, onDone) {
 
 async function runAllowlisted(commandId, stepId) {
   if (!state.runnerConnected) {
-    alert('Runner not connected. Start it with: ./tools/dashboard_runner.sh');
+    alert('Runner not connected. Run metriplane start --operator and use the browser tab it opens.');
     return;
   }
   setStepStatus(stepId, 'running');
@@ -1549,7 +1549,7 @@ function clearPreflightDrawer() {
 async function runPreflightDrawer(command) {
   if (!state.runnerConnected) {
     const output = document.getElementById('preflight-drawer-output');
-    if (output) output.textContent = '⚠ Runner not connected.\nStart it with: ./tools/dashboard_runner.sh';
+    if (output) output.textContent = '⚠ Runner not connected.\nRun metriplane start --operator and use the browser tab it opens.';
     hidePreflightSummary();
     return;
   }

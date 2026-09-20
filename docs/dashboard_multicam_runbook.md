@@ -95,34 +95,19 @@ python -c "import cv2; cap = cv2.VideoCapture(1); print('video1:', cap.isOpened(
 
 ## Step-by-Step Execution
 
-### Terminal 1: Dashboard Runner (Optional)
+### Terminal 1: Capability-bearing local console
 ```bash
 cd <repo>
 source ~/metriplane-venv/bin/activate
-./tools/dashboard_runner.sh
-
-# Or with custom port:
-python -m metriplane.runner.service --port 9000
+metriplane start
 ```
-**Port**: 9000  
-**API**: http://localhost:9000/status
+This starts the runner on port 9000, starts the bounded dashboard on port 8088,
+and opens the browser with the fragment-delivered session capability. Do not start
+the two services separately; mutation requests require that handoff.
 
 ---
 
-### Terminal 2: Dashboard HTTP Server
-```bash
-cd <repo>
-python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
-
-# Open browser:
-# http://127.0.0.1:8088/index.html
-```
-**Port**: 8088  
-**URL**: http://127.0.0.1:8088/index.html
-
----
-
-### Terminal 3: Run 2-Camera Fusion
+### Terminal 2: Run 2-Camera Fusion
 ```bash
 cd <repo>
 source ~/metriplane-venv/bin/activate
@@ -357,13 +342,10 @@ ffplay /dev/video1  # May fail if companion node
 ## Example Session
 
 ```bash
-# Terminal 1: Runner
-./tools/dashboard_runner.sh
+# Terminal 1: capability-bearing local console
+metriplane start
 
-# Terminal 2: Dashboard
-python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
-
-# Terminal 3: Fusion (60s)
+# Terminal 2: Fusion (60s)
 CONFIG=configs/fusion_health.yaml ./tools/mp.sh run-fusion cpu 60 multicam_test
 
 # Browser: http://127.0.0.1:8088/index.html

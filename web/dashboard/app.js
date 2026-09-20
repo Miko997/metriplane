@@ -593,7 +593,7 @@ async function runCommand(commandId) {
     
     if (!runnerAvailable) {
         showToast('Runner service not available');
-        showCommandError(commandId, 'Runner service not available. Start with: ./tools/dashboard_runner.sh');
+        showCommandError(commandId, 'Runner service not available. Run metriplane start and use the browser tab it opens.');
         return;
     }
     

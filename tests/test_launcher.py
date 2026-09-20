@@ -106,6 +106,25 @@ def _wait_for_port(host: str, port: int, timeout: float = 10.0) -> bool:
     return False
 
 
+def test_dashboard_runner_wrapper_delegates_to_capability_bearing_launcher():
+    script = Path("tools/dashboard_runner.sh")
+    source = script.read_text(encoding="utf-8")
+
+    assert "metriplane.runner.service" not in source
+    assert "-m metriplane.cli start" in source
+    assert '--runner-port "$PORT"' in source
+    assert '--dashboard-port "$DASHBOARD_PORT"' in source
+
+    rejected = subprocess.run(
+        ["bash", str(script), "--host", "localhost"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert rejected.returncode == 64
+    assert "numeric IPv4 loopback" in rejected.stderr
+
+
 def _test_platform_paths(root: Path) -> PlatformPaths:
     return PlatformPaths(
         config_dir=root / "config",

@@ -271,16 +271,16 @@ Ready for the bundled camera-free demo.
 
 ## Dashboard Development
 
-### Start Dashboard Runner Service
+### Start the capability-bearing local stack
 
 ```bash
-./tools/dashboard_runner.sh
+metriplane start
 ```
 
 **What it does**:
-- Starts runner service on port 9000
-- Enables "Run" buttons in dashboard
-- Allows command execution from web UI
+- Starts the runner on port 9000 and the bounded dashboard on port 8088
+- Opens a localhost URL carrying a one-time fragment capability into browser session storage
+- Enables allowlisted dashboard mutations without exposing the capability through a GET response
 
 **Check status**:
 ```bash
@@ -288,19 +288,10 @@ curl http://localhost:9000/status
 # {"status": "idle", "running_jobs": 0}
 ```
 
-### Serve Dashboard Web App
-
-Use the same bounded local server as the launcher:
-
-```bash
-cd <repo>
-python -m metriplane._local_http 8088 --bind 127.0.0.1 --directory web/dashboard
-```
-
-**Access**: http://127.0.0.1:8088/index.html
-
-The local server intentionally does not expose the checkout or retained repository
-evidence. Dashboard-generated artifacts remain available only below `atlas_run/`.
+The launcher intentionally does not expose the checkout or retained repository evidence.
+Dashboard-generated artifacts remain available only below `atlas_run/`. Do not replace
+the launcher with separate runner and static-server commands: they cannot perform the
+capability handoff required for mutation requests.
 
 **Alternative ports**:
 - 8088 (recommended, avoids common conflicts)
@@ -914,7 +905,7 @@ CONFIG=configs/fusion_health_local.yaml ./tools/mp.sh timing-breakdown
 
 **Tools**:
 - [tools/mp.sh](../tools/mp.sh) - Main CLI wrapper
-- [tools/dashboard_runner.sh](../tools/dashboard_runner.sh) - Runner service
+- [tools/dashboard_runner.sh](../tools/dashboard_runner.sh) - Compatibility wrapper for `metriplane start`
 - [tools/debug_alignment.py](../tools/debug_alignment.py) - Calibration diagnostics
 
 **Web UI**:

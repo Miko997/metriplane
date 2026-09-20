@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `359413e03e769baa8032b6d6759b211b9b3ddaab16c5b79e07931ea0a37fd808`
+Canonical projection SHA-256: `4c350a29dc5a49192ab0e1d9f712cf6815aed84fa59ac4e07037751af58cf69a`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -147,7 +147,7 @@ Canonical projection SHA-256: `359413e03e769baa8032b6d6759b211b9b3ddaab16c5b79e0
 | tool.complete_delegated_task | Complete Delegated Task | tools/complete_delegated_task.py | python tools/complete_delegated_task.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
-| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | web/dashboard/* | dashboard_runner.sh | ui_copy_command_only | P2 |  |
+| tool.dashboard_runner | Dashboard Runner | tools/dashboard_runner.sh | tools/dashboard_runner.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.debug_alignment | Debug Alignment | tools/debug_alignment.py | python tools/debug_alignment.py | web/dashboard/* | debug_alignment.py | ui_copy_command_only | P2 |  |
 | tool.delegated_merge | Delegated Merge | tools/delegated_merge.py | python tools/delegated_merge.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.delegated_task_authority | Delegated Task Authority | tools/delegated_task_authority.py | python tools/delegated_task_authority.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
