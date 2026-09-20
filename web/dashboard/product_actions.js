@@ -142,16 +142,30 @@
   function renderJobs(payload) {
     for (const el of all("[data-jobs-list]")) {
       const jobs = (payload && payload.jobs) || [];
+      el.replaceChildren();
       if (!jobs.length) {
-        el.innerHTML = `<div class="mp-empty-line">No recent runner jobs.</div>`;
+        const empty = document.createElement("div");
+        empty.className = "mp-empty-line";
+        empty.textContent = "No recent runner jobs.";
+        el.appendChild(empty);
         continue;
       }
-      el.innerHTML = jobs.slice(0, 5).map((job) => {
+      jobs.slice(0, 5).forEach((job) => {
         const status = job.status || "unknown";
         const command = job.command_id || "unknown";
         const exit = job.exit_code == null ? "" : `exit ${job.exit_code}`;
-        return `<div class="mp-job-history-row"><strong>${command}</strong><span data-state="${statusTone(status)}">${status}</span><small>${exit}</small></div>`;
-      }).join("");
+        const row = document.createElement("div");
+        row.className = "mp-job-history-row";
+        const commandEl = document.createElement("strong");
+        commandEl.textContent = command;
+        const statusEl = document.createElement("span");
+        statusEl.dataset.state = statusTone(status);
+        statusEl.textContent = status;
+        const exitEl = document.createElement("small");
+        exitEl.textContent = exit;
+        row.append(commandEl, statusEl, exitEl);
+        el.appendChild(row);
+      });
     }
   }
 
