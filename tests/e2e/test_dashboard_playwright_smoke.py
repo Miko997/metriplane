@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from metriplane._local_http import DashboardHTTPRequestHandler, LocalHTTPServer
 from tools.audit_ui_functionality import discover_pages
 
 
@@ -32,6 +33,20 @@ def chromium_executable(playwright) -> Path | None:
 def static_dashboard_server():
     handler = partial(SimpleHTTPRequestHandler, directory=str(ROOT))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@contextmanager
+def bounded_dashboard_server(directory: Path):
+    handler = partial(DashboardHTTPRequestHandler, directory=str(directory))
+    server = LocalHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -203,4 +218,110 @@ def test_hostile_runtime_and_job_fields_remain_text():
         assert page.evaluate("window.__metriplane_xss") is None
         assert page.locator("img[src='x']").count() == 0
         assert payload in (page.locator("[data-jobs-list]").text_content() or "")
+        browser.close()
+
+
+def test_generated_active_html_is_sandboxed_away_from_capability(tmp_path: Path):
+    playwright = pytest.importorskip("playwright.sync_api")
+    sync_playwright = playwright.sync_playwright
+    dashboard = tmp_path / "dashboard"
+    generated = dashboard / "atlas_run"
+    generated.mkdir(parents=True)
+    (dashboard / "index.html").write_text("dashboard", encoding="utf-8")
+    (generated / "hostile.html").write_text(
+        "<p>generated report remains readable</p>"
+        "<script>window.__stolen = sessionStorage.getItem('metriplane.runner.capability')</script>",
+        encoding="utf-8",
+    )
+
+    with bounded_dashboard_server(dashboard) as base_url, sync_playwright() as pw:
+        executable = chromium_executable(pw)
+        if executable is None:
+            pytest.skip("Playwright Chromium browser is not installed")
+        browser = pw.chromium.launch(executable_path=str(executable))
+        page = browser.new_page()
+        page.goto(f"{base_url}/index.html")
+        page.evaluate(
+            "sessionStorage.setItem('metriplane.runner.capability', 'private-browser-capability')"
+        )
+        response = page.goto(f"{base_url}/atlas_run/hostile.html")
+        page.wait_for_load_state("domcontentloaded")
+
+        assert response is not None
+        assert response.headers["content-security-policy"].startswith("sandbox;")
+        assert page.locator("p").text_content() == "generated report remains readable"
+        assert page.evaluate("window.__stolen") is None
+        browser.close()
+
+
+def test_hostile_operator_names_cannot_become_inline_handlers():
+    playwright = pytest.importorskip("playwright.sync_api")
+    sync_playwright = playwright.sync_playwright
+    payload = "');window.__metriplane_xss=sessionStorage.getItem('metriplane.runner.capability');//"
+
+    with static_dashboard_server() as base_url, sync_playwright() as pw:
+        executable = chromium_executable(pw)
+        if executable is None:
+            pytest.skip("Playwright Chromium browser is not installed")
+        browser = pw.chromium.launch(executable_path=str(executable))
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+
+        def route_runner(route):
+            from urllib.parse import urlsplit
+
+            path = urlsplit(route.request.url).path
+            if path == "/operator/profiles":
+                body = {
+                    "profiles": [
+                        {
+                            "name": payload,
+                            "is_local": True,
+                            "has_anchors": True,
+                            "has_cam0_mapping": True,
+                            "has_cam1_mapping": False,
+                            "has_zones": True,
+                        }
+                    ]
+                }
+            elif path == "/operator/cameras":
+                body = {
+                    "cameras": [
+                        {
+                            "path": payload,
+                            "by_id": payload,
+                            "reason": payload,
+                            "recommended_for_operator": True,
+                            "is_metadata_only": False,
+                            "is_capture_capable": True,
+                            "cv2_open_index": True,
+                            "cv2_read_index": True,
+                        }
+                    ],
+                    "readable": 1,
+                    "capture_capable": 1,
+                    "metadata_only": 0,
+                }
+            elif path == "/status":
+                body = {"service": "runner", "uptime_s": 1}
+            else:
+                body = {}
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+                body=json.dumps(body),
+            )
+
+        page.route("http://localhost:9000/**", route_runner)
+        page.goto(f"{base_url}/web/dashboard/operator.html#capability=private-browser-capability")
+        page.wait_for_load_state("domcontentloaded")
+        page.evaluate("Promise.all([loadProfiles(), discoverCameras()])")
+        page.locator("#profile-list button", has_text="Use").evaluate("element => element.click()")
+        page.locator("#cam0-sel-0").evaluate("element => element.click()")
+
+        assert page.evaluate("window.__metriplane_xss") is None
+        assert page.locator("#profile-name").input_value() == payload
+        assert page.locator("#cam0-path").input_value() == payload
+        assert page.locator("#profile-list [onclick]").count() == 0
+        assert page.locator("#camera-table-wrapper [onclick]").count() == 0
         browser.close()

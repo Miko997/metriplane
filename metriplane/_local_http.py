@@ -108,9 +108,21 @@ class DashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
+        generated_artifact = urlsplit(self.path).path.startswith("/atlas_run/")
+        content_security_policy = (
+            "sandbox; default-src 'none'; img-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; "
+            "base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+            if generated_artifact
+            else "default-src 'self'; connect-src 'self' http://127.0.0.1:* "
+            "http://localhost:* ws://127.0.0.1:* ws://localhost:*; "
+            "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'; form-action 'self'; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+        )
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+            content_security_policy,
         )
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")

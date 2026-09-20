@@ -100,7 +100,7 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 5,870 items. In the exact core
+The ordered node-id stream must contain exactly 5,872 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
 cache, the integrated source profile requires 5,597 passed and 15 expected skips.
 Fourteen result-schema cases run in the separate locked

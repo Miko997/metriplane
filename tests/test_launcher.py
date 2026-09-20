@@ -196,6 +196,7 @@ def test_dashboard_generated_artifact_boundary_and_numeric_bind_are_fail_closed(
     generated.mkdir(parents=True)
     (dashboard / "index.html").write_text("dashboard", encoding="utf-8")
     (generated / "atlas_manifest.json").write_text("{}", encoding="utf-8")
+    (generated / "report.html").write_text("<p>report</p>", encoding="utf-8")
     outside = tmp_path / "private.txt"
     outside.write_text("private", encoding="utf-8")
     (generated / "escape.txt").symlink_to(outside)
@@ -203,6 +204,12 @@ def test_dashboard_generated_artifact_boundary_and_numeric_bind_are_fail_closed(
     with _dashboard_server(dashboard) as base:
         with urllib.request.urlopen(f"{base}/atlas_run/atlas_manifest.json", timeout=5) as response:
             assert response.read() == b"{}"
+            assert response.headers["Content-Security-Policy"].startswith("sandbox;")
+        with urllib.request.urlopen(f"{base}/atlas_run/report.html", timeout=5) as response:
+            assert response.read() == b"<p>report</p>"
+            csp = response.headers["Content-Security-Policy"]
+            assert csp.startswith("sandbox;")
+            assert "script-src" not in csp
         for path in ("/private.txt", "/atlas_run/escape.txt", "/atlas_run/../index.html"):
             with pytest.raises(urllib.error.HTTPError) as exc_info:
                 urllib.request.urlopen(f"{base}{path}", timeout=5)

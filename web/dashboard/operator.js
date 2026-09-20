@@ -503,30 +503,35 @@ async function discoverCameras() {
   }
 
   if (!cams.length) {
-    if (wrapper) wrapper.innerHTML = '<div class="notice warn">No /dev/video* devices found. Check USB connections and run: ls /dev/video*</div>';
+    if (wrapper) {
+      const notice = document.createElement('div');
+      notice.className = 'notice warn';
+      notice.textContent = 'No /dev/video* devices found. Check USB connections and run: ls /dev/video*';
+      wrapper.replaceChildren(notice);
+    }
     return;
   }
 
-  // Troubleshooting notice: capture nodes detected but OpenCV cannot produce frames
-  let noticeHtml = '';
+  if (!wrapper) return;
+  wrapper.replaceChildren();
   if (readable === 0 && captureCap > 0) {
-    noticeHtml = `<div class="notice warn">
-      ⚠ Linux sees ${captureCap} capture device(s) but OpenCV could not read frames.<br>
-      Check device ownership and video group:<br>
-      <code>fuser -v /dev/video* 2>&amp;1 | head -20</code><br>
-      <code>groups | grep video</code>
-    </div>`;
+    const notice = document.createElement('div');
+    notice.className = 'notice warn';
+    notice.textContent = `⚠ Linux sees ${captureCap} capture device(s) but OpenCV could not read frames. Check device ownership and video group: fuser -v /dev/video* 2>&1 | head -20; groups | grep video`;
+    wrapper.appendChild(notice);
   }
 
-  // Table header includes Type column
-  let html = `<table class="camera-table">
-    <thead>
-      <tr>
-        <th>Device</th><th>Type</th>
-        <th>Open(idx)</th><th>Read(idx)</th>
-        <th>Resolution</th><th>by-id</th><th>Set as</th>
-      </tr>
-    </thead><tbody>`;
+  const table = document.createElement('table');
+  table.className = 'camera-table';
+  const thead = document.createElement('thead');
+  const header = document.createElement('tr');
+  ['Device', 'Type', 'Open(idx)', 'Read(idx)', 'Resolution', 'by-id', 'Set as'].forEach(label => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    header.appendChild(th);
+  });
+  thead.appendChild(header);
+  const tbody = document.createElement('tbody');
 
   cams.forEach((c, i) => {
     const recommended = c.recommended_for_operator === true;
@@ -545,44 +550,65 @@ async function discoverCameras() {
                   : c.cv2_read === true        ? '✓'
                   : c.cv2_read === false       ? '✗' : '—';
 
-    const res  = (c.width && c.height) ? c.width + '×' + c.height : '—';
-    const byid = c.by_id
-      ? `<span title="${escHtml(c.by_id)}">${escHtml(c.by_id.split('/').pop())}</span>`
-      : '—';
+    const row = document.createElement('tr');
+    if (metaRow) row.style.opacity = '0.6';
 
-    // Type label
-    const typeLabel = metaRow
-      ? '<span style="color:var(--text-muted);font-size:10px">metadata-only</span>'
-      : c.is_capture_capable
-        ? '<span style="color:var(--success);font-size:10px">capture</span>'
-        : '<span style="color:var(--text-muted);font-size:10px">unknown</span>';
+    const deviceCell = document.createElement('td');
+    const dot = document.createElement('span');
+    dot.className = `cam-dot ${dotCls}`;
+    deviceCell.append(dot, document.createTextNode(String(c.path || '')));
+    if (c.reason) {
+      const reason = document.createElement('span');
+      reason.style.fontSize = '10px';
+      reason.style.color = 'var(--text-muted)';
+      reason.title = c.reason;
+      reason.textContent = ' ⓘ';
+      deviceCell.appendChild(reason);
+    }
 
-    // Reason tooltip on device name
-    const reasonSpan = c.reason
-      ? ` <span style="font-size:10px;color:var(--text-muted)" title="${escHtml(c.reason)}">ⓘ</span>`
-      : '';
+    const typeCell = document.createElement('td');
+    const type = document.createElement('span');
+    type.style.fontSize = '10px';
+    type.style.color = metaRow ? 'var(--text-muted)' : c.is_capture_capable ? 'var(--success)' : 'var(--text-muted)';
+    type.textContent = metaRow ? 'metadata-only' : c.is_capture_capable ? 'capture' : 'unknown';
+    typeCell.appendChild(type);
 
-    // Assignment buttons — disabled for non-recommended (metadata-only or cv2 fail)
-    const btnAttr    = recommended ? '' : 'disabled style="opacity:0.35;cursor:not-allowed"';
-    const btnOnclick = recommended
-      ? `onclick="assignCamera('${escHtml(c.path)}','ROLE',${i})"`
-      : 'onclick="return false"';
-
-    html += `<tr style="${metaRow ? 'opacity:0.6' : ''}">
-      <td><span class="cam-dot ${dotCls}"></span>${escHtml(c.path)}${reasonSpan}</td>
-      <td>${typeLabel}</td>
-      <td>${openVal}</td><td>${readVal}</td><td>${res}</td><td>${byid}</td>
-      <td>
-        <button class="cam-select-btn" id="cam0-sel-${i}"
-          ${btnAttr} ${btnOnclick.replace('ROLE', 'cam0')}>cam0</button>
-        <button class="cam-select-btn" id="cam1-sel-${i}"
-          ${btnAttr} ${btnOnclick.replace('ROLE', 'cam1')}>cam1</button>
-      </td>
-    </tr>`;
+    const textCell = value => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      return cell;
+    };
+    const byIdCell = document.createElement('td');
+    if (c.by_id) {
+      const byId = document.createElement('span');
+      byId.title = c.by_id;
+      byId.textContent = c.by_id.split('/').pop();
+      byIdCell.appendChild(byId);
+    } else {
+      byIdCell.textContent = '—';
+    }
+    const actions = document.createElement('td');
+    ['cam0', 'cam1'].forEach(role => {
+      const button = document.createElement('button');
+      button.className = 'cam-select-btn';
+      button.id = `${role}-sel-${i}`;
+      button.textContent = role;
+      button.disabled = !recommended;
+      if (!recommended) {
+        button.style.opacity = '0.35';
+        button.style.cursor = 'not-allowed';
+      } else {
+        button.addEventListener('click', () => assignCamera(c.path, role, i));
+      }
+      actions.appendChild(button);
+    });
+    const res = c.width && c.height ? `${c.width}×${c.height}` : '—';
+    row.append(deviceCell, typeCell, textCell(openVal), textCell(readVal), textCell(res), byIdCell, actions);
+    tbody.appendChild(row);
   });
 
-  html += '</tbody></table>';
-  if (wrapper) wrapper.innerHTML = noticeHtml + html;
+  table.append(thead, tbody);
+  wrapper.appendChild(table);
 }
 
 function assignCamera(path, role, rowIdx) {
@@ -615,23 +641,57 @@ async function loadProfiles() {
     return;
   }
   if (!data.profiles.length) {
-    el.innerHTML = '<span style="color:var(--text-muted)">No profiles yet. Create one below.</span>';
+    const empty = document.createElement('span');
+    empty.style.color = 'var(--text-muted)';
+    empty.textContent = 'No profiles yet. Create one below.';
+    el.replaceChildren(empty);
     return;
   }
-  let html = '<table class="camera-table"><thead><tr><th>Name</th><th>Anchors</th><th>cam0</th><th>cam1</th><th>Zones</th><th></th></tr></thead><tbody>';
-  data.profiles.forEach(p => {
-    const local = p.is_local ? '<span style="color:var(--accent-cyan);font-size:10px">local</span>' : '';
-    html += `<tr>
-      <td>${escHtml(p.name)} ${local}</td>
-      <td>${p.has_anchors ? '✓' : '—'}</td>
-      <td>${p.has_cam0_mapping ? '✓' : '—'}</td>
-      <td>${p.has_cam1_mapping ? '✓' : '—'}</td>
-      <td>${p.has_zones ? '✓' : '—'}</td>
-      <td><button class="cam-select-btn" onclick="selectProfile('${escHtml(p.name)}')">Use</button></td>
-    </tr>`;
+  const table = document.createElement('table');
+  table.className = 'camera-table';
+  const thead = document.createElement('thead');
+  const header = document.createElement('tr');
+  ['Name', 'Anchors', 'cam0', 'cam1', 'Zones', ''].forEach(label => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    header.appendChild(th);
   });
-  html += '</tbody></table>';
-  el.innerHTML = html;
+  thead.appendChild(header);
+  const tbody = document.createElement('tbody');
+  data.profiles.forEach(p => {
+    const row = document.createElement('tr');
+    const name = document.createElement('td');
+    name.appendChild(document.createTextNode(String(p.name || '')));
+    if (p.is_local) {
+      const local = document.createElement('span');
+      local.style.color = 'var(--accent-cyan)';
+      local.style.fontSize = '10px';
+      local.textContent = ' local';
+      name.appendChild(local);
+    }
+    const textCell = value => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      return cell;
+    };
+    const action = document.createElement('td');
+    const button = document.createElement('button');
+    button.className = 'cam-select-btn';
+    button.textContent = 'Use';
+    button.addEventListener('click', () => selectProfile(p.name));
+    action.appendChild(button);
+    row.append(
+      name,
+      textCell(p.has_anchors ? '✓' : '—'),
+      textCell(p.has_cam0_mapping ? '✓' : '—'),
+      textCell(p.has_cam1_mapping ? '✓' : '—'),
+      textCell(p.has_zones ? '✓' : '—'),
+      action,
+    );
+    tbody.appendChild(row);
+  });
+  table.append(thead, tbody);
+  el.replaceChildren(table);
 }
 
 function selectProfile(name) {
