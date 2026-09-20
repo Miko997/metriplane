@@ -23,6 +23,33 @@ class DelegatedMergeError(ValueError):
     """A proposed machine merge request is outside its signed authority."""
 
 
+DELEGATE_REQUEST_SUBJECT_FIELDS = frozenset(
+    {
+        "request_id",
+        "grant_id",
+        "repository",
+        "project_id",
+        "executor_id",
+        "task_id",
+        "linear_issue",
+        "work_order_id",
+        "work_order_digest",
+        "pull_request",
+        "base_sha",
+        "head_sha",
+        "head_tree",
+        "changed_paths_digest",
+        "collaboration_digest",
+        "ruleset_digests",
+        "state_commit",
+        "health_generation",
+        "issued_at",
+        "expires_at",
+        "nonce",
+    }
+)
+
+
 def merge_request_id(subject: Mapping[str, Any]) -> str:
     return sha256_json({key: value for key, value in subject.items() if key != "request_id"})
 
@@ -137,30 +164,7 @@ def select_delegate_admission(
     signature = request.get("signature")
     if not isinstance(subject, Mapping) or not isinstance(signature, Mapping):
         raise DelegatedMergeError("delegate merge request subject or signature is malformed")
-    required_subject = {
-        "request_id",
-        "grant_id",
-        "repository",
-        "project_id",
-        "executor_id",
-        "task_id",
-        "linear_issue",
-        "work_order_id",
-        "work_order_digest",
-        "pull_request",
-        "base_sha",
-        "head_sha",
-        "head_tree",
-        "changed_paths_digest",
-        "collaboration_digest",
-        "ruleset_digests",
-        "state_commit",
-        "health_generation",
-        "issued_at",
-        "expires_at",
-        "nonce",
-    }
-    if set(subject) != required_subject or set(signature) != {
+    if set(subject) != DELEGATE_REQUEST_SUBJECT_FIELDS or set(signature) != {
         "provider",
         "actor_id",
         "key_id",

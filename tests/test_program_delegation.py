@@ -23,7 +23,7 @@ from tools.materialize_task_work_order import (
     _validate_live_program_grant,
     build,
 )
-from tools.main_health_broker import DurableSpool, digest as broker_digest
+from tools.main_health_broker import BrokerError, DurableSpool, digest as broker_digest
 from tools.program_delegation import program_grant_id, validate_program_grant
 from tools.task_attestation_builder import prepare_task_observation
 from tools.task_delegation import (
@@ -814,6 +814,35 @@ def test_delegate_merge_admission_is_machine_distinct_and_exact(tmp_path: Path) 
         updated_at=NOW,
     )
     assert spool.request_status(admitted["request_digest"]) == "merging"
+    assert spool.request_inventory() == [
+        {
+            "request_digest": admitted["request_digest"],
+            "nonce": admitted["nonce"],
+            "pull_request": admitted["pull_request"],
+            "request": admitted["request"],
+            "status": "merging",
+        }
+    ]
+    assert spool.requests_with_status("merging") == [
+        {
+            "base_sha": admitted["base_sha"],
+            "head_sha": admitted["head_sha"],
+            "nonce": admitted["nonce"],
+            "pull_request": admitted["pull_request"],
+            "request": admitted["request"],
+            "request_digest": admitted["request_digest"],
+        }
+    ]
+    malformed = {**admitted["request"], "nonce": "7" * 32}
+    with pytest.raises(BrokerError, match="identity is inconsistent"):
+        spool.record_request(
+            request_digest=broker_digest(malformed),
+            nonce=malformed["nonce"],
+            pull_request=malformed["pull_request"],
+            request=malformed,
+            status="merging",
+            updated_at=NOW,
+        )
 
 
 def test_delegate_merge_rejects_state_scope_or_signature_change() -> None:
