@@ -33,6 +33,7 @@ from typing import Any, NoReturn
 from metriplane.release_control import canonical_json as strict_canonical_json
 from tools import check_pr_contract, observe_main_health, stop_the_line
 from tools.delegated_merge import (
+    DELEGATE_REQUEST_SUBJECT_FIELDS,
     DelegatedMergeError,
     select_delegate_admission,
     validate_delegate_package_at_base,
@@ -281,6 +282,7 @@ GOVERNED_RULESET_COUNT = 7
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 NONCE_RE = re.compile(r"[0-9a-f]{32}")
+DELEGATE_NONCE_RE = re.compile(r"[0-9a-f]{64}")
 LEGACY_PROTECTED_MAIN_RESULTS = frozenset(
     {
         (
@@ -334,6 +336,15 @@ def canonical_bytes(value: Any) -> bytes:
 
 def digest(value: Any) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
+
+
+def _durable_request_nonce_is_valid(request: Mapping[str, Any], nonce: Any) -> bool:
+    """Preserve exact owner and delegate nonce contracts in one durable ledger."""
+    if not isinstance(nonce, str):
+        return False
+    if set(request) == DELEGATE_REQUEST_SUBJECT_FIELDS:
+        return DELEGATE_NONCE_RE.fullmatch(nonce) is not None
+    return NONCE_RE.fullmatch(nonce) is not None
 
 
 def _b64url(value: bytes) -> str:
@@ -1241,8 +1252,7 @@ class DurableSpool:
                 or request.get("nonce") != nonce
                 or request.get("pull_request") != pull_request
                 or status not in REQUEST_STATUSES
-                or not isinstance(nonce, str)
-                or NONCE_RE.fullmatch(nonce) is None
+                or not _durable_request_nonce_is_valid(request, nonce)
             ):
                 raise BrokerError("durable request inventory identity is inconsistent")
             _require_positive_int(pull_request, "durable request pull request")
@@ -1274,6 +1284,7 @@ class DurableSpool:
             digest(request) != request_digest
             or request.get("nonce") != nonce
             or request.get("pull_request") != pull_request
+            or not _durable_request_nonce_is_valid(request, nonce)
         ):
             raise BrokerError("durable request identity is inconsistent")
         if status not in REQUEST_STATUSES:
@@ -1334,6 +1345,7 @@ class DurableSpool:
                 or digest(request) != request_digest
                 or request.get("nonce") != nonce
                 or request.get("pull_request") != pull_request
+                or not _durable_request_nonce_is_valid(request, nonce)
             ):
                 raise BrokerError("durable request spool digest is invalid")
             values.append(

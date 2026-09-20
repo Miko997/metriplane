@@ -253,6 +253,11 @@ exact base/head/tree, changed-path, collaboration and hosted-ruleset digests,
 protected state commit/generation, nonce and at most a ten-minute provider
 lease. A private inbox entry alone supplies no authority.
 
+The durable ledger preserves the request contract's nonce width: owner and
+human-review requests use 32 lowercase hexadecimal characters, while the
+closed delegate-request subject uses 64. A 64-character nonce is accepted only
+for that exact delegate subject shape; it does not widen owner-normal parsing.
+
 The broker checks the owner signature against the protected production
 keyring, the executor signature against the public key in the signed grant,
 the fresh provider-attested task instance, and independently rebuilds the

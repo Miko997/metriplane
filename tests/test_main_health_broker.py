@@ -1615,6 +1615,22 @@ def test_spool_is_durable_and_nonce_is_single_use(tmp_path: Path) -> None:
         )
 
 
+def test_spool_does_not_treat_an_owner_request_as_a_64_hex_delegate_nonce(
+    tmp_path: Path,
+) -> None:
+    spool = broker.DurableSpool(tmp_path / "spool")
+    request = {**_request(), "nonce": "2" * 64}
+    with pytest.raises(broker.BrokerError, match="identity is inconsistent"):
+        spool.record_request(
+            request_digest=broker.digest(request),
+            nonce=request["nonce"],
+            pull_request=request["pull_request"],
+            request=request,
+            status="merging",
+            updated_at="2026-08-26T12:00:00Z",
+        )
+
+
 def test_spool_closes_every_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     real_connect = sqlite3.connect
 
