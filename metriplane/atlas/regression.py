@@ -5,17 +5,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-import json
 import math
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
-import zipfile
 
 import yaml
 
-from metriplane.atlas.bundles import safe_extract, verify_bundle
+from metriplane.archive_safety import staged_path
+from metriplane.atlas.bundles import verify_bundle
 from metriplane.atlas.models import AtlasIncident, RegressionSpec
 from metriplane.strict_parsing import StrictYamlError, iter_jsonl_path, load_json_path, load_yaml_path
 
@@ -25,13 +24,8 @@ _TActual = TypeVar("_TActual")
 
 @contextmanager
 def _bundle_root(bundle: Path) -> Iterator[Path]:
-    if bundle.is_dir():
-        yield bundle
-        return
-    with TemporaryDirectory() as tmp:
-        with zipfile.ZipFile(bundle) as archive:
-            safe_extract(archive, tmp)
-        yield Path(tmp)
+    with staged_path(bundle) as root:
+        yield root
 
 
 def create_regression_from_bundle(bundle_path: str | Path, out_path: str | Path) -> RegressionSpec:

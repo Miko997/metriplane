@@ -273,24 +273,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result["pass"] else 4
 
         if args.cmd == "training":
-            import zipfile
-            from tempfile import TemporaryDirectory
-            from metriplane.atlas.bundles import safe_extract
+            from metriplane.archive_safety import staged_path
             from metriplane.atlas.models import AtlasIncident
             from metriplane.atlas.training import training_case_from_incident, write_training_case
             bundle_path = Path(args.bundle)
-            if bundle_path.is_dir():
-                incident_path = bundle_path / "incident.json"
+            with staged_path(bundle_path) as bundle_root:
+                incident_path = bundle_root / "incident.json"
                 incident = AtlasIncident.model_validate(load_json_path(incident_path))
                 case = training_case_from_incident(incident)
                 write_training_case(case, args.out)
-            else:
-                with TemporaryDirectory() as tmp:
-                    with zipfile.ZipFile(bundle_path) as archive:
-                        safe_extract(archive, tmp)
-                    incident = AtlasIncident.model_validate(load_json_path(Path(tmp) / "incident.json"))
-                    case = training_case_from_incident(incident)
-                    write_training_case(case, args.out)
             print(f"wrote {args.out}")
             return 0
 
