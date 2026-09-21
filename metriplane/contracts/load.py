@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from metriplane.strict_parsing import load_yaml_path
+
 from metriplane.contracts.models import SpatialContractPackage
 
 
@@ -19,7 +21,7 @@ def load_spatial_contract(path: str | Path) -> SpatialContractPackage:
     if not p.exists():
         raise ContractLoadError(f"contract file not found: {p}")
     try:
-        raw = yaml.safe_load(p.read_text())
+        raw = load_yaml_path(p)
     except yaml.YAMLError as e:
         raise ContractLoadError(f"{p}: invalid YAML: {e}") from e
     if raw is None:

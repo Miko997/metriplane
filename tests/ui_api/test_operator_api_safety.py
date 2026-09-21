@@ -478,22 +478,19 @@ def test_latest_run_does_not_read_outside_meta_after_selected_parent_swap(
     (run / "session.jsonl").write_text("{}\n", encoding="utf-8")
     (run / "meta.json").write_text('{"run_id": "authorized"}\n', encoding="utf-8")
     (outside / "meta.json").write_text('{"run_id": "outside"}\n', encoding="utf-8")
-    original_read_text = PinnedFile.read_text
+    original_duplicate_fd = PinnedFile.duplicate_fd
     swapped = False
 
-    def swap_before_meta_read(
-        artifact: PinnedFile,
-        encoding: str = "utf-8",
-        errors: str = "strict",
-    ) -> str:
+    def swap_after_meta_pin(artifact: PinnedFile) -> int:
         nonlocal swapped
+        descriptor = original_duplicate_fd(artifact)
         if artifact.name == "meta.json" and not swapped:
             run.rename(parked)
             run.symlink_to(outside, target_is_directory=True)
             swapped = True
-        return original_read_text(artifact, encoding, errors)
+        return descriptor
 
-    monkeypatch.setattr(PinnedFile, "read_text", swap_before_meta_read)
+    monkeypatch.setattr(PinnedFile, "duplicate_fd", swap_after_meta_pin)
 
     status, payload = api.route("GET", "/operator/latest-run", {})
 

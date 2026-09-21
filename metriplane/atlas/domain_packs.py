@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from metriplane.strict_parsing import load_yaml_path
+
 from metriplane.atlas.models import (
     AssetRegistryModel,
     ProcessModel,
@@ -31,7 +33,7 @@ class DomainPack:
 def _read_yaml(path: Path) -> dict:
     if not path.exists():
         raise ValueError(f"missing required domain-pack file: {path}")
-    data = yaml.safe_load(path.read_text()) or {}
+    data = load_yaml_path(path) or {}
     if not isinstance(data, dict):
         raise ValueError(f"expected mapping in {path}")
     return data

@@ -2991,7 +2991,7 @@ class _ManifestInterpreter:
             module.path == "integrations/isaac/metriplane_to_usd.py"
             and module.module == "integrations.isaac.metriplane_to_usd"
             and module.source_sha256
-            == "5a8fdaa4f64466df75a6d749a3d784069943092a82037c14a76d02aa7eb5e85e"
+            == "98bd492a5b3b0df0c89b8c52750f46baa6da5c545cfbf5a9ce0ddd23c3de9daf"
             and function_name == "write_usda_replay"
             and variable == "manifest"
         ):

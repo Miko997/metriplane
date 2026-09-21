@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from metriplane.strict_parsing import iter_jsonl_path
+
 from metriplane.atlas.models import AtlasEvent
 
 
@@ -19,9 +21,8 @@ def write_events(path: str | Path, events: list[AtlasEvent]) -> None:
 
 def read_events(path: str | Path) -> list[AtlasEvent]:
     events: list[AtlasEvent] = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            events.append(AtlasEvent.model_validate(json.loads(line)))
+    for value in iter_jsonl_path(path):
+        events.append(AtlasEvent.model_validate(value))
     return events
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from metriplane.time.clock import FixedStepClock, ReplayClock, ms_to_ns
+from metriplane.strict_parsing import iter_jsonl_path
 
 
 ClockMode = str  # "replay" | "fixed"
@@ -69,22 +70,16 @@ class EngineConfig:
 
 
 def iter_input_frames(path: Path) -> Iterator[Dict[str, Any]]:
-    with path.open("r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid JSONL at {path}:{line_number}: {exc}") from exc
+    try:
+        records = iter_jsonl_path(path)
+        for rec in records:
             if isinstance(rec, dict) and _is_header_record(rec):
                 continue
             if not isinstance(rec, dict):
-                raise ValueError(
-                    f"Invalid JSONL record at {path}:{line_number}: expected an object"
-                )
+                raise ValueError(f"Invalid JSONL record at {path}: expected an object")
             yield rec
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSONL at {path}: {exc}") from exc
 
 
 def _load_frames_with_rel_ts(path: Path) -> List[Tuple[int, Dict[str, Any]]]:

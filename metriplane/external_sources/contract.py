@@ -11,6 +11,9 @@ upstream robotics framework and does not change Atlas execution.
 from __future__ import annotations
 
 import json
+
+from metriplane.strict_parsing import iter_jsonl_path
+from metriplane.strict_parsing import load_json_path
 import math
 import re
 from collections.abc import Sequence
@@ -1804,8 +1807,9 @@ def _reject_nonfinite_json_constant(value: str) -> None:
 
 def _load_json(path: Path, *, label: str) -> Any:
     try:
-        return json.loads(
-            path.read_text(encoding="utf-8"),
+        return load_json_path(
+            path,
+            label=label,
             object_pairs_hook=_reject_duplicate_pairs,
             parse_constant=_reject_nonfinite_json_constant,
         )
@@ -2117,7 +2121,6 @@ def _load_and_validate_session(
     mapping: EntityMappingDocument,
     pack: DomainPack,
 ) -> tuple[FrameStateModel, ...]:
-    raw_lines = path.read_text(encoding="utf-8").splitlines()
     frames: list[FrameStateModel] = []
     declared_fields = {item.normalized_field for item in manifest.normalization.field_provenance}
     observed_fields: set[str] = set()
@@ -2139,21 +2142,12 @@ def _load_and_validate_session(
     confidence_values: list[float] = []
     authoritative_observation_count = 0
 
-    for line_number, line in enumerate(raw_lines, start=1):
-        if not line.strip():
-            continue
+    for line_number, raw in enumerate(iter_jsonl_path(path), start=1):
         try:
-            raw = json.loads(
-                line,
-                object_pairs_hook=_reject_duplicate_pairs,
-                parse_constant=_reject_nonfinite_json_constant,
-            )
+            if not isinstance(raw, dict):
+                raise ValueError("record must be a JSON object")
         except Exception as exc:
             raise ValueError(f"invalid session JSON on line {line_number}: {exc}") from exc
-        if not isinstance(raw, dict):
-            raise ValueError(  # noqa: TRY004 - invalid fixture content
-                f"session line {line_number} must be a JSON object"
-            )
         if raw.get("type") == "run_header":
             raise ValueError(
                 f"session line {line_number} run header is prohibited; conversion provenance "

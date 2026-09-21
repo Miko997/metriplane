@@ -9,7 +9,8 @@ from typing import Any, Iterable, Tuple
 
 import cv2
 import numpy as np
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +49,7 @@ class CameraIntrinsics:
 
 
 def load_intrinsics(path: Path) -> CameraIntrinsics:
-    data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data: dict[str, Any] = load_yaml_path(path) or {}
     if not isinstance(data, dict):
         raise ValueError("intrinsics file must parse to a mapping")
 

@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 
 from metriplane.atlas.models import AtlasIncident, ImprovementAction
+from metriplane.strict_parsing import load_json_path
 
 
 def recommend_actions(incidents: list[AtlasIncident]) -> list[ImprovementAction]:
@@ -32,7 +33,7 @@ def _metrics(run_dir: Path) -> dict:
     path = run_dir / "metrics.json"
     if not path.exists():
         raise ValueError(f"missing metrics.json in {run_dir}")
-    metrics = json.loads(path.read_text(encoding="utf-8"))
+    metrics = load_json_path(path)
     if not isinstance(metrics, dict) or not isinstance(metrics.get("wait_time_s"), dict):
         raise ValueError(f"invalid legacy wait metrics in {run_dir}")
     values = metrics["wait_time_s"].values()

@@ -29,6 +29,7 @@ from metriplane.atlas.models import (
     external_source_provenance_reference,
 )
 from metriplane.schema import FrameStateModel
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 REQUIRED_BUNDLE_FILES = [
     "manifest.json",
@@ -102,8 +103,8 @@ def _reject_nonfinite_json_constant(value: str) -> None:
 
 def _load_external_source_provenance(path: Path) -> dict[str, object]:
     try:
-        value = json.loads(
-            path.read_text(encoding="utf-8"),
+        value = load_json_path(
+            path,
             object_pairs_hook=_reject_duplicate_json_pairs,
             parse_constant=_reject_nonfinite_json_constant,
         )
@@ -118,9 +119,8 @@ def _load_external_source_provenance(path: Path) -> dict[str, object]:
 
 def _load_incidents(run_dir: Path) -> list[AtlasIncident]:
     incidents = []
-    for line in (run_dir / "incidents.jsonl").read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            incidents.append(AtlasIncident.model_validate(json.loads(line)))
+    for value in iter_jsonl_path(run_dir / "incidents.jsonl"):
+        incidents.append(AtlasIncident.model_validate(value))
     return incidents
 
 
@@ -291,17 +291,7 @@ def _validated_state_segment_rows(
 ) -> list[dict]:
     if rows is None:
         rows = []
-        for line_number, line in enumerate(
-            source.read_text(encoding="utf-8").splitlines(), start=1
-        ):
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"invalid state segment JSON on line {line_number}: {exc}"
-                ) from exc
+        for line_number, record in enumerate(iter_jsonl_path(source), start=1):
             if not isinstance(record, dict):
                 raise ValueError(
                     f"invalid state segment record on line {line_number}: expected object"
@@ -352,7 +342,7 @@ def export_bundle(
     run_manifest = {}
     manifest_path = run / "atlas_manifest.json"
     if manifest_path.exists():
-        run_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        run_manifest = load_json_path(manifest_path)
     external_provenance = _external_source_provenance_for_export(run, run_manifest)
     has_assessment = (
         (run / REQUIREMENT_ASSESSMENT_PATH).exists()
@@ -606,8 +596,8 @@ def _verify_bundled_assessment(root: Path, manifest: BundleManifest) -> list[str
     errors: list[str] = []
     if REQUIREMENT_ASSESSMENT_PATH not in manifest.required_files:
         errors.append("bundled requirement assessment is not listed in required_files")
-    payload = json.loads(
-        path.read_text(encoding="utf-8"),
+    payload = load_json_path(
+        path,
         object_pairs_hook=_reject_duplicate_json_pairs,
         parse_constant=_reject_nonfinite_json_constant,
     )
@@ -649,7 +639,7 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                 if required_path.is_symlink() or not required_path.is_file():
                     errors.append(f"missing required file: {required}")
             if not errors:
-                manifest = BundleManifest.model_validate(json.loads((root / "manifest.json").read_text()))
+                manifest = BundleManifest.model_validate(load_json_path(root / "manifest.json"))
                 manifest_required: set[str] = set()
                 for raw_rel in manifest.required_files:
                     rel = _safe_relative_path(raw_rel)
@@ -746,16 +736,11 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                 except ValueError as exc:
                     errors.append(str(exc))
                 events: list[AtlasEvent] = []
-                for line_number, line in enumerate(
-                    (root / "event_timeline.jsonl")
-                    .read_text(encoding="utf-8")
-                    .splitlines(),
-                    start=1,
+                for line_number, value in enumerate(
+                    iter_jsonl_path(root / "event_timeline.jsonl"), start=1
                 ):
-                    if not line.strip():
-                        continue
                     try:
-                        events.append(AtlasEvent.model_validate(json.loads(line)))
+                        events.append(AtlasEvent.model_validate(value))
                     except Exception as exc:
                         errors.append(
                             f"invalid timeline event on line {line_number}: {exc}"
@@ -770,9 +755,7 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                 for event_id in duplicate_timeline_ids:
                     errors.append(f"duplicate timeline event ID: {event_id}")
 
-                incident = AtlasIncident.model_validate(
-                    json.loads((root / "incident.json").read_text(encoding="utf-8"))
-                )
+                incident = AtlasIncident.model_validate(load_json_path(root / "incident.json"))
                 if manifest.incident_id != incident.incident_id:
                     errors.append(
                         "manifest incident_id does not match incident: "

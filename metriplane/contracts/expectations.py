@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 
 from metriplane.contracts.engine import ContractEvent
 from metriplane.sentinel.incidents import build_incidents
@@ -36,7 +37,7 @@ def load_expectations(path: str | Path) -> dict[str, Any]:
           - exit_lane_blocked
           - human_proxy_distance
     """
-    data = yaml.safe_load(Path(path).read_text())
+    data = load_yaml_path(path)
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expectations must be a mapping")
     return data

@@ -17,6 +17,7 @@ import yaml
 
 from metriplane.atlas.bundles import safe_extract, verify_bundle
 from metriplane.atlas.models import AtlasIncident, RegressionSpec
+from metriplane.strict_parsing import StrictYamlError, iter_jsonl_path, load_json_path, load_yaml_path
 
 
 _TActual = TypeVar("_TActual")
@@ -37,12 +38,8 @@ def create_regression_from_bundle(bundle_path: str | Path, out_path: str | Path)
     bundle = Path(bundle_path).resolve()
     output = Path(out_path)
     with _bundle_root(bundle) as root:
-        incident = AtlasIncident.model_validate(json.loads((root / "incident.json").read_text()))
-        events = [
-            json.loads(line)
-            for line in (root / "event_timeline.jsonl").read_text().splitlines()
-            if line.strip()
-        ]
+        incident = AtlasIncident.model_validate(load_json_path(root / "incident.json"))
+        events = list(iter_jsonl_path(root / "event_timeline.jsonl"))
     spec = RegressionSpec(
         test_id=f"{incident.incident_type}_{incident.incident_id}",
         source_bundle=str(bundle),
@@ -98,7 +95,16 @@ def _tolerance(spec: RegressionSpec, name: str, errors: list[str]) -> float:
 
 def run_regression(spec_path: str | Path) -> dict:
     spec_file = Path(spec_path).resolve()
-    spec = RegressionSpec.model_validate(yaml.safe_load(spec_file.read_text()) or {})
+    try:
+        raw_spec = load_yaml_path(spec_file) or {}
+    except StrictYamlError as exc:
+        return {
+            "schema_version": "metriplane.atlas.regression_result.v1",
+            "test_id": spec_file.stem,
+            "pass": False,
+            "errors": [f"invalid regression specification: {exc}"],
+        }
+    spec = RegressionSpec.model_validate(raw_spec)
     if not spec.expected_events and not spec.expected_incidents:
         return _result(
             spec,
@@ -183,21 +189,16 @@ def _replay_bundle_logic(root: Path, spec: RegressionSpec, errors: list[str]) ->
                     for event in read_events(out_dir / "physical_event_log.jsonl")
                 ]
                 actual_incidents = [
-                    AtlasIncident.model_validate(json.loads(line))
-                    for line in (out_dir / "incidents.jsonl").read_text(encoding="utf-8").splitlines()
-                    if line.strip()
+                    AtlasIncident.model_validate(value)
+                    for value in iter_jsonl_path(out_dir / "incidents.jsonl")
                 ]
                 return actual_events, actual_incidents
         except Exception as exc:
             errors.append(f"pipeline replay failed: {type(exc).__name__}: {exc}")
             return [], []
 
-    actual_events = [
-        json.loads(line)
-        for line in (root / "event_timeline.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    actual_incidents = [AtlasIncident.model_validate(json.loads((root / "incident.json").read_text(encoding="utf-8")))]
+    actual_events = list(iter_jsonl_path(root / "event_timeline.jsonl"))
+    actual_incidents = [AtlasIncident.model_validate(load_json_path(root / "incident.json"))]
     errors.append("bundle lacks state_segment.jsonl or Atlas configs; used stored records only")
     return actual_events, actual_incidents
 

@@ -7,6 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
+from metriplane.strict_parsing import load_json_path
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser("metriplane atlas")
@@ -279,14 +281,14 @@ def main(argv: list[str] | None = None) -> int:
             bundle_path = Path(args.bundle)
             if bundle_path.is_dir():
                 incident_path = bundle_path / "incident.json"
-                incident = AtlasIncident.model_validate(json.loads(incident_path.read_text()))
+                incident = AtlasIncident.model_validate(load_json_path(incident_path))
                 case = training_case_from_incident(incident)
                 write_training_case(case, args.out)
             else:
                 with TemporaryDirectory() as tmp:
                     with zipfile.ZipFile(bundle_path) as archive:
                         safe_extract(archive, tmp)
-                    incident = AtlasIncident.model_validate(json.loads((Path(tmp) / "incident.json").read_text()))
+                    incident = AtlasIncident.model_validate(load_json_path(Path(tmp) / "incident.json"))
                     case = training_case_from_incident(incident)
                     write_training_case(case, args.out)
             print(f"wrote {args.out}")

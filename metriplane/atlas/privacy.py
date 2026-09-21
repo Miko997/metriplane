@@ -11,6 +11,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
+
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 IDENTITY_KEYS = {"face_id", "person_id", "worker_id", "biometric_id", "name"}
 IDENTITY_NAME_KEYS = {
@@ -87,7 +89,7 @@ ANONYMIZED_JSON_FILES = (
 def _jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return list(iter_jsonl_path(path))
 
 
 def privacy_report(
@@ -309,7 +311,7 @@ def pseudonymize_run(
         if src.exists():
             if not src.is_file():
                 raise ValueError(f"source run path is not a regular file: {rel}")
-            documents[rel] = json.loads(src.read_text(encoding="utf-8"))
+            documents[rel] = load_json_path(src)
 
     proxies: dict[tuple[str, str], str] = {}
     for document in documents.values():

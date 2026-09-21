@@ -9,18 +9,19 @@ from pathlib import Path
 
 from metriplane.atlas.event_ledger import read_events
 from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS, AtlasIncident
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 
 def _read_json(path: Path, default: object) -> object:
     if not path.exists():
         return default
-    return json.loads(path.read_text(encoding="utf-8"))
+    return load_json_path(path)
 
 
 def _read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return list(iter_jsonl_path(path))
 
 
 def dashboard_payload(

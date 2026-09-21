@@ -7,7 +7,8 @@ from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 
 
 # ======================================================================================
@@ -207,7 +208,7 @@ def load_config(path: Path) -> Config:
     - 'cameras' supports structured lists/dicts for fusion/multi-camera.
     - Supports Docker nested config keys (metrics, streaming.ws, time, replay, source).
     """
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    raw = load_yaml_path(path) or {}
     if not isinstance(raw, dict):
         raise ValueError(f"Config must parse to a dict. Path={path}")
 
@@ -388,7 +389,7 @@ def load_active_profile(
         return None
 
     try:
-        data = yaml.safe_load(active_profile_path.read_text(encoding="utf-8")) or {}
+        data = load_yaml_path(active_profile_path) or {}
     except Exception:
         return None
 

@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-import json
+
 import math
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,7 @@ from metriplane.schema import FrameStateModel, frame_time_s
 from metriplane.sentinel.events import RuleAlert
 from metriplane.sentinel.registry import ObjectRegistryConfig
 from metriplane.sentinel.rules import ObjectFilter, RuleDefinition, RuleSet
+from metriplane.strict_parsing import iter_jsonl, iter_jsonl_path
 
 
 def iter_frames_text(
@@ -22,12 +23,25 @@ def iter_frames_text(
     source: str = "<session>",
 ) -> Iterator[FrameStateModel]:
     """Yield validated frames from already-authorized session content."""
-    for line_number, line in enumerate(content.splitlines(), start=1):
-        line = line.strip()
-        if not line:
-            continue
+    yield from iter_frame_records(iter_jsonl(content), source=source)
+
+
+def iter_frame_records(
+    records: Iterable[object], *, source: str = "<session>"
+) -> Iterator[FrameStateModel]:
+    """Validate already bounded JSONL records as frame models."""
+    iterator = iter(records)
+    line_number = 0
+    while True:
         try:
-            record = json.loads(line)
+            line_number += 1
+            record = next(iterator)
+        except StopIteration:
+            return
+        except Exception as exc:
+            raise ValueError(f"invalid frame record at {source}:{line_number}: {exc}") from exc
+
+        try:
             if isinstance(record, dict) and record.get("type") == "run_header":
                 continue
             yield FrameStateModel.model_validate(record)
@@ -37,10 +51,7 @@ def iter_frames_text(
 
 def iter_frames(session_path: str | Path) -> Iterator[FrameStateModel]:
     """Yield validated frames, rejecting malformed non-header records."""
-    yield from iter_frames_text(
-        Path(session_path).read_text(),
-        source=str(session_path),
-    )
+    yield from iter_frame_records(iter_jsonl_path(session_path), source=str(session_path))
 
 
 @dataclass

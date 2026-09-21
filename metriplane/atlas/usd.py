@@ -13,6 +13,7 @@ from metriplane.atlas.run_references import (
     STATE_SEGMENT_RUN_PATH,
     resolve_run_reference,
 )
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 
 def _q(value: str) -> str:
@@ -21,10 +22,7 @@ def _q(value: str) -> str:
 
 def _iter_frames(path: Path) -> list[dict]:
     frames = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        data = json.loads(line)
+    for data in iter_jsonl_path(path):
         if data.get("type") == "run_header":
             continue
         frames.append(data)
@@ -43,7 +41,7 @@ def _object_rows(frames: list[dict]) -> list[tuple[float, str, tuple[float, floa
 
 def export_usda(run_dir: str | Path, out_path: str | Path | None = None) -> Path:
     run = Path(run_dir)
-    manifest = json.loads((run / "atlas_manifest.json").read_text(encoding="utf-8"))
+    manifest = load_json_path(run / "atlas_manifest.json")
     source_session = resolve_run_reference(
         run,
         str(manifest["source_session_jsonl"]),
@@ -57,11 +55,7 @@ def export_usda(run_dir: str | Path, out_path: str | Path | None = None) -> Path
     pack = load_domain_pack(pack_path)
     frames = _iter_frames(source_session)
     rows = _object_rows(frames)
-    incidents = [
-        json.loads(line)
-        for line in (run / "incidents.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    incidents = list(iter_jsonl_path(run / "incidents.jsonl"))
     out = Path(out_path) if out_path else run / "twinverify_replay.usda"
     out.parent.mkdir(parents=True, exist_ok=True)
     asset_by_object = pack.assets.by_object_id()

@@ -10,6 +10,8 @@ import shutil
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 
+import yaml
+
 from metriplane.provenance.run_provenance import redact_persisted_config
 from metriplane.schema import frame_time_s
 from metriplane.sentinel.engine import iter_frames
@@ -21,6 +23,7 @@ from metriplane.sentinel.events import (
     write_alerts_jsonl,
     write_incidents_json,
 )
+from metriplane.strict_parsing import load_yaml_path
 from metriplane.trace.store import TraceStore
 
 # Frames within this many seconds before/after the incident window are kept
@@ -373,9 +376,7 @@ def _create_bundle_in_place(
             shutil.copyfile(src, bundle / name)
     if config_path is not None and Path(config_path).exists():
         try:
-            import yaml
-
-            raw_config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+            raw_config = load_yaml_path(config_path)
             sanitized = redact_persisted_config(raw_config)
             (bundle / "config.yaml").write_text(
                 yaml.safe_dump(sanitized, sort_keys=True),

@@ -16,6 +16,7 @@ from metriplane.paths import (
 )
 from metriplane.provenance.run_provenance import generate_run_id
 from metriplane.run_ids import validate_portable_run_id
+from metriplane.strict_parsing import load_json_path, load_yaml_path
 
 
 def main_sentinel(
@@ -48,12 +49,10 @@ def main_sentinel(
 
 
 def _run(args: argparse.Namespace, *, paths: PlatformPaths | None = None) -> int:
-    import yaml
-
     from metriplane.sentinel.config import SentinelConfig
     from metriplane.sentinel.runtime import SentinelError, SentinelRuntime
 
-    cfg = yaml.safe_load(Path(args.config).read_text()) or {}
+    cfg = load_yaml_path(args.config) or {}
     sentinel_dict = cfg.get("sentinel") or {}
     sentinel_cfg = SentinelConfig.from_dict(sentinel_dict)
 
@@ -148,5 +147,5 @@ def _status(args: argparse.Namespace) -> int:
     if not summary_file.exists():
         print(f"no sentinel_summary.json at {summary_file}")
         return 1
-    print(json.dumps(json.loads(summary_file.read_text()), indent=2))
+    print(json.dumps(load_json_path(summary_file), indent=2))
     return 0

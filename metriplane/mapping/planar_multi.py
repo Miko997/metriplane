@@ -7,14 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 
 from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
 
 
 def _read_anchor_rmse(mapping_path: Path) -> float | None:
     try:
-        data: Any = yaml.safe_load(mapping_path.read_text(encoding="utf-8")) or {}
+        data: Any = load_yaml_path(mapping_path) or {}
         if isinstance(data, dict):
             v = data.get("anchor_rmse")
             if v is not None:

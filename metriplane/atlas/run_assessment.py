@@ -20,6 +20,7 @@ from typing import Any
 from metriplane import __version__
 from metriplane.atlas.domain_packs import load_domain_pack
 from metriplane.schema import FrameStateModel
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 ASSESSMENT_PATH = "requirement_assessment.json"
 RUN_ASSESSMENT_SCHEMA = "metriplane.atlas.run_assessment.v1"
@@ -48,7 +49,7 @@ def _sha(path: Path) -> str:
 
 
 def _json(path: Path) -> dict[str, Any]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = load_json_path(path)
     if not isinstance(data, dict):
         raise ValueError(f"expected a JSON object: {path.name}")
     # Reject nonstandard NaN/Infinity accepted by Python's JSON decoder.
@@ -82,9 +83,10 @@ def _identity() -> dict[str, Any]:
 def _context_and_coverage(root: Path, assessment: dict[str, Any],
                           identity: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     pack = load_domain_pack(root / "configs")
-    frames = [FrameStateModel.model_validate(json.loads(line))
-              for line in _file(root, "state_segment.jsonl").read_text(encoding="utf-8").splitlines()
-              if line.strip()]
+    frames = [
+        FrameStateModel.model_validate(value)
+        for value in iter_jsonl_path(_file(root, "state_segment.jsonl"))
+    ]
     if not frames:
         raise ValueError("assessment state segment is empty")
     if (assessment["process_id"] != pack.process.process_id

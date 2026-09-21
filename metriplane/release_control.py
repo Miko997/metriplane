@@ -15,6 +15,9 @@ import ast
 import hashlib
 import importlib.metadata
 import json
+
+from metriplane.strict_parsing import load_json as strict_json_loads
+from metriplane.strict_parsing import load_json_path
 import os
 import re
 import shutil
@@ -392,7 +395,7 @@ def read_json(path: Path) -> dict[str, Any]:
     if not path.is_file() or path.is_symlink():
         raise ReleaseControlError(f"input is missing or not a regular file: {path}")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_closed_json_object)
+        value = load_json_path(path, object_pairs_hook=_closed_json_object)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ReleaseControlError(f"cannot read JSON input {path}: {exc}") from exc
     if not isinstance(value, dict):
@@ -9122,7 +9125,7 @@ def _source_blob(repository: Path, source_sha: str, name: str) -> bytes:
 
 def _source_json(raw: bytes, label: str) -> dict[str, Any]:
     try:
-        value = json.loads(raw, object_pairs_hook=_closed_json_object)
+        value = strict_json_loads(raw, object_pairs_hook=_closed_json_object)
         canonical_json(value)
     except (ValueError, UnicodeError) as exc:
         raise ReleaseControlError(f"invalid closed JSON input: {label}") from exc
@@ -17165,7 +17168,7 @@ def _release_json_pointer(value: object, pointer: object, label: str) -> Any:
 def _release_unique_json_rows(rows: Sequence[Any]) -> list[Any]:
     """Canonical set of already validated declarations, without Python bool aliases."""
     values = {canonical_json(row): row for row in rows}
-    return [json.loads(key) for key in sorted(values)]
+    return [strict_json_loads(key) for key in sorted(values)]
 
 
 def _release_id_rows(value: object, key: str, label: str) -> dict[str, dict[str, Any]]:
@@ -17227,7 +17230,7 @@ def _release_catalog_declarations(
                             "raw_registry_digest": sha256_bytes(registries[path]),
                             "json_pointer": "/" + original_array + "/" + str(index),
                         },
-                        "value": json.loads(canonical_json(row)),
+                        "value": strict_json_loads(canonical_json(row)),
                     }
                 )
     _release_id_rows([row["value"] for row in declarations["executors"]], "id", "global executors")
@@ -17665,7 +17668,7 @@ def _release_catalog_graph(
                                     "repeated execution tuple has conflicting recipe semantics"
                                 )
                         else:
-                            all_units[unit_id] = json.loads(canonical_json(unit))
+                            all_units[unit_id] = strict_json_loads(canonical_json(unit))
                         selected.add(unit_id)
                         matches += 1
                     if not matches:
@@ -29165,7 +29168,7 @@ def _release_fixture_native_response(
         if block["type"] != "text" or not isinstance(block["text"], str):
             raise ReleaseControlError("fixture Linear original has the wrong extraction wire")
         try:
-            payload = json.loads(block["text"], object_pairs_hook=_closed_json_object)
+            payload = strict_json_loads(block["text"], object_pairs_hook=_closed_json_object)
             canonical_json(payload)
         except (ValueError, UnicodeError, RecursionError) as exc:
             raise ReleaseControlError("fixture Linear nested JSON is malformed") from exc
@@ -30874,7 +30877,7 @@ def _release_linear_observation_content(
                 "Linear original response extraction is not its fixed native wire"
             )
         try:
-            payload = json.loads(content["text"], object_pairs_hook=_closed_json_object)
+            payload = strict_json_loads(content["text"], object_pairs_hook=_closed_json_object)
             canonical_json(payload)
         except (ValueError, UnicodeError, RecursionError) as exc:
             raise ReleaseControlError(

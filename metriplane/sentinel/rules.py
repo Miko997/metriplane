@@ -7,6 +7,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from metriplane.strict_parsing import load_yaml_path
+
 RuleType = Literal[
     "forbidden_zone",
     "max_dwell",
@@ -80,10 +82,7 @@ class RuleSet(BaseModel):
 
 
 def load_rules(path: Any) -> RuleSet:
-    import yaml
-    from pathlib import Path
-
-    data = yaml.safe_load(Path(path).read_text())
+    data = load_yaml_path(path)
     return RuleSet.model_validate(data)
 
 

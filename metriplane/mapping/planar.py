@@ -9,6 +9,8 @@ from typing import Any, Iterable, Optional
 
 import yaml
 
+from metriplane.strict_parsing import load_yaml_path
+
 from metriplane.calibration.camera import CameraIntrinsics, load_intrinsics
 
 
@@ -58,7 +60,7 @@ class PlanarMapper:
 
 
 def load_homography(path: Path) -> HomographyMapping:
-    data: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data: Any = load_yaml_path(path)
     if data is None:
         data = {}
     if not isinstance(data, dict):
@@ -118,7 +120,7 @@ def load_planar_mapper(mapping_path: Path, intrinsics_path: Optional[Path] = Non
     # - key absent: do NOT override the caller-provided intrinsics_path
     # - key present with null/empty: explicitly disable intrinsics loading
     # - key present with string: use it if caller didn't provide a path
-    data: Any = yaml.safe_load(mapping_path.read_text(encoding="utf-8")) or {}
+    data: Any = load_yaml_path(mapping_path) or {}
     if isinstance(data, dict) and ("intrinsics_file" in data):
         intr_file = data.get("intrinsics_file")
         # explicit disable
