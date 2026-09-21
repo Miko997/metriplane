@@ -191,7 +191,7 @@ jobs:
 
           EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
           EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
-          EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+          EVIDENCE_LAKE_REPAIRED_SHA256 = "90f8dcf04e8d9ada011fd8eb0c3512e03faa9eb29d77d2ed130939ec857bb9e1"
           SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
           SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
           SETUPTOOLS_PACKAGE_SHA256 = (
@@ -457,7 +457,7 @@ jobs:
 
           EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
           EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
-          EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+          EVIDENCE_LAKE_REPAIRED_SHA256 = "90f8dcf04e8d9ada011fd8eb0c3512e03faa9eb29d77d2ed130939ec857bb9e1"
           SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
           SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
           SETUPTOOLS_PACKAGE_SHA256 = (
