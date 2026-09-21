@@ -26,6 +26,10 @@ POLICY_DOC_PATH = ROOT / "docs" / "maintainers" / "testing-policy.md"
 CI_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 PRE_COMMIT_PATH = ROOT / ".pre-commit-config.yaml"
 CONFIG_PACKAGE_PATH = ROOT / "metriplane" / "config"
+COMPOSE_PATH = ROOT / "compose.yaml"
+JETSON_COMPOSE_PATH = ROOT / "docker" / "compose.jetson.yaml"
+DOCKERFILE_PATH = ROOT / "docker" / "Dockerfile"
+JETSON_DOCKERFILE_PATH = ROOT / "docker" / "jetson.Dockerfile"
 
 
 def _load_warning_policy_module() -> Any:
@@ -58,7 +62,7 @@ TOOLCHAIN = {
     "twine": "6.2.0",
     "types-PyYAML": "6.0.12.20260724",
 }
-EXPECTED_COLLECTION = 5872
+EXPECTED_COLLECTION = 5888
 EXPECTED_MYPY_SOURCES = 146
 POLICY_NOW = dt.datetime(2026, 8, 25, tzinfo=dt.UTC)
 
@@ -89,6 +93,64 @@ def test_runtime_python_and_dependencies_remain_supported() -> None:
     project = _pyproject()["project"]
     assert project["requires-python"] == ">=3.12,<3.14"
     assert project["dependencies"] == RUNTIME_DEPENDENCIES
+
+
+def test_container_services_are_nonroot_and_confined() -> None:
+    for path in (COMPOSE_PATH, JETSON_COMPOSE_PATH):
+        compose = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for service in compose["services"].values():
+            assert service.get("privileged") is not True
+            assert service.get("user") == "10001:10001"
+            assert service.get("read_only") is True
+            assert service.get("cap_drop") == ["ALL"]
+            assert service.get("security_opt") == ["no-new-privileges:true"]
+            assert any(
+                str(entry).startswith("/tmp:rw,noexec,nosuid,nodev") for entry in service["tmpfs"]
+            )
+
+
+def test_container_images_drop_root_before_runtime() -> None:
+    for path in (DOCKERFILE_PATH, JETSON_DOCKERFILE_PATH):
+        text = path.read_text(encoding="utf-8")
+        assert "useradd --create-home --uid 10001" in text
+        assert text.count("USER metriplane") == 1
+
+
+def test_container_builds_do_not_fabricate_release_identity() -> None:
+    for path in (DOCKERFILE_PATH, JETSON_DOCKERFILE_PATH):
+        text = path.read_text(encoding="utf-8")
+        assert "pip install -e ." in text
+        assert "pip install ." not in text
+
+
+def test_container_remote_listeners_require_external_auth_tokens() -> None:
+    config_paths = (
+        ROOT / "configs" / "docker_demo_replay.yaml",
+        ROOT / "configs" / "docker_dummy.yaml",
+        ROOT / "configs" / "docker_m8_fusion_55x40_live.yaml",
+        ROOT / "configs" / "health_demo.yaml",
+        ROOT / "configs" / "health_demo_missing_mapping_cam1.yaml",
+    )
+    for path in config_paths:
+        config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert config["ws_host"] == "0.0.0.0"
+        assert config["metrics_host"] == "0.0.0.0"
+
+    compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+    for service in compose["services"].values():
+        environment = service["environment"]
+        assert environment["METRIPLANE_WS_AUTH_TOKEN"] == (
+            "${METRIPLANE_WS_AUTH_TOKEN:?set METRIPLANE_WS_AUTH_TOKEN}"
+        )
+        assert environment["METRIPLANE_METRICS_AUTH_TOKEN"] == (
+            "${METRIPLANE_METRICS_AUTH_TOKEN:?set METRIPLANE_METRICS_AUTH_TOKEN}"
+        )
+
+    jetson = yaml.safe_load(JETSON_COMPOSE_PATH.read_text(encoding="utf-8"))
+    for service in jetson["services"].values():
+        assert "ports" not in service
+        assert "METRIPLANE_WS_AUTH_TOKEN" not in service["environment"]
+        assert "METRIPLANE_METRICS_AUTH_TOKEN" not in service["environment"]
 
 
 def test_build_backend_is_exact() -> None:
@@ -396,7 +458,7 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
 def test_canonical_collection_contract_is_documented() -> None:
     text = POLICY_DOC_PATH.read_text(encoding="utf-8")
     assert f"{EXPECTED_COLLECTION:,} items" in text
-    assert "5,597 passed" in text
+    assert "5,873 passed" in text
     assert "15 expected skips" in text
     assert "Fourteen result-schema cases" in text
     assert "one browser smoke case" in text

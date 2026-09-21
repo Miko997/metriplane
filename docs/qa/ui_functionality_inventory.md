@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `8c4e77e87aaa16abb7a96a783002c7aded17aaea2833b3ff28d1b14583bd56a9`
+Canonical projection SHA-256: `1cd74ff51b6258125aad99f3e24b9601ac139c175f42c175fd37fde439d1cfa4`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -67,8 +67,8 @@ This is a static source census. It does not characterize runtime behavior or exp
 | --- | --- | --- | --- |
 | MP2-012.UI.SERVICE.DASHBOARD_STATIC_HTTP | Dashboard static HTTP | http | metriplane/_local_http.py:169 |
 | MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP | Local runner HTTP | http | metriplane/runner/service.py:475 |
-| MP2-012.UI.SERVICE.RUNTIME_FRAME_WEBSOCKET | Runtime frame WebSocket | websocket | metriplane/streaming/ws_server.py:49 |
-| MP2-012.UI.SERVICE.RUNTIME_HEALTH_METRICS_HTTP | Runtime health and metrics HTTP | http | metriplane/metrics.py:314 |
+| MP2-012.UI.SERVICE.RUNTIME_FRAME_WEBSOCKET | Runtime frame WebSocket | websocket | metriplane/streaming/ws_server.py:152 |
+| MP2-012.UI.SERVICE.RUNTIME_HEALTH_METRICS_HTTP | Runtime health and metrics HTTP | http | metriplane/metrics.py:344 |
 
 ## ROS 2 Topics
 

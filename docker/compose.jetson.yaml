@@ -10,10 +10,16 @@ services:
       context: ..
       dockerfile: docker/jetson.Dockerfile
     image: metriplane-jetson
-    ports:
-      - "8000:8000"
     environment:
-      - METRIPLANE_COMPUTE_BACKEND=cpu
+      METRIPLANE_COMPUTE_BACKEND: cpu
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     # Default CMD runs the replay demo.
 
   metriplane-live:
@@ -22,12 +28,20 @@ services:
       context: ..
       dockerfile: docker/jetson.Dockerfile
     image: metriplane-jetson
-    ports:
-      - "8000:8000"
     # Camera pass-through (adjust device index for your hardware):
     devices:
       - "/dev/video0:/dev/video0"
     environment:
       # On Jetson with CUDA, set to gpu; falls back to cpu if unavailable.
-      - METRIPLANE_COMPUTE_BACKEND=gpu
+      METRIPLANE_COMPUTE_BACKEND: gpu
+    user: "10001:10001"
+    group_add:
+      - "${METRIPLANE_VIDEO_GID:-44}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["python", "-m", "metriplane.cli", "--config", "config.example.yaml"]

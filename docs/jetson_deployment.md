@@ -21,14 +21,23 @@ visibility, port 8000, and `import metriplane`.
 
 ## Deployment modes
 
+The Jetson profiles don't publish control endpoints. Replay starts no Metrics or WebSocket
+listener; the example live configuration keeps both listeners on loopback inside the
+container. The services run as UID/GID `10001:10001`, with a read-only root filesystem,
+all capabilities dropped, and `no-new-privileges`. For camera mode, set
+`METRIPLANE_VIDEO_GID` when the host video group differs from `44`. Use a separate,
+reviewed configuration and bearer-token secret injection before deliberately exposing
+either listener on a non-loopback interface.
+
 ### Mode A — Replay only (no camera)
 
 ```bash
 docker compose -f docker/compose.jetson.yaml up
 ```
 
-Verifies install, replay pipeline, metrics/health, and the WebSocket port. Works on any
-arch because the default base image is `python:3.12-slim`.
+Verifies install and the camera-free replay pipeline. It doesn't start or publish Metrics
+or WebSocket listeners. It works on any architecture because the default base image is
+`python:3.12-slim`.
 
 ### Mode B — Live USB camera
 
@@ -38,7 +47,8 @@ docker compose -f docker/compose.jetson.yaml --profile live up
 ```
 
 Passes `/dev/video0` into the container. Adjust the device index in
-`docker/compose.jetson.yaml` for your hardware.
+`docker/compose.jetson.yaml` for your hardware. The bundled configuration keeps Metrics
+and WebSocket listeners container-local; the profile doesn't publish their ports.
 
 ### Mode C — GPU / CUDA
 
@@ -64,6 +74,7 @@ CPU and RSS memory.
 
 ## Honesty
 
-The Docker base image and CUDA path are documented but **hardware-validated proof on a
-physical Jetson is pending** — the replay container path and the latency benchmark are
-verified on x86. Run the benchmark on-device to capture Jetson numbers.
+The Docker base image, confined camera mapping, and CUDA path are documented but
+**hardware-validated proof on a physical Jetson is pending** — the replay container path
+and the latency benchmark are verified on x86. Run the benchmark on-device to capture
+Jetson numbers.

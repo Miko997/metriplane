@@ -84,6 +84,14 @@ Omit `--open`. Find the path under the final `Report:` line. You can copy
 `cell_truth_report.html` to your workstation or read `cell_truth_report.md` in a
 text editor. No web server is required.
 
+## Remote metrics or WebSocket listener refuses to start
+
+The streaming and observability services accept an unauthenticated bind only on a
+numeric loopback address such as `127.0.0.1`. For an intentional remote bind, set
+`METRIPLANE_WS_AUTH_TOKEN` and/or `METRIPLANE_METRICS_AUTH_TOKEN` to a non-empty secret
+and send that value as a bearer token. Hostnames such as `localhost` aren't treated as
+numeric loopback. Do not place the token value in YAML or logs.
+
 ## The output directory already exists
 
 The demo, input export, and Atlas run protect existing paths from accidental

@@ -3,12 +3,22 @@
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
+import os
 import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Optional
 
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+
+def _is_numeric_loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,11 +256,31 @@ def start_metrics_server(
     registry: MetricsRegistry,
     get_ws_clients: Callable[[], int],
     get_health: Optional[Callable[[], dict[str, Any]]] = None,  # <-- NEW
+    auth_token_env: str | None = "METRIPLANE_METRICS_AUTH_TOKEN",
 ) -> ThreadingHTTPServer:
     import json  # local import is fine; keeps module deps minimal
 
+    auth_token = os.environ.get(auth_token_env, "") if auth_token_env else ""
+    if not _is_numeric_loopback(host) and not auth_token:
+        raise ValueError("non-loopback metrics binding requires an explicit auth token")
+
     class Handler(BaseHTTPRequestHandler):
+        def _authorized(self) -> bool:
+            if not auth_token:
+                return True
+            supplied = self.headers.get("Authorization", "")
+            expected = f"Bearer {auth_token}"
+            return hmac.compare_digest(
+                supplied.encode("utf-8"),
+                expected.encode("utf-8"),
+            )
+
         def do_GET(self) -> None:  # noqa: N802
+            if not self._authorized():
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", "Bearer")
+                self.end_headers()
+                return
             if self.path in ("/metrics", "/metrics/"):
                 snap = registry.snapshot(ws_clients_connected=get_ws_clients())
                 text = _render_prometheus(snap)
@@ -300,7 +330,7 @@ def start_metrics_server(
         def end_headers(self) -> None:  # noqa: N802
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
             self.send_header("Cache-Control", "no-store")
             super().end_headers()
 

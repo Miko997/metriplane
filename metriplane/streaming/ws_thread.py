@@ -15,9 +15,22 @@ log = logging.getLogger("metriplane.ws_thread")
 
 
 class WsServerThread:
-    def __init__(self, host: str = "127.0.0.1", port: int = 8765) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        *,
+        max_frame_bytes: int = 1_048_576,
+        max_clients: int = 32,
+        client_queue_size: int = 8,
+        client_rate_limit: float = 60.0,
+    ) -> None:
         self.host = host
         self.port = port
+        self.max_frame_bytes = max_frame_bytes
+        self.max_clients = max_clients
+        self.client_queue_size = client_queue_size
+        self.client_rate_limit = client_rate_limit
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
@@ -37,7 +50,16 @@ class WsServerThread:
             asyncio.set_event_loop(loop)
             self._loop = loop
             try:
-                self._server = loop.run_until_complete(start_server(self.host, self.port))
+                self._server = loop.run_until_complete(
+                    start_server(
+                        self.host,
+                        self.port,
+                        max_frame_bytes=self.max_frame_bytes,
+                        max_clients=self.max_clients,
+                        client_queue_size=self.client_queue_size,
+                        client_rate_limit=self.client_rate_limit,
+                    )
+                )
                 self._ready.set()
                 loop.run_forever()
             except BaseException as exc:

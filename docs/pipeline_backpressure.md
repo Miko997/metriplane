@@ -17,6 +17,11 @@ Prevent pipeline collapse under load by:
 - **Dropping frames intentionally** under overload (instead of unbounded backlog)
 - **Exporting metrics** so the behavior is visible and testable
 
+The live WebSocket fan-out is bounded separately from the pipeline queues. Each client
+has a fixed eight-frame queue; on saturation it retains the latest frame. Fixed limits
+also cap the send rate at 60 messages per second, payload size at 1 MiB, and concurrent
+connections at 32.
+
 ---
 
 ## What the benchmark proves (with your run)

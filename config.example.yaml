@@ -10,9 +10,12 @@ object_timeout_s: 2.0
 
 metrics_host: 127.0.0.1
 metrics_port: 8000
+# A non-loopback bind also requires METRIPLANE_METRICS_AUTH_TOKEN.
 
 ws_host: 127.0.0.1
 ws_port: 8765
+# A non-loopback bind also requires METRIPLANE_WS_AUTH_TOKEN. Runtime bounds:
+# 1 MiB/frame, 32 clients, 8 queued frames/client, 60 messages/second/client.
 
 # M5 (optional but recommended)
 # intrinsics_file: calib/camera.yaml
