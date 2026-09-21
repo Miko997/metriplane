@@ -150,6 +150,11 @@ def test_case_collisions_fail_closed_without_partial_output(
 ) -> None:
     source = tmp_path / ("source.zip" if kind == "zip" else "source")
     (_zip if kind == "zip" else _tree)(source, [("A.txt", b"a"), ("a.txt", b"b")])
+    if kind == "directory" and {entry.name for entry in source.iterdir()} != {
+        "A.txt",
+        "a.txt",
+    }:
+        pytest.skip("host filesystem cannot represent case-colliding directory entries")
     destination = tmp_path / "staged"
 
     with pytest.raises(ValueError, match="case-colliding"):
