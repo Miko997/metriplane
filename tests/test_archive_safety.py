@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import struct
 from typing import IO
 import zipfile
@@ -150,12 +150,17 @@ def test_case_collisions_fail_closed_without_partial_output(
 ) -> None:
     source = tmp_path / ("source.zip" if kind == "zip" else "source")
     (_zip if kind == "zip" else _tree)(source, [("A.txt", b"a"), ("a.txt", b"b")])
+    destination = tmp_path / "staged"
     if kind == "directory" and {entry.name for entry in source.iterdir()} != {
         "A.txt",
         "a.txt",
     }:
-        pytest.skip("host filesystem cannot represent case-colliding directory entries")
-    destination = tmp_path / "staged"
+        inventory = archive_safety._Inventory(ResourceLimits())
+        inventory.add(PurePosixPath("A.txt"), is_dir=False, size=1)
+        with pytest.raises(ValueError, match="case-colliding"):
+            inventory.add(PurePosixPath("a.txt"), is_dir=False, size=1)
+        assert not destination.exists()
+        return
 
     with pytest.raises(ValueError, match="case-colliding"):
         stage_path(source, destination)
