@@ -22,9 +22,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd --create-home --uid 10001 --shell /bin/bash metriplane
+
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY metriplane ./metriplane
 RUN pip install -U pip setuptools wheel && pip install -e .
+
+USER metriplane
 
 # Metrics / WebSocket port
 EXPOSE 8000

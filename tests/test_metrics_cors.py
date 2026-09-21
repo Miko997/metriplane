@@ -15,6 +15,7 @@ Uses start_metrics_server from metriplane/metrics.py (the live-fusion path).
 from __future__ import annotations
 
 import socket
+import urllib.error
 import urllib.request
 from typing import Callable
 
@@ -68,6 +69,12 @@ def _get_request_status_and_headers(url: str) -> tuple[int, dict[str, str]]:
             return resp.status, {k.lower(): v for k, v in resp.headers.items()}
     except urllib.error.HTTPError as e:
         return e.code, {k.lower(): v for k, v in e.headers.items()}
+
+
+def _get_with_token(url: str, token: str) -> int:
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(request, timeout=3) as response:
+        return response.status
 
 
 # ---------------------------------------------------------------------------
@@ -222,3 +229,35 @@ class TestNoHealthServerCORS:
         status, headers = _get_request_status_and_headers(f"http://127.0.0.1:{port}/metrics")
         assert status == 200
         assert headers.get("access-control-allow-origin") == "*"
+
+
+def test_remote_metrics_bind_without_auth_fails_closed(monkeypatch) -> None:
+    monkeypatch.delenv("METRIPLANE_METRICS_AUTH_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="requires an explicit auth token"):
+        start_metrics_server(
+            host="0.0.0.0",
+            port=0,
+            registry=MetricsRegistry(),
+            get_ws_clients=lambda: 0,
+            auth_token_env="METRIPLANE_METRICS_AUTH_TOKEN",
+        )
+
+
+def test_remote_metrics_bind_enforces_bearer_token(monkeypatch) -> None:
+    monkeypatch.setenv("METRIPLANE_METRICS_AUTH_TOKEN", "metrics-secret")
+    server = start_metrics_server(
+        host="0.0.0.0",
+        port=0,
+        registry=MetricsRegistry(),
+        get_ws_clients=lambda: 0,
+        auth_token_env="METRIPLANE_METRICS_AUTH_TOKEN",
+    )
+    port = server.server_address[1]
+    try:
+        status, headers = _get_request_status_and_headers(f"http://127.0.0.1:{port}/metrics")
+        assert status == 401
+        assert headers["www-authenticate"] == "Bearer"
+        assert _get_with_token(f"http://127.0.0.1:{port}/metrics", "metrics-secret") == 200
+    finally:
+        server.shutdown()
+        server.server_close()

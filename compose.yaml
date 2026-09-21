@@ -9,6 +9,16 @@ x-metriplane-base: &metriplane-base
     dockerfile: docker/Dockerfile
   environment:
     METRIPLANE_DATA_DIR: /data
+    METRIPLANE_WS_AUTH_TOKEN: ${METRIPLANE_WS_AUTH_TOKEN:?set METRIPLANE_WS_AUTH_TOKEN}
+    METRIPLANE_METRICS_AUTH_TOKEN: ${METRIPLANE_METRICS_AUTH_TOKEN:?set METRIPLANE_METRICS_AUTH_TOKEN}
+  user: "10001:10001"
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
   ports:
     - "8765:8765"
     - "8000:8000"
@@ -38,8 +48,8 @@ services:
     command: ["--config", "configs/docker_m8_fusion_55x40_live.yaml"]
 
     # Camera access (Linux)
-    privileged: true
-    user: "0:0"
+    group_add:
+      - "${METRIPLANE_VIDEO_GID:-44}"
 
     devices:
       - /dev/video0:/dev/video0
@@ -65,10 +75,12 @@ services:
     environment:
       METRIPLANE_DATA_DIR: /data
       METRIPLANE_COMPUTE_BACKEND: gpu
+      METRIPLANE_WS_AUTH_TOKEN: ${METRIPLANE_WS_AUTH_TOKEN:?set METRIPLANE_WS_AUTH_TOKEN}
+      METRIPLANE_METRICS_AUTH_TOKEN: ${METRIPLANE_METRICS_AUTH_TOKEN:?set METRIPLANE_METRICS_AUTH_TOKEN}
 
     # Camera access (Linux)
-    privileged: true
-    user: "0:0"
+    group_add:
+      - "${METRIPLANE_VIDEO_GID:-44}"
     devices:
       - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1

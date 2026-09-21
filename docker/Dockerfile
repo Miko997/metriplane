@@ -30,7 +30,9 @@ COPY pyproject.toml ./
 RUN pip install --upgrade pip setuptools wheel
 
 COPY . /app
-RUN pip install .
+# The Docker build context intentionally excludes .git. Install the copied runtime
+# source in editable mode so the release-wheel backend never invents a Git identity.
+RUN pip install -e .
 
 # IMPORTANT:
 # Create /data in the IMAGE and chown it.

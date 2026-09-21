@@ -39,6 +39,11 @@ A bounded queue prevents collapse by making overload behavior **explicit and bou
 - **`DROP_OLDEST`**: memory is bounded, and the system keeps up with the newest work by discarding stale items.
 - **`KEEP_LATEST`**: memory + latency are bounded; the pipeline always works on the newest sample.
 
+The WebSocket publisher applies the same bounded-latest rule independently for each
+connected client. Each client has a fixed queue of eight serialized frames and a
+60-message-per-second send bound. A slow client cannot delay the producer or grow memory
+without bound; stale queued states are replaced by the latest state.
+
 ## Metrics
 
 `metriplane/metrics.py` now exports additional Prometheus metrics:
