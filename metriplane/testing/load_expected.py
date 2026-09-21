@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 
 from metriplane.testing.models import PhysicalRegressionExpected
 
@@ -15,7 +16,7 @@ def load_expected(path: str | Path) -> PhysicalRegressionExpected:
 
     Accepts either a top-level mapping or one nested under an `expected:` key.
     """
-    data = yaml.safe_load(Path(path).read_text())
+    data = load_yaml_path(path)
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected file must be a mapping")
     inner = data.get("expected", data)

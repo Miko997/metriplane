@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from metriplane.camera_trust.models import CameraTrustReportModel
+from metriplane.strict_parsing import load_json_path
 
 
 def export_camera_trust_report(path: str | Path, report: CameraTrustReportModel) -> Path:
@@ -17,4 +18,4 @@ def export_camera_trust_report(path: str | Path, report: CameraTrustReportModel)
 
 
 def read_camera_trust_report(path: str | Path) -> CameraTrustReportModel:
-    return CameraTrustReportModel.model_validate_json(Path(path).read_text())
+    return CameraTrustReportModel.model_validate(load_json_path(path))

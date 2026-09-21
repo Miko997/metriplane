@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from metriplane.strict_parsing import load_json_path, load_yaml_path
+
 from metriplane.atlas.event_ledger import query_events, read_events
 
 
@@ -30,7 +32,7 @@ def index_runs(root: str | Path) -> dict:
     root_path = Path(root)
     runs = []
     for manifest_path in sorted(root_path.rglob("atlas_manifest.json")):
-        data = json.loads(manifest_path.read_text())
+        data = load_json_path(manifest_path)
         runs.append({
             "run_id": data.get("run_id"),
             "cell_id": data.get("cell_id"),
@@ -46,7 +48,7 @@ def index_runs(root: str | Path) -> dict:
 
 
 def run_saved_query(run_dir: str | Path, query_file: str | Path, query_id: str) -> list[dict]:
-    data = yaml.safe_load(Path(query_file).read_text(encoding="utf-8")) or {}
+    data = load_yaml_path(query_file) or {}
     queries = data.get("queries", [])
     query = next((item for item in queries if item.get("query_id") == query_id), None)
     if query is None:
@@ -63,7 +65,7 @@ def run_saved_query(run_dir: str | Path, query_file: str | Path, query_id: str) 
 
 
 def explain_query(query_file: str | Path) -> dict:
-    data = yaml.safe_load(Path(query_file).read_text(encoding="utf-8")) or {}
+    data = load_yaml_path(query_file) or {}
     return {
         "schema_version": "metriplane.atlas.saved_queries.v1",
         "query_file": str(query_file),

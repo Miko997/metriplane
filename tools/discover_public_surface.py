@@ -108,11 +108,11 @@ EXPECTED_FAMILY_COUNTS = {
     "examples": 172,
     "jobs": 62,
     "manifest_keys": 3938,
-    "model_fields": 1538,
-    "models": 251,
+    "model_fields": 1543,
+    "models": 252,
     "proofs": 322,
-    "public_api": 2524,
-    "resources": 1740,
+    "public_api": 2549,
+    "resources": 1743,
     "workflows": 18,
 }
 

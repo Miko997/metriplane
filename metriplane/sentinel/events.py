@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from pathlib import Path
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 SeverityLevel = Literal["info", "warning", "critical"]
 
@@ -90,8 +94,6 @@ class OperationalEvent(BaseModel):
 
 
 def write_alerts_jsonl(alerts: list[RuleAlert], path: Any) -> None:
-    from pathlib import Path
-
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w") as f:
@@ -100,28 +102,15 @@ def write_alerts_jsonl(alerts: list[RuleAlert], path: Any) -> None:
 
 
 def read_alerts_jsonl(path: Any) -> list[RuleAlert]:
-    from pathlib import Path
-
-    result = []
-    for line in Path(path).read_text().splitlines():
-        line = line.strip()
-        if line:
-            result.append(RuleAlert.model_validate_json(line))
-    return result
+    return [RuleAlert.model_validate(value) for value in iter_jsonl_path(path)]
 
 
 def write_incidents_json(incidents: list[IncidentRecord], path: Any) -> None:
-    import json
-    from pathlib import Path
-
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps([inc.model_dump() for inc in incidents], indent=2))
 
 
 def read_incidents_json(path: Any) -> list[IncidentRecord]:
-    import json
-    from pathlib import Path
-
-    data = json.loads(Path(path).read_text())
+    data = load_json_path(path)
     return [IncidentRecord.model_validate(d) for d in data]

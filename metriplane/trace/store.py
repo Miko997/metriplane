@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import csv
-import json
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from metriplane.sentinel.registry import ObjectRegistryConfig
+from metriplane.strict_parsing import iter_jsonl, iter_jsonl_path
+from metriplane.strict_parsing import load_yaml_path
 
 
 @dataclass
@@ -42,9 +45,7 @@ class ObjectTraceSummary:
 
 def _load_registry_map(registry_path: str | Path) -> dict[int, str]:
     try:
-        import yaml
-
-        data = yaml.safe_load(Path(registry_path).read_text())
+        data = load_yaml_path(registry_path)
         return {int(e["marker_id"]): e["object_id"] for e in data.get("objects", [])}
     except Exception:
         return {}
@@ -71,17 +72,13 @@ class TraceStore:
         except (ValueError, TypeError):
             return f"marker_{raw_id}"
 
-    def _load_session_lines(self, lines: list[str]) -> None:
+    def load_session_records(self, records: Iterable[Any]) -> None:
         from metriplane.schema import FrameStateModel, frame_time_s
 
         self._points = []
         run_id: str | None = None
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
+        for data in records:
             try:
-                data = json.loads(line)
                 frame = FrameStateModel.model_validate(data)
             except Exception:
                 continue
@@ -110,10 +107,10 @@ class TraceStore:
         self._points.sort(key=lambda p: (p.object_id, p.ts))
 
     def load_session(self, session_path: str | Path) -> None:
-        self._load_session_lines(Path(session_path).read_text().splitlines())
+        self.load_session_records(iter_jsonl_path(session_path))
 
     def load_session_text(self, text: str) -> None:
-        self._load_session_lines(text.splitlines())
+        self.load_session_records(iter_jsonl(text))
 
     def points(self) -> list[TracePoint]:
         return list(self._points)

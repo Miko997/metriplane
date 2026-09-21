@@ -15,10 +15,12 @@ A "run dir" may be:
 from __future__ import annotations
 
 import json
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
+from metriplane.strict_parsing import iter_jsonl_pinned, load_json_pinned, load_yaml_pinned
+
 
 if TYPE_CHECKING:
     from metriplane.sentinel.registry import ObjectRegistryConfig
@@ -32,6 +34,18 @@ from metriplane.runner.safe_reads import (
 
 RunSource = str | Path | PinnedDirectory
 RunArtifact = PinnedFile
+
+
+def _read_json(artifact: PinnedFile) -> Any:
+    return load_json_pinned(artifact)
+
+
+def _read_yaml(artifact: PinnedFile) -> Any:
+    return load_yaml_pinned(artifact)
+
+
+def _read_jsonl(artifact: PinnedFile) -> list[Any]:
+    return list(iter_jsonl_pinned(artifact))
 
 
 def _run_source(run_dir: RunSource) -> Path | PinnedDirectory:
@@ -87,7 +101,7 @@ def _registry(run_dir: Path | PinnedDirectory) -> ObjectRegistryConfig | None:
     try:
         from metriplane.sentinel.registry import ObjectRegistryConfig
 
-        return ObjectRegistryConfig.model_validate(yaml.safe_load(p.read_text()))
+        return ObjectRegistryConfig.model_validate(_read_yaml(p))
     except Exception:
         return None
     finally:
@@ -100,7 +114,7 @@ def get_workspace(run_dir: RunSource) -> dict[str, Any]:
     if path is None:
         return {"zones": [], "stations": []}
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = _read_yaml(path) or {}
     except Exception:
         return {"zones": [], "stations": []}
     finally:
@@ -150,9 +164,9 @@ def get_objects(run_dir: RunSource) -> list[dict[str, Any]]:
     if session is None:
         return []
     try:
-        from metriplane.sentinel.engine import iter_frames_text
+        from metriplane.sentinel.engine import iter_frame_records
 
-        frames = list(iter_frames_text(session.read_text(), source=str(session)))
+        frames = list(iter_frame_records(_read_jsonl(session), source=str(session)))
     except Exception:
         return []
     finally:
@@ -196,7 +210,7 @@ def get_incidents(run_dir: RunSource) -> list[dict[str, Any]]:
     if p is None:
         return []
     try:
-        data = json.loads(p.read_text())
+        data = _read_json(p)
         return data if isinstance(data, list) else [data]
     except Exception:
         return []
@@ -211,10 +225,7 @@ def get_events(run_dir: RunSource) -> list[dict[str, Any]]:
         return []
     out = []
     try:
-        for line in p.read_text().splitlines():
-            line = line.strip()
-            if line:
-                out.append(json.loads(line))
+        out.extend(_read_jsonl(p))
     except Exception:
         return []
     finally:
@@ -231,7 +242,7 @@ def get_traces(run_dir: RunSource, object_id: str | None = None) -> list[dict[st
         from metriplane.trace.store import TraceStore
 
         store = TraceStore(registry=_registry(run))
-        store.load_session_text(session.read_text())
+        store.load_session_records(_read_jsonl(session))
         summaries = store.summarize()
     except Exception:
         return []
@@ -269,11 +280,11 @@ def get_frames(run_dir: RunSource, max_frames: int = 600) -> dict[str, Any]:
     if session is None:
         return {"frames": [], "incidents": [], "workspace": workspace}
     try:
-        from metriplane.sentinel.engine import iter_frames_text
+        from metriplane.sentinel.engine import iter_frame_records
 
         registry = _registry(run)
         frames_out: list[dict[str, Any]] = []
-        for frame in iter_frames_text(session.read_text(), source=str(session)):
+        for frame in iter_frame_records(_read_jsonl(session), source=str(session)):
             observed = frame.fused if frame.fused is not None else frame.objects
             objs = []
             for o in observed:

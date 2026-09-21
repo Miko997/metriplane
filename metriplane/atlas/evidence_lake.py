@@ -8,11 +8,13 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
+
 
 def _jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return list(iter_jsonl_path(path))
 
 
 def _manifests(root: Path) -> list[Path]:
@@ -63,7 +65,7 @@ def build_lake(root: str | Path, db_path: str | Path) -> dict:
         run_count = event_count = incident_count = 0
         for manifest_path in _manifests(root_path):
             run_dir = manifest_path.parent
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = load_json_path(manifest_path)
             conn.execute(
                 "insert into runs values (?, ?, ?, ?, ?, ?, ?)",
                 (

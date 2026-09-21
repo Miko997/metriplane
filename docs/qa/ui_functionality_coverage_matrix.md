@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `1cd74ff51b6258125aad99f3e24b9601ac139c175f42c175fd37fde439d1cfa4`
+Canonical projection SHA-256: `1837125221a45ba800aa778a39b9f519482e534de03442a27dfa5d2860695caf`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

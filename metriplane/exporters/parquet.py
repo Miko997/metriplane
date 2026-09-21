@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
+
+from metriplane.strict_parsing import iter_jsonl_path
+from metriplane.strict_parsing import load_json_path
 import logging
 from pathlib import Path
 from typing import Any
@@ -48,15 +50,7 @@ def parquet_available() -> tuple[bool, str]:
 
 
 def _read_jsonl(path: Path) -> list[Any]:
-    rows: list[Any] = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line:
-            try:
-                rows.append(json.loads(line))
-            except Exception:
-                continue
-    return rows
+    return list(iter_jsonl_path(path))
 
 
 def export_run_dir(run_dir: str | Path, out_dir: str | Path | None = None) -> dict[str, Any]:
@@ -87,13 +81,10 @@ def export_run_dir(run_dir: str | Path, out_dir: str | Path | None = None) -> di
     # incidents.json (array)
     inc = run / "incident.json"
     if inc.exists():
-        try:
-            data = json.loads(inc.read_text())
-            if isinstance(data, list) and data:
-                pd.DataFrame(data).to_parquet(out / "incidents.parquet", engine=engine, index=False)
-                written["incidents.parquet"] = len(data)
-        except Exception:
-            pass
+        data = load_json_path(inc)
+        if isinstance(data, list) and data:
+            pd.DataFrame(data).to_parquet(out / "incidents.parquet", engine=engine, index=False)
+            written["incidents.parquet"] = len(data)
     return {"engine": engine, "out_dir": str(out), "written": written}
 
 

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `1cd74ff51b6258125aad99f3e24b9601ac139c175f42c175fd37fde439d1cfa4`
+Canonical projection SHA-256: `1837125221a45ba800aa778a39b9f519482e534de03442a27dfa5d2860695caf`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -26,47 +26,47 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | action_id | method | path | source |
 | --- | --- | --- | --- |
-| api.operator.get.camera_trust | GET | /operator/camera-trust | metriplane/runner/operator_api.py:351 |
-| api.operator.get.cameras | GET | /operator/cameras | metriplane/runner/operator_api.py:332 |
-| api.operator.get.configs | GET | /operator/configs | metriplane/runner/operator_api.py:336 |
-| api.operator.get.env | GET | /operator/env | metriplane/runner/operator_api.py:330 |
-| api.operator.get.frames | GET | /operator/frames | metriplane/runner/operator_api.py:353 |
-| api.operator.get.incidents | GET | /operator/incidents | metriplane/runner/operator_api.py:347 |
-| api.operator.get.latest_run | GET | /operator/latest-run | metriplane/runner/operator_api.py:338 |
-| api.operator.get.live_summary | GET | /operator/live-summary | metriplane/runner/operator_api.py:343 |
-| api.operator.get.objects | GET | /operator/objects | metriplane/runner/operator_api.py:345 |
-| api.operator.get.profiles | GET | /operator/profiles | metriplane/runner/operator_api.py:334 |
-| api.operator.get.runner_status | GET | /operator/runner-status | metriplane/runner/operator_api.py:340 |
-| api.operator.get.traces | GET | /operator/traces | metriplane/runner/operator_api.py:349 |
-| api.operator.post.ask | POST | /operator/ask | metriplane/runner/operator_api.py:386 |
-| api.operator.post.calibrate | POST | /operator/calibrate | metriplane/runner/operator_api.py:364 |
-| api.operator.post.camera_trust | POST | /operator/camera-trust | metriplane/runner/operator_api.py:382 |
-| api.operator.post.checksum | POST | /operator/checksum | metriplane/runner/operator_api.py:372 |
-| api.operator.post.create_profile | POST | /operator/create-profile | metriplane/runner/operator_api.py:356 |
-| api.operator.post.frames | POST | /operator/frames | metriplane/runner/operator_api.py:384 |
-| api.operator.post.generate_report | POST | /operator/generate-report | metriplane/runner/operator_api.py:370 |
-| api.operator.post.incidents | POST | /operator/incidents | metriplane/runner/operator_api.py:378 |
-| api.operator.post.live_summary | POST | /operator/live-summary | metriplane/runner/operator_api.py:374 |
-| api.operator.post.objects | POST | /operator/objects | metriplane/runner/operator_api.py:376 |
-| api.operator.post.save_config | POST | /operator/save-config | metriplane/runner/operator_api.py:360 |
-| api.operator.post.start_fusion | POST | /operator/start-fusion | metriplane/runner/operator_api.py:362 |
-| api.operator.post.traces | POST | /operator/traces | metriplane/runner/operator_api.py:380 |
-| api.operator.post.validate_alignment | POST | /operator/validate-alignment | metriplane/runner/operator_api.py:366 |
-| api.operator.post.validate_alignment_full | POST | /operator/validate-alignment-full | metriplane/runner/operator_api.py:368 |
-| api.operator.post.write_zones | POST | /operator/write-zones | metriplane/runner/operator_api.py:358 |
-| api.runner.cancel_job | POST | /jobs/{job_id}/cancel | metriplane/runner/service.py:250 |
-| api.runner.commands | GET | /commands | metriplane/runner/service.py:213 |
-| api.runner.execute | POST | /execute | metriplane/runner/service.py:248 |
-| api.runner.job_detail | GET | /jobs/{job_id} | metriplane/runner/service.py:218 |
-| api.runner.jobs | GET | /jobs | metriplane/runner/service.py:215 |
-| api.runner.status | GET | /status | metriplane/runner/service.py:211 |
+| api.operator.get.camera_trust | GET | /operator/camera-trust | metriplane/runner/operator_api.py:358 |
+| api.operator.get.cameras | GET | /operator/cameras | metriplane/runner/operator_api.py:339 |
+| api.operator.get.configs | GET | /operator/configs | metriplane/runner/operator_api.py:343 |
+| api.operator.get.env | GET | /operator/env | metriplane/runner/operator_api.py:337 |
+| api.operator.get.frames | GET | /operator/frames | metriplane/runner/operator_api.py:360 |
+| api.operator.get.incidents | GET | /operator/incidents | metriplane/runner/operator_api.py:354 |
+| api.operator.get.latest_run | GET | /operator/latest-run | metriplane/runner/operator_api.py:345 |
+| api.operator.get.live_summary | GET | /operator/live-summary | metriplane/runner/operator_api.py:350 |
+| api.operator.get.objects | GET | /operator/objects | metriplane/runner/operator_api.py:352 |
+| api.operator.get.profiles | GET | /operator/profiles | metriplane/runner/operator_api.py:341 |
+| api.operator.get.runner_status | GET | /operator/runner-status | metriplane/runner/operator_api.py:347 |
+| api.operator.get.traces | GET | /operator/traces | metriplane/runner/operator_api.py:356 |
+| api.operator.post.ask | POST | /operator/ask | metriplane/runner/operator_api.py:393 |
+| api.operator.post.calibrate | POST | /operator/calibrate | metriplane/runner/operator_api.py:371 |
+| api.operator.post.camera_trust | POST | /operator/camera-trust | metriplane/runner/operator_api.py:389 |
+| api.operator.post.checksum | POST | /operator/checksum | metriplane/runner/operator_api.py:379 |
+| api.operator.post.create_profile | POST | /operator/create-profile | metriplane/runner/operator_api.py:363 |
+| api.operator.post.frames | POST | /operator/frames | metriplane/runner/operator_api.py:391 |
+| api.operator.post.generate_report | POST | /operator/generate-report | metriplane/runner/operator_api.py:377 |
+| api.operator.post.incidents | POST | /operator/incidents | metriplane/runner/operator_api.py:385 |
+| api.operator.post.live_summary | POST | /operator/live-summary | metriplane/runner/operator_api.py:381 |
+| api.operator.post.objects | POST | /operator/objects | metriplane/runner/operator_api.py:383 |
+| api.operator.post.save_config | POST | /operator/save-config | metriplane/runner/operator_api.py:367 |
+| api.operator.post.start_fusion | POST | /operator/start-fusion | metriplane/runner/operator_api.py:369 |
+| api.operator.post.traces | POST | /operator/traces | metriplane/runner/operator_api.py:387 |
+| api.operator.post.validate_alignment | POST | /operator/validate-alignment | metriplane/runner/operator_api.py:373 |
+| api.operator.post.validate_alignment_full | POST | /operator/validate-alignment-full | metriplane/runner/operator_api.py:375 |
+| api.operator.post.write_zones | POST | /operator/write-zones | metriplane/runner/operator_api.py:365 |
+| api.runner.cancel_job | POST | /jobs/{job_id}/cancel | metriplane/runner/service.py:252 |
+| api.runner.commands | GET | /commands | metriplane/runner/service.py:215 |
+| api.runner.execute | POST | /execute | metriplane/runner/service.py:250 |
+| api.runner.job_detail | GET | /jobs/{job_id} | metriplane/runner/service.py:220 |
+| api.runner.jobs | GET | /jobs | metriplane/runner/service.py:217 |
+| api.runner.status | GET | /status | metriplane/runner/service.py:213 |
 
 ## Local Services
 
 | id | name | protocol | source |
 | --- | --- | --- | --- |
 | MP2-012.UI.SERVICE.DASHBOARD_STATIC_HTTP | Dashboard static HTTP | http | metriplane/_local_http.py:169 |
-| MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP | Local runner HTTP | http | metriplane/runner/service.py:475 |
+| MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP | Local runner HTTP | http | metriplane/runner/service.py:477 |
 | MP2-012.UI.SERVICE.RUNTIME_FRAME_WEBSOCKET | Runtime frame WebSocket | websocket | metriplane/streaming/ws_server.py:152 |
 | MP2-012.UI.SERVICE.RUNTIME_HEALTH_METRICS_HTTP | Runtime health and metrics HTTP | http | metriplane/metrics.py:344 |
 

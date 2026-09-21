@@ -26,6 +26,8 @@ import csv
 import errno
 import hashlib
 import json
+
+from metriplane.strict_parsing import load_json as strict_json_loads
 import os
 import re
 import secrets
@@ -261,7 +263,7 @@ def _decode_state(raw: bytes) -> dict[str, Any]:
 
     try:
         decoded = raw.decode("utf-8")
-        state = json.loads(
+        state = strict_json_loads(
             decoded,
             object_pairs_hook=reject_duplicate_keys,
             parse_constant=lambda value: (_ for _ in ()).throw(

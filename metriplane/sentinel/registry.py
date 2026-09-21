@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 from pydantic import BaseModel, Field
 
 
@@ -43,7 +44,7 @@ class ObjectRegistryConfig(BaseModel):
 
 
 def load_registry(path: str | Path) -> ObjectRegistryConfig:
-    data = yaml.safe_load(Path(path).read_text())
+    data = load_yaml_path(path)
     return ObjectRegistryConfig.model_validate(data)
 
 

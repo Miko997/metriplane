@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Iterable
 import json
+
+from metriplane.strict_parsing import iter_jsonl_path
 from metriplane.provenance.run_provenance import is_header_record
 
 from metriplane.schema import FrameStateModel
@@ -19,10 +21,7 @@ def write_jsonl(path: Path, frames: Iterable[FrameStateModel]) -> None:
 
 def read_jsonl(path: Path) -> list[FrameStateModel]:
     frames: list[FrameStateModel] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        obj = json.loads(line)
+    for obj in iter_jsonl_path(path):
         if is_header_record(obj):
             continue
         frames.append(FrameStateModel.model_validate(obj))

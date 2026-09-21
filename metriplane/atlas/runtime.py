@@ -41,6 +41,7 @@ from metriplane.atlas.run_references import (
 from metriplane.atlas.training import training_case_from_incident, write_training_case
 from metriplane.provenance.run_provenance import sha256_file
 from metriplane.schema import FrameStateModel
+from metriplane.strict_parsing import iter_jsonl_path
 
 
 @dataclass(frozen=True)
@@ -139,14 +140,12 @@ def _write_external_source_provenance(
 def _iter_frames(path: str | Path) -> list[FrameStateModel]:
     frames: list[FrameStateModel] = []
     previous_time: float | None = None
-    for line_number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
+    for line_number, data in enumerate(iter_jsonl_path(path), start=1):
         try:
-            data = json.loads(line)
-        except json.JSONDecodeError as exc:
+            is_header = isinstance(data, dict) and data.get("type") == "run_header"
+        except Exception as exc:
             raise ValueError(f"malformed JSON on line {line_number}: {exc}") from exc
-        if data.get("type") == "run_header":
+        if is_header:
             continue
         try:
             frame = FrameStateModel.model_validate(data)

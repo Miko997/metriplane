@@ -21,6 +21,7 @@ from metriplane.paths import (
     normalize_runs_dir,
     resolve_platform_paths,
 )
+from metriplane.strict_parsing import load_json as strict_json_loads
 
 log = logging.getLogger("metriplane.cli")
 
@@ -263,7 +264,6 @@ def _installation_context() -> str:
     root = _package_source_root()
     pyproject = root / "pyproject.toml"
     try:
-        import json
         import tomllib
         from importlib import metadata
 
@@ -281,7 +281,7 @@ def _installation_context() -> str:
         distribution = metadata.distribution("metriplane")
         direct_url = distribution.read_text("direct_url.json")
         if direct_url:
-            payload = json.loads(direct_url)
+            payload = strict_json_loads(direct_url)
             if payload.get("dir_info", {}).get("editable") is True:
                 return "editable source checkout"
     except Exception:

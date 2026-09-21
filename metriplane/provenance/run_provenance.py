@@ -8,6 +8,8 @@ import datetime as dt
 import getpass
 import hashlib
 import json
+
+from metriplane.strict_parsing import load_json as strict_json_loads
 import os
 import platform
 import re
@@ -224,7 +226,7 @@ def _embedded_git_info(source_path: Path, declared: str | None) -> GitInfo | Non
     except OSError as exc:
         raise BuildInfoError(f"cannot read embedded build info: {exc}") from exc
     try:
-        value = json.loads(raw)
+        value = strict_json_loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BuildInfoError("embedded build info is not valid JSON") from exc
     try:
@@ -396,7 +398,7 @@ def redact_persisted_config(value: Any, *, key: str | None = None) -> Any:
 def config_to_primitive(cfg: Config) -> dict[str, Any]:
     # asdict recursively converts nested dataclasses; JSON roundtrip ensures only JSON primitives.
     d = dataclasses.asdict(cfg)
-    result: dict[str, Any] = json.loads(canonical_json_dumps(redact_persisted_config(d)))
+    result: dict[str, Any] = strict_json_loads(canonical_json_dumps(redact_persisted_config(d)))
     return result
 
 

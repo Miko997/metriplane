@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from metriplane.camera.rtsp import RTSPCamera
 from metriplane.camera.usb import USBCamera
 from metriplane.config import Config
 from metriplane.metrics import MetricsRegistry
+from metriplane.strict_parsing import ParseLimits, iter_jsonl_path
 
 
 class _Ws:
@@ -161,7 +163,6 @@ def test_replay_runtime_rejects_any_malformed_record(tmp_path: Path) -> None:
         json.dumps(_valid_frame(1, 1.0)) + "\n{not-json}\n",
         encoding="utf-8",
     )
-
     assert (
         _run_replay(
             Config(
@@ -173,6 +174,77 @@ def test_replay_runtime_rejects_any_malformed_record(tmp_path: Path) -> None:
         )
         == 1
     )
+
+
+@pytest.mark.parametrize(
+    ("limits", "payload"),
+    [
+        (ParseLimits(16, 8, 32, 16, 16), json.dumps(_valid_frame(1, 1.0)) + "\n"),
+        (ParseLimits(1024, 8, 32, 128, 1), "{}\n{}\n"),
+    ],
+    ids=["whole-file-bytes", "whole-file-lines"],
+)
+def test_replay_runtime_rejects_whole_file_jsonl_limits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    limits: ParseLimits,
+    payload: str,
+) -> None:
+    session = tmp_path / "resource-exhaustion.jsonl"
+    session.write_text(payload, encoding="utf-8")
+
+    def bounded_iter(path: Path):
+        return iter_jsonl_path(path, limits=limits)
+
+    monkeypatch.setattr(runtime, "iter_jsonl_path", bounded_iter)
+    assert (
+        _run_replay(
+            Config(
+                source_mode="replay",
+                replay_input=str(session),
+                replay_speed=0.0,
+                replay_loop=False,
+            )
+        )
+        == 1
+    )
+
+
+def test_replay_parse_timing_includes_jsonl_iterator_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _write_session(tmp_path / "session.jsonl", [_valid_frame(1, 1.0)])
+
+    def delayed_iter(_path: Path):
+        time.sleep(0.01)
+        yield _valid_frame(1, 1.0)
+
+    class CapturingTiming(_Timing):
+        def __init__(self) -> None:
+            self.parse_ns: list[int] = []
+
+        def add_stage_ns(self, name: str, value: int) -> None:
+            if name == "replay.parse":
+                self.parse_ns.append(value)
+
+    timing = CapturingTiming()
+    monkeypatch.setattr(runtime, "iter_jsonl_path", delayed_iter)
+    status = runtime._run_replay_mode(
+        Config(source_mode="replay", replay_input=str(session), replay_loop=False),
+        _ctx(),
+        _Ws(),
+        MetricsRegistry(),
+        _Recorder(),
+        runtime.HealthRegistry(enabled=True),
+        timing,
+        ws_fail_after_s=0.0,
+        t0=0.0,
+    )
+
+    assert status == 0
+    assert len(timing.parse_ns) == 1
+    assert timing.parse_ns[0] >= 5_000_000
 
 
 @pytest.mark.parametrize("speed", [float("nan"), float("inf"), -1.0])

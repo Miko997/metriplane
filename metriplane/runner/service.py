@@ -12,6 +12,8 @@ import errno
 import hmac
 import ipaddress
 import json
+
+from metriplane.strict_parsing import load_json as strict_json_loads
 import os
 import secrets
 import sys
@@ -187,7 +189,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
             return {}
         try:
             raw = self.rfile.read(content_length).decode("utf-8")
-            value = json.loads(raw)
+            value = strict_json_loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RequestBodyError(400, "Invalid JSON body") from exc
         if not isinstance(value, dict):

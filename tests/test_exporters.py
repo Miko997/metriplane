@@ -7,6 +7,8 @@ import json
 
 import pytest
 
+import metriplane.exporters.parquet as parquet_exporter
+
 from metriplane.exporters.base import JsonlExporter, MockExporter
 from metriplane.exporters.kafka import KafkaExporter
 from metriplane.exporters.mqtt import MqttExporter
@@ -73,6 +75,26 @@ def test_parquet_export_or_clear_error(tmp_path):
     else:
         with pytest.raises(RuntimeError, match="Parquet export needs an engine"):
             export_run_dir(run)
+
+
+@pytest.mark.parametrize(
+    ("filename", "payload"),
+    [("alerts.jsonl", '{"a":1,"a":2}\n'), ("incident.json", '{"a":1,"a":2}\n')],
+)
+def test_parquet_export_rejects_malformed_inputs(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    payload: str,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / filename).write_text(payload, encoding="utf-8")
+    monkeypatch.setattr(parquet_exporter, "parquet_available", lambda: (True, "pyarrow"))
+    monkeypatch.setattr(parquet_exporter.importlib, "import_module", lambda _name: object())
+
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        export_run_dir(run)
 
 
 def test_throughput_benchmark_runs(tmp_path):

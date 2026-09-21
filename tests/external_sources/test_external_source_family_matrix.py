@@ -29,7 +29,7 @@ PACKAGE_ROOT = REPOSITORY_ROOT / PACKAGE_RELATIVE
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github/workflows/external-source-family-matrix.yml"
 EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
 EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
-EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+EVIDENCE_LAKE_REPAIRED_SHA256 = "90f8dcf04e8d9ada011fd8eb0c3512e03faa9eb29d77d2ed130939ec857bb9e1"
 # MET-162 reopens only these current implementation paths. Archived fixtures,
 # source contracts, proof records and every other Atlas path remain frozen.
 MET162_REOPENED_ATLAS_PATHS = (
@@ -41,6 +41,21 @@ MET162_REOPENED_ATLAS_PATHS = (
     "metriplane/atlas/reports.py",
     "metriplane/atlas/run_assessment.py",
     "metriplane/atlas/runtime.py",
+)
+# MP2-023 reopens only discovered installed parser consumers. The frozen source
+# contract, proof artifacts, evaluator decisions, and all other Atlas paths stay
+# unchanged.
+MP2023_REOPENED_ATLAS_PARSER_PATHS = (
+    "metriplane/atlas/cli.py",
+    "metriplane/atlas/connectors.py",
+    "metriplane/atlas/dashboard.py",
+    "metriplane/atlas/domain_packs.py",
+    "metriplane/atlas/event_ledger.py",
+    "metriplane/atlas/evidence_lake.py",
+    "metriplane/atlas/privacy.py",
+    "metriplane/atlas/query.py",
+    "metriplane/atlas/regression.py",
+    "metriplane/atlas/usd.py",
 )
 
 
@@ -258,6 +273,7 @@ def test_prior_frozen_proof_paths_are_not_changed_by_this_branch() -> None:
         "metriplane/atlas",
         f":(exclude){EVIDENCE_LAKE_PATH}",
         *(f":(exclude){path}" for path in MET162_REOPENED_ATLAS_PATHS),
+        *(f":(exclude){path}" for path in MP2023_REOPENED_ATLAS_PARSER_PATHS),
     )
     # This test compares the working candidate to the explicitly frozen baseline.
     result = subprocess.run(

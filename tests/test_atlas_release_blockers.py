@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import shutil
@@ -969,13 +970,13 @@ def test_domain_pack_validation_rejects_duplicate_and_bad_references(
 
     workspace_path = pack / "workspace.yaml"
     workspace = yaml.safe_load(workspace_path.read_text(encoding="utf-8"))
-    workspace["zones"].append(dict(workspace["zones"][0]))
-    workspace["stations"].append(dict(workspace["stations"][0]))
+    workspace["zones"].append(copy.deepcopy(workspace["zones"][0]))
+    workspace["stations"].append(copy.deepcopy(workspace["stations"][0]))
     workspace_path.write_text(yaml.safe_dump(workspace, sort_keys=True), encoding="utf-8")
 
     process_path = pack / "process.yaml"
     process = yaml.safe_load(process_path.read_text(encoding="utf-8"))
-    duplicate_step = dict(process["steps"][0])
+    duplicate_step = copy.deepcopy(process["steps"][0])
     duplicate_step["max_wait_s"] = -1
     process["steps"].append(duplicate_step)
     process_path.write_text(yaml.safe_dump(process, sort_keys=True), encoding="utf-8")
@@ -1043,13 +1044,16 @@ def test_domain_pack_validation_handles_unhashable_refs_and_nonfinite_waits(
     contracts_path = pack / "contracts.yaml"
     contracts = yaml.safe_load(contracts_path.read_text(encoding="utf-8"))
     contracts["contracts"][0]["station_id"] = ["station_a"]
-    contracts["contracts"][0]["max_wait_s"] = float("inf")
     contracts_path.write_text(yaml.safe_dump(contracts, sort_keys=True), encoding="utf-8")
 
     errors = validate_domain_pack(pack)
-
     assert any("invalid station_id" in error for error in errors)
-    assert any("invalid max_wait_s" in error for error in errors)
+
+    contracts["contracts"][0]["station_id"] = "station_a"
+    contracts["contracts"][0]["max_wait_s"] = float("inf")
+    contracts_path.write_text(yaml.safe_dump(contracts, sort_keys=True), encoding="utf-8")
+    errors = validate_domain_pack(pack)
+    assert any("non-finite" in error for error in errors)
 
 
 def test_domain_pack_validation_reports_malformed_contract_yaml(

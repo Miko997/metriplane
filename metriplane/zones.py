@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-import json
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-import yaml
+from metriplane.strict_parsing import load_json_path, load_yaml_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,11 +109,10 @@ def load_zones(path: Path) -> ZoneMap:
     if not path.is_file():
         raise FileNotFoundError(f"zones file not found: {path}")
 
-    raw = path.read_text(encoding="utf-8")
     if path.suffix.lower() == ".json":
-        data = json.loads(raw)
+        data = load_json_path(path)
     else:
-        data = yaml.safe_load(raw)
+        data = load_yaml_path(path)
 
     units = "meters"
     zones_raw: Any = None

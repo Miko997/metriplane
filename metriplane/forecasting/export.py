@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from metriplane.forecasting.models import RiskForecastModel
+from metriplane.strict_parsing import iter_jsonl_path
 
 
 def write_forecasts_jsonl(forecasts: list[RiskForecastModel], path: str | Path) -> None:
@@ -17,9 +18,4 @@ def write_forecasts_jsonl(forecasts: list[RiskForecastModel], path: str | Path) 
 
 
 def read_forecasts_jsonl(path: str | Path) -> list[RiskForecastModel]:
-    out = []
-    for line in Path(path).read_text().splitlines():
-        line = line.strip()
-        if line:
-            out.append(RiskForecastModel.model_validate_json(line))
-    return out
+    return [RiskForecastModel.model_validate(value) for value in iter_jsonl_path(path)]

@@ -8,12 +8,13 @@ import json
 from pathlib import Path
 
 from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS
+from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 
 def _jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return list(iter_jsonl_path(path))
 
 
 def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
@@ -29,10 +30,10 @@ def export_connectors(run_dir: str | Path, out_dir: str | Path | None = None) ->
     run = Path(run_dir)
     out = Path(out_dir) if out_dir else run / "connectors"
     out.mkdir(parents=True, exist_ok=True)
-    manifest = json.loads((run / "atlas_manifest.json").read_text(encoding="utf-8"))
+    manifest = load_json_path(run / "atlas_manifest.json")
     events = _jsonl(run / "physical_event_log.jsonl")
     incidents = _jsonl(run / "incidents.jsonl")
-    actions = json.loads((run / "improvement_actions.json").read_text(encoding="utf-8")) if (run / "improvement_actions.json").exists() else []
+    actions = load_json_path(run / "improvement_actions.json") if (run / "improvement_actions.json").exists() else []
     _write_csv(
         out / "events.csv",
         events,

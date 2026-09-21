@@ -12,7 +12,9 @@ Only writes to: calib/profiles/local_*/  configs/local/  configs/generated/
 from __future__ import annotations
 
 import hashlib
-import json
+
+from metriplane.strict_parsing import load_json as strict_json_loads
+from metriplane.strict_parsing import load_json_pinned
 import os
 import re
 import subprocess
@@ -46,6 +48,11 @@ from metriplane.runner.safe_writes import (
     WriteConflictError,
     open_secure_directory,
 )
+
+
+def _load_pinned_json(source: PinnedFile) -> Any:
+    return load_json_pinned(source)
+
 
 # ── Safety patterns ────────────────────────────────────────────────────────────
 
@@ -466,7 +473,7 @@ class OperatorAPI:
                 cwd=str(self.repo_root),
             )
             if result.returncode == 0:
-                data = json.loads(result.stdout)
+                data = strict_json_loads(result.stdout)
                 if isinstance(data, dict):
                     return 200, data
                 return 500, {"error": "list_cameras.py returned a non-object JSON response"}
@@ -576,7 +583,7 @@ class OperatorAPI:
                     candidates.sort(key=lambda item: float(item["mtime"]), reverse=True)
                     if selected_info is not None and selected_meta is not None:
                         try:
-                            selected_info["meta"] = json.loads(selected_meta.read_text())
+                            selected_info["meta"] = _load_pinned_json(selected_meta)
                         except (OSError, UnicodeError, ValueError, UnsafeReadPathError):
                             pass
                 finally:
@@ -1511,7 +1518,7 @@ class OperatorAPI:
                     "note": "no camera_trust.json in this run",
                 }
             try:
-                report = CameraTrustReportModel.model_validate_json(ct.read_text())
+                report = CameraTrustReportModel.model_validate(_load_pinned_json(ct))
                 return 200, {"camera_trust": report.model_dump(), "run_dir": str(run)}
             except (OSError, UnicodeError, ValueError, UnsafeReadPathError) as exc:
                 return 200, {"camera_trust": None, "error": str(exc)}

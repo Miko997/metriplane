@@ -40,6 +40,7 @@ from metriplane.provenance.run_provenance import (
 )
 from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import FrameStateModel, ObjectStateModel
+from metriplane.strict_parsing import StrictJsonError, iter_jsonl_path
 from metriplane.streaming.ws_server import client_count
 from metriplane.streaming.ws_thread import WsServerThread
 from metriplane.tracking import ObjectRegistry
@@ -1327,155 +1328,149 @@ def _run_replay_mode(
             wall0 = time.monotonic()
             pass_frames = 0
 
-            with p.open("r", encoding="utf-8") as f:
-                for line_number, line in enumerate(f, start=1):
-                    line = line.strip()
-                    if not line:
+            records = iter_jsonl_path(p)
+            line_number = 0
+            while True:
+                # measure parse/validate cost
+                t_parse0 = time.perf_counter_ns()
+                try:
+                    data = next(records)
+                except StopIteration:
+                    break
+                line_number += 1
+
+                try:
+                    if is_header_record(data):
                         continue
 
-                    # measure parse/validate cost
-                    t_parse0 = time.perf_counter_ns()
+                    msg = FrameStateModel.model_validate(data)
 
-                    try:
-                        data = json.loads(line)
+                    upd: dict[str, Any] = {}
+                    if getattr(msg, "run_id", None) in (None, ""):
+                        upd["run_id"] = ctx.run_id
+                    if getattr(msg, "config_hash", None) in (None, ""):
+                        upd["config_hash"] = ctx.config_hash
+                    if getattr(msg, "git_commit", None) in (None, ""):
+                        upd["git_commit"] = ctx.git.commit
 
-                        if is_header_record(data):
-                            continue
+                    if upd:
+                        msg = msg.model_copy(update=upd)
 
-                        msg = FrameStateModel.model_validate(data)
-
-                        upd: dict[str, Any] = {}
-                        if getattr(msg, "run_id", None) in (None, ""):
-                            upd["run_id"] = ctx.run_id
-                        if getattr(msg, "config_hash", None) in (None, ""):
-                            upd["config_hash"] = ctx.config_hash
-                        if getattr(msg, "git_commit", None) in (None, ""):
-                            upd["git_commit"] = ctx.git.commit
-
-                        if upd:
-                            msg = msg.model_copy(update=upd)
-
-                    except Exception as exc:
-                        err = f"invalid_jsonl_line:{line_number}:{type(exc).__name__}: {exc}"
-                        log.error("replay: %s", err)
-                        health.mark_failed(
-                            "camera",
-                            err,
-                            details={"mode": "replay", "path": str(p)},
-                        )
-                        return 1
-
-                    parse_ns = time.perf_counter_ns() - t_parse0
-
-                    source_ts = float(msg.ts)
-                    if not math.isfinite(source_ts):
-                        err = f"invalid_timestamp: line {line_number} ts must be finite"
-                        log.error("replay: %s", err)
-                        health.mark_failed("camera", err)
-                        return 1
-                    if msg.ts_sim_ns is not None and msg.ts_sim_ns < 0:
-                        err = (
-                            f"invalid_timestamp: line {line_number} ts_sim_ns must be non-negative"
-                        )
-                        log.error("replay: %s", err)
-                        health.mark_failed("camera", err)
-                        return 1
-                    try:
-                        replay_ts = (
-                            float(msg.ts_sim_ns) / 1_000_000_000.0
-                            if msg.ts_sim_ns is not None
-                            else source_ts
-                        )
-                    except OverflowError:
-                        replay_ts = float("inf")
-                    if not math.isfinite(replay_ts):
-                        err = (
-                            f"invalid_timestamp: line {line_number} "
-                            "timestamp is outside the supported range"
-                        )
-                        log.error("replay: %s", err)
-                        health.mark_failed("camera", err)
-                        return 1
-                    if previous_ts is not None and replay_ts < previous_ts:
-                        err = f"non_monotonic_timestamp: {replay_ts} follows {previous_ts}"
-                        log.error("replay: %s", err)
-                        health.mark_failed(
-                            "camera",
-                            err,
-                            details={"mode": "replay", "path": str(p)},
-                        )
-                        return 1
-                    previous_ts = replay_ts
-
-                    if first_ts is None:
-                        first_ts = replay_ts
-                        wall0 = time.monotonic()
-
-                    # begin timing for this emitted frame (use monotonic counter as frame_id)
-                    timing.begin_frame(ts=float(msg.ts), frame_id=int(frames_total + 1))
-                    timing.add_stage_ns("replay.parse", int(parse_ns))
-
-                    # replay pacing
-                    if speed > 0 and first_ts is not None:
-                        try:
-                            dt = (replay_ts - first_ts) / speed
-                            target = wall0 + dt
-                        except OverflowError:
-                            dt = float("inf")
-                            target = float("inf")
-                        if not math.isfinite(target) or dt < 0 or dt > _MAX_REPLAY_PACING_DELAY_S:
-                            err = (
-                                f"invalid_replay_deadline: line {line_number} "
-                                "produced a non-finite, negative, or longer than "
-                                "24-hour pacing delay"
-                            )
-                            log.error("replay: %s", err)
-                            health.mark_failed("camera", err)
-                            return 1
-                        slept_ns = _sleep_until_replay_deadline(target)
-                        if slept_ns:
-                            timing.add_stage_ns("replay.sleep", slept_ns)
-
-                    frames_total += 1
-                    pass_frames += 1
-                    frame_times.append(time.monotonic())
-
-                    fps = 0.0
-                    if len(frame_times) >= 2:
-                        dtw = frame_times[-1] - frame_times[0]
-                        if dtw > 1e-6:
-                            fps = float(len(frame_times) - 1) / dtw
-
-                    metrics.update(
-                        frames_total=frames_total, fps=fps, objects_tracked=len(msg.objects)
+                except Exception as exc:
+                    err = f"invalid_jsonl_line:{line_number}:{type(exc).__name__}: {exc}"
+                    log.error("replay: %s", err)
+                    health.mark_failed(
+                        "camera",
+                        err,
+                        details={"mode": "replay", "path": str(p)},
                     )
+                    return 1
 
-                    with timing.stage("record.jsonl"):
-                        try:
-                            recorder.write(msg.model_dump())
-                        except Exception as e:
-                            health.mark_failed("recording.jsonl", f"write_failed: {e}")
-                            return 1
+                parse_ns = time.perf_counter_ns() - t_parse0
 
-                    with timing.stage("ws.send"):
-                        try:
-                            if (
-                                not ws_disabled
-                                and ws_fail_after_s > 0
-                                and (time.monotonic() - t0) >= ws_fail_after_s
-                            ):
-                                raise RuntimeError(f"FAULT: ws_send_fail_after_s={ws_fail_after_s}")
-                            if not ws_disabled:
-                                ws.send_frame(msg)
-                                health.mark_ok("ws")
-                        except Exception as e:
-                            ws_disabled = True
-                            health.mark_degraded("ws", f"send_failed: {e}")
-                            log.warning(
-                                "ws send failed -> degraded mode (publishing disabled): %s", e
-                            )
+                source_ts = float(msg.ts)
+                if not math.isfinite(source_ts):
+                    err = f"invalid_timestamp: line {line_number} ts must be finite"
+                    log.error("replay: %s", err)
+                    health.mark_failed("camera", err)
+                    return 1
+                if msg.ts_sim_ns is not None and msg.ts_sim_ns < 0:
+                    err = f"invalid_timestamp: line {line_number} ts_sim_ns must be non-negative"
+                    log.error("replay: %s", err)
+                    health.mark_failed("camera", err)
+                    return 1
+                try:
+                    replay_ts = (
+                        float(msg.ts_sim_ns) / 1_000_000_000.0
+                        if msg.ts_sim_ns is not None
+                        else source_ts
+                    )
+                except OverflowError:
+                    replay_ts = float("inf")
+                if not math.isfinite(replay_ts):
+                    err = (
+                        f"invalid_timestamp: line {line_number} "
+                        "timestamp is outside the supported range"
+                    )
+                    log.error("replay: %s", err)
+                    health.mark_failed("camera", err)
+                    return 1
+                if previous_ts is not None and replay_ts < previous_ts:
+                    err = f"non_monotonic_timestamp: {replay_ts} follows {previous_ts}"
+                    log.error("replay: %s", err)
+                    health.mark_failed(
+                        "camera",
+                        err,
+                        details={"mode": "replay", "path": str(p)},
+                    )
+                    return 1
+                previous_ts = replay_ts
 
-                    timing.end_frame()
+                if first_ts is None:
+                    first_ts = replay_ts
+                    wall0 = time.monotonic()
+
+                # begin timing for this emitted frame (use monotonic counter as frame_id)
+                timing.begin_frame(ts=float(msg.ts), frame_id=int(frames_total + 1))
+                timing.add_stage_ns("replay.parse", int(parse_ns))
+
+                # replay pacing
+                if speed > 0 and first_ts is not None:
+                    try:
+                        dt = (replay_ts - first_ts) / speed
+                        target = wall0 + dt
+                    except OverflowError:
+                        dt = float("inf")
+                        target = float("inf")
+                    if not math.isfinite(target) or dt < 0 or dt > _MAX_REPLAY_PACING_DELAY_S:
+                        err = (
+                            f"invalid_replay_deadline: line {line_number} "
+                            "produced a non-finite, negative, or longer than "
+                            "24-hour pacing delay"
+                        )
+                        log.error("replay: %s", err)
+                        health.mark_failed("camera", err)
+                        return 1
+                    slept_ns = _sleep_until_replay_deadline(target)
+                    if slept_ns:
+                        timing.add_stage_ns("replay.sleep", slept_ns)
+
+                frames_total += 1
+                pass_frames += 1
+                frame_times.append(time.monotonic())
+
+                fps = 0.0
+                if len(frame_times) >= 2:
+                    dtw = frame_times[-1] - frame_times[0]
+                    if dtw > 1e-6:
+                        fps = float(len(frame_times) - 1) / dtw
+
+                metrics.update(frames_total=frames_total, fps=fps, objects_tracked=len(msg.objects))
+
+                with timing.stage("record.jsonl"):
+                    try:
+                        recorder.write(msg.model_dump())
+                    except Exception as e:
+                        health.mark_failed("recording.jsonl", f"write_failed: {e}")
+                        return 1
+
+                with timing.stage("ws.send"):
+                    try:
+                        if (
+                            not ws_disabled
+                            and ws_fail_after_s > 0
+                            and (time.monotonic() - t0) >= ws_fail_after_s
+                        ):
+                            raise RuntimeError(f"FAULT: ws_send_fail_after_s={ws_fail_after_s}")
+                        if not ws_disabled:
+                            ws.send_frame(msg)
+                            health.mark_ok("ws")
+                    except Exception as e:
+                        ws_disabled = True
+                        health.mark_degraded("ws", f"send_failed: {e}")
+                        log.warning("ws send failed -> degraded mode (publishing disabled): %s", e)
+
+                timing.end_frame()
 
             if pass_frames == 0:
                 err = "replay_input_has_no_valid_frames"
@@ -1497,7 +1492,7 @@ def _run_replay_mode(
     except KeyboardInterrupt:
         log.info("replay: shutdown requested")
         return 0
-    except OSError as e:
+    except (OSError, StrictJsonError) as e:
         log.error("replay: failed to read %s: %s", p, e)
         health.mark_failed(
             "camera",

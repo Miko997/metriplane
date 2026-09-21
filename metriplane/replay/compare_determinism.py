@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from metriplane.replay.engine import EngineConfig, iter_replay_outputs, write_outputs_jsonl
 from metriplane.schema import FrameStateModel
+from metriplane.strict_parsing import iter_jsonl_path
 
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
@@ -30,35 +31,24 @@ def _is_header_record(obj: Any) -> bool:
 
 
 def _read_first_header(path: Path) -> dict[str, Any] | None:
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            obj = json.loads(line)
-            if isinstance(obj, dict) and _is_header_record(obj):
-                return obj
-            return None
+    for obj in iter_jsonl_path(path):
+        if isinstance(obj, dict) and _is_header_record(obj):
+            return obj
+        return None
     return None
 
 
 def _iter_non_header_records(path: Path) -> Iterator[dict[str, Any]]:
-    with path.open("r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid JSONL at {path}:{line_number}: {exc}") from exc
+    try:
+        records = iter_jsonl_path(path)
+        for obj in records:
             if not isinstance(obj, dict):
-                raise ValueError(
-                    f"Invalid JSONL record at {path}:{line_number}: expected an object"
-                )
+                raise ValueError(f"Invalid JSONL record at {path}: expected an object")
             if _is_header_record(obj):
                 continue
             yield obj
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSONL at {path}: {exc}") from exc
 
 
 def _sha256_file(path: Path) -> str:

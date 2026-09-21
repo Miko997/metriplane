@@ -6,7 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import yaml
+
+from metriplane.strict_parsing import load_yaml_path
 
 # metriplane-core/metriplane/config/profile.py
 REPO_ROOT = Path(__file__).resolve().parents[2]  # .../metriplane-core
@@ -29,7 +30,7 @@ def load_active_profile(calib_root: Path = CALIB_ROOT) -> str:
         raise FileNotFoundError(
             f"Missing {p}. Create calib/active_profile.yaml with: profile: <name>"
         )
-    data: dict[str, Any] = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    data: dict[str, Any] = load_yaml_path(p) or {}
     prof = data.get("profile")
     if not isinstance(prof, str) or not prof:
         raise ValueError(f"{p} must contain: profile: <name>")

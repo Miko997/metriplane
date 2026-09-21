@@ -23,6 +23,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from metriplane.strict_parsing import load_json_path, load_yaml_path
+
 # type -> display color (RGB 0..1)
 _TYPE_COLOR = {
     "cart": (0.2, 0.5, 0.9),
@@ -47,9 +49,7 @@ def _registry_map(run_dir: Path) -> dict[int, dict]:
     if p is None:
         return {}
     try:
-        import yaml
-
-        data = yaml.safe_load(p.read_text())
+        data = load_yaml_path(p)
         return {int(e["marker_id"]): e for e in data.get("objects", [])}
     except Exception:
         return {}
@@ -110,7 +110,7 @@ def load_incidents(run_dir: str | Path) -> list[dict]:
     if p is None:
         return []
     try:
-        data = json.loads(p.read_text())
+        data = load_json_path(p)
         return data if isinstance(data, list) else [data]
     except Exception:
         return []

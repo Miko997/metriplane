@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import stat
 from pathlib import Path
 from typing import Any
@@ -11,9 +10,35 @@ from typing import Any
 from metriplane.assistant.citations import make_citation
 from metriplane.assistant.models import CitationModel
 from metriplane.runner.safe_reads import PinnedDirectory, PinnedFile
+from metriplane.strict_parsing import (
+    iter_jsonl_path,
+    iter_jsonl_pinned,
+    load_json_path,
+    load_json_pinned,
+    load_yaml_path,
+    load_yaml_pinned,
+)
 
 RunSource = str | Path | PinnedDirectory
 RunArtifact = Path | PinnedFile
+
+
+def _read_json(artifact: RunArtifact) -> Any:
+    if isinstance(artifact, PinnedFile):
+        return load_json_pinned(artifact)
+    return load_json_path(artifact)
+
+
+def _read_yaml(artifact: RunArtifact) -> Any:
+    if isinstance(artifact, PinnedFile):
+        return load_yaml_pinned(artifact)
+    return load_yaml_path(artifact)
+
+
+def _read_jsonl(artifact: RunArtifact) -> list[Any]:
+    if isinstance(artifact, PinnedFile):
+        return list(iter_jsonl_pinned(artifact))
+    return list(iter_jsonl_path(artifact))
 
 
 def _run_source(run_dir: RunSource) -> Path | PinnedDirectory:
@@ -71,7 +96,7 @@ def retrieve_incidents(
     if p is None:
         return [], [], ["no incident artifact found in run dir"]
     try:
-        data = json.loads(p.read_text())
+        data = _read_json(p)
         incidents = data if isinstance(data, list) else [data]
     except Exception:
         return [], [], [f"could not parse {p.name}"]
@@ -87,9 +112,7 @@ def retrieve_rule(
     if p is None:
         return None, [], ["no rules/contract artifact found in run dir"]
     try:
-        import yaml
-
-        data = yaml.safe_load(p.read_text()) or {}
+        data = _read_yaml(p) or {}
         rules = data.get("rules", [])
     except Exception:
         return None, [], [f"could not parse {p.name}"]
@@ -108,7 +131,7 @@ def retrieve_camera_trust(
     p = _find(run, ["camera_trust.json"])
     if p is not None:
         try:
-            return json.loads(p.read_text()), [_citation(p, run, "camera_trust")], []
+            return _read_json(p), [_citation(p, run, "camera_trust")], []
         except Exception:
             return None, [], ["could not parse camera_trust.json"]
     # fall back to analyzing the session if present
@@ -117,10 +140,10 @@ def retrieve_camera_trust(
         return None, [], ["no camera_trust.json or session found"]
     try:
         from metriplane.camera_trust.analyzer import CameraTrustAnalyzer
-        from metriplane.sentinel.engine import iter_frames_text
+        from metriplane.sentinel.engine import iter_frame_records
 
         analyzer = CameraTrustAnalyzer()
-        for frame in iter_frames_text(session.read_text(), source=str(session)):
+        for frame in iter_frame_records(_read_jsonl(session), source=str(session)):
             analyzer.update(frame)
         report = analyzer.report().model_dump()
         return report, [_citation(session, run, "session")], []
@@ -137,18 +160,16 @@ def retrieve_traces(
         return [], [], ["no session found for traces"]
     objects_path = _find(run, ["objects.yaml", "object_registry.yaml"])
     try:
-        import yaml
-
         from metriplane.sentinel.registry import ObjectRegistryConfig
         from metriplane.trace.store import TraceStore
 
         registry = (
-            ObjectRegistryConfig.model_validate(yaml.safe_load(objects_path.read_text()))
+            ObjectRegistryConfig.model_validate(_read_yaml(objects_path))
             if objects_path is not None
             else None
         )
         store = TraceStore(registry=registry)
-        store.load_session_text(session.read_text())
+        store.load_session_records(_read_jsonl(session))
         summaries = store.summarize()
     except Exception:
         return [], [], ["trace analysis failed"]
