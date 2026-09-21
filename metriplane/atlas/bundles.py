@@ -17,6 +17,14 @@ from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from metriplane.archive_safety import (
+    DEFAULT_LIMITS,
+    ResourceLimits,
+    copy_relative_regular_file,
+    stage_directory,
+    stage_zip_archive,
+    staged_path,
+)
 from metriplane.atlas.event_ledger import read_events
 from metriplane.atlas.models import (
     ATLAS_LIMITATION_STATEMENTS,
@@ -68,11 +76,20 @@ OPTIONAL_EXPORT_SOURCE_FILES = (
 
 REQUIREMENT_ASSESSMENT_PATH = "requirement_assessment.json"
 
-MAX_ZIP_MEMBERS = 1024
-MAX_ZIP_MEMBER_BYTES = 128 * 1024 * 1024
-MAX_ZIP_TOTAL_BYTES = 512 * 1024 * 1024
-MAX_ZIP_COMPRESSION_RATIO = 1000
+MAX_ZIP_MEMBERS = DEFAULT_LIMITS.max_entries
+MAX_ZIP_MEMBER_BYTES = DEFAULT_LIMITS.max_file_bytes
+MAX_ZIP_TOTAL_BYTES = DEFAULT_LIMITS.max_total_bytes
+MAX_ZIP_COMPRESSION_RATIO = DEFAULT_LIMITS.max_compression_ratio
 _CHECKSUM_RE = re.compile(r"^([0-9a-fA-F]{64}) ([ *])(.+)$")
+
+
+def _archive_limits() -> ResourceLimits:
+    return ResourceLimits(
+        max_entries=MAX_ZIP_MEMBERS,
+        max_file_bytes=MAX_ZIP_MEMBER_BYTES,
+        max_total_bytes=MAX_ZIP_TOTAL_BYTES,
+        max_compression_ratio=MAX_ZIP_COMPRESSION_RATIO,
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -141,55 +158,12 @@ def _safe_relative_path(value: str) -> str:
     return path.as_posix()
 
 
-def _validate_zip_archive(archive: zipfile.ZipFile) -> None:
-    members = archive.infolist()
-    if len(members) > MAX_ZIP_MEMBERS:
-        raise ValueError(
-            f"zip has too many members: {len(members)} (maximum {MAX_ZIP_MEMBERS})"
-        )
-    seen: set[str] = set()
-    total = 0
-    for member in members:
-        try:
-            rel = _safe_relative_path(member.filename.rstrip("/"))
-        except ValueError as exc:
-            raise ValueError(f"unsafe zip path: {member.filename}") from exc
-        if rel in seen:
-            raise ValueError(f"duplicate zip member: {rel}")
-        seen.add(rel)
-        if member.flag_bits & 0x1:
-            raise ValueError(f"encrypted zip member is not supported: {rel}")
-        # Unix symlink mode, when present in an external archive.
-        if ((member.external_attr >> 16) & 0o170000) == 0o120000:
-            raise ValueError(f"zip symlink is not allowed: {rel}")
-        if member.is_dir():
-            continue
-        if member.file_size > MAX_ZIP_MEMBER_BYTES:
-            raise ValueError(
-                f"zip member is too large: {rel} ({member.file_size} bytes)"
-            )
-        total += member.file_size
-        if total > MAX_ZIP_TOTAL_BYTES:
-            raise ValueError(
-                f"zip expands beyond {MAX_ZIP_TOTAL_BYTES} bytes"
-            )
-        if member.file_size and member.compress_size == 0:
-            raise ValueError(f"invalid compressed size for zip member: {rel}")
-        if (
-            member.compress_size
-            and member.file_size / member.compress_size > MAX_ZIP_COMPRESSION_RATIO
-        ):
-            raise ValueError(f"zip compression ratio is too high: {rel}")
-
-
 def safe_extract(archive: zipfile.ZipFile, dest: str | Path) -> None:
-    _validate_zip_archive(archive)
-    root = Path(dest).resolve()
-    for member in archive.infolist():
-        target = (root / member.filename).resolve()
-        if target != root and root not in target.parents:
-            raise ValueError(f"unsafe zip path: {member.filename}")
-    archive.extractall(root)
+    root = Path(dest).absolute()
+    if root.is_symlink() or not root.is_dir() or any(root.iterdir()):
+        raise ValueError("ZIP staging destination must be a real empty directory")
+    root.rmdir()
+    stage_zip_archive(archive, root, limits=_archive_limits())
 
 
 def _remove_path(path: Path) -> None:
@@ -414,15 +388,39 @@ def export_bundle(
             == assessment["evidence_sha256"]["state_segment.jsonl"]
         )
         assessment_omitted = has_assessment and not include_assessment
-        shutil.copyfile(run / "reality_graph.json", stage_bundle / "reality_graph_excerpt.json")
-        shutil.copyfile(run / "process_trace.json", stage_bundle / "process_trace_excerpt.json")
+        copy_relative_regular_file(
+            run,
+            "reality_graph.json",
+            stage_bundle,
+            "reality_graph_excerpt.json",
+            limits=_archive_limits(),
+        )
+        copy_relative_regular_file(
+            run,
+            "process_trace.json",
+            stage_bundle,
+            "process_trace_excerpt.json",
+            limits=_archive_limits(),
+        )
         (stage_bundle / "configs").mkdir(exist_ok=True)
         for name in ("assets.yaml", "workspace.yaml", "process.yaml", "contracts.yaml", "work_orders.csv"):
             src = run / "configs" / name
             if src.exists():
-                shutil.copyfile(src, stage_bundle / "configs" / name)
+                copy_relative_regular_file(
+                    run,
+                    f"configs/{name}",
+                    stage_bundle,
+                    f"configs/{name}",
+                    limits=_archive_limits(),
+                )
         (stage_bundle / "reports").mkdir(exist_ok=True)
-        shutil.copyfile(run / "cell_truth_report.md", stage_bundle / "reports" / "cell_truth_report.md")
+        copy_relative_regular_file(
+            run,
+            "cell_truth_report.md",
+            stage_bundle,
+            "reports/cell_truth_report.md",
+            limits=_archive_limits(),
+        )
         if assessment_omitted:
             with (stage_bundle / "reports" / "cell_truth_report.md").open("a", encoding="utf-8") as handle:
                 handle.write(
@@ -435,14 +433,20 @@ def export_bundle(
         (stage_bundle / "generated").mkdir(exist_ok=True)
         (stage_bundle / "provenance").mkdir(exist_ok=True)
         if include_assessment:
-            shutil.copyfile(
-                run / REQUIREMENT_ASSESSMENT_PATH,
-                stage_bundle / REQUIREMENT_ASSESSMENT_PATH,
+            copy_relative_regular_file(
+                run,
+                REQUIREMENT_ASSESSMENT_PATH,
+                stage_bundle,
+                REQUIREMENT_ASSESSMENT_PATH,
+                limits=_archive_limits(),
             )
         if external_provenance is not None:
-            shutil.copyfile(
-                run / EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
-                stage_bundle / EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH,
+            copy_relative_regular_file(
+                run,
+                EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+                stage_bundle,
+                EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH,
+                limits=_archive_limits(),
             )
         (stage_bundle / "limitations.md").write_text(
             "# Limitations\n\n"
@@ -498,6 +502,13 @@ def export_bundle(
                 handle.write(
                     f"{sha256_file(path)}  {path.relative_to(stage_bundle).as_posix()}\n"
                 )
+        validated_stage_bundle = stage_root / "validated-bundle"
+        stage_directory(
+            stage_bundle,
+            validated_stage_bundle,
+            limits=_archive_limits(),
+        )
+        stage_bundle = validated_stage_bundle
         _zip_dir(stage_bundle, stage_zip)
 
         previous: dict[Path, Path] = {}
@@ -534,13 +545,8 @@ def export_bundle(
 
 @contextmanager
 def _unpack_bundle(bundle: Path) -> Iterator[Path]:
-    if bundle.is_dir():
-        yield bundle
-        return
-    with TemporaryDirectory() as tmp:
-        with zipfile.ZipFile(bundle) as archive:
-            safe_extract(archive, tmp)
-        yield Path(tmp)
+    with staged_path(bundle, limits=_archive_limits()) as root:
+        yield root
 
 
 def _regular_file_inventory(root: Path, checksum_name: str) -> tuple[set[str], list[str]]:
