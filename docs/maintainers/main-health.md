@@ -27,7 +27,11 @@ CodeQL rerun.
 
 The Main Health Deep workflow has read-only repository permissions and no App
 credential. It checks out the exact provider `github.sha` and produces pinned
-nightly and weekly full-suite observations. On every cycle the broker rebuilds
+nightly and weekly full-suite observations. Each deep job retains the complete
+single-suite execution and a bounded 90-minute timeout. This preserves the exact
+test inventory while allowing the measured full suite to complete after the
+60-minute boundary proved insufficient; a timeout still fails closed. On every
+cycle the broker rebuilds
 the authoritative set of recorded run-attempt identities from the protected
 history. SQLite mirrors only a diagnostic high-water mark. The broker fetches
 missing prior attempts after a rerun, blocks merges while a current-main deep

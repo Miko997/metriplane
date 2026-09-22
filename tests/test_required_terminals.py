@@ -289,7 +289,7 @@ def test_main_health_workflow_is_read_only_deep_observation() -> None:
             "name": "Verify exact provider SHA",
             "run": 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
         }
-        assert job["timeout-minutes"] == 60
+        assert job["timeout-minutes"] == 90
     text = workflow_path.read_text(encoding="utf-8")
     assert "Main health / required" not in text
     assert "check_met77_transition.py" not in text
