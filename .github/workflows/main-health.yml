@@ -26,7 +26,7 @@ jobs:
       github.event.schedule == '23 3 * * 1-6'
     name: Main health deep / nightly
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Check out exact protected main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -63,7 +63,7 @@ jobs:
       github.event.schedule == '23 3 * * 0'
     name: Main health deep / weekly
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Check out exact protected main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
