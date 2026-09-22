@@ -13,6 +13,11 @@ from tempfile import TemporaryDirectory
 import yaml
 
 from metriplane.provenance.run_provenance import redact_persisted_config
+from metriplane.publication import (
+    PublicationError,
+    PublicationTarget,
+    publish_transaction,
+)
 from metriplane.schema import frame_time_s
 from metriplane.sentinel.engine import iter_frames
 from metriplane.sentinel.events import (
@@ -319,19 +324,17 @@ def create_bundle(
             zones_path,
             config_path,
         )
-        backup = temp_root / "previous"
-        had_previous = bundle.exists() or bundle.is_symlink()
-        if had_previous and not overwrite:
-            raise ValueError(
-                f"refusing to replace bundle created while staging without --overwrite: {bundle}"
-            )
-        if had_previous:
-            os.replace(bundle, backup)
         try:
-            os.replace(stage, bundle)
-        except Exception:
-            if had_previous and (backup.exists() or backup.is_symlink()):
-                os.replace(backup, bundle)
+            publish_transaction(
+                [PublicationTarget(stage, bundle)],
+                overwrite=overwrite,
+                replace_fn=os.replace,
+            )
+        except PublicationError as exc:
+            if not overwrite and "without overwrite" in str(exc):
+                raise ValueError(
+                    f"refusing to replace bundle created while staging without --overwrite: {bundle}"
+                ) from exc
             raise
     return bundle
 
