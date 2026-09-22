@@ -720,3 +720,91 @@ def test_symlink_and_special_file_inputs_are_rejected(tmp_path: Path) -> None:
                 [PublicationTarget(fifo, tmp_path / "fifo-output")],
                 overwrite=False,
             )
+
+
+def test_darwin_worker_rejects_symlinked_staged_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    source = tmp_path / "source.txt"
+    source.write_text("private", encoding="utf-8")
+    symlink = tmp_path / "staged-link"
+    symlink.symlink_to(source)
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        monkeypatch.setattr(publication.sys, "platform", "darwin")
+        with pytest.raises(PublicationError, match="symlink"):
+            publish_transaction(
+                [PublicationTarget(symlink, parent / "published")],
+                overwrite=False,
+                destination_parent_fd=descriptor,
+            )
+    finally:
+        os.close(descriptor)
+
+
+def test_darwin_worker_ignores_hostile_pythonpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    stage = _stage_directory(tmp_path, "stage", "new")
+    hostile = tmp_path / "hostile"
+    package = hostile / "metriplane"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    marker = tmp_path / "hostile-imported"
+    (package / "publication.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('unsafe')\n",
+        encoding="utf-8",
+    )
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        monkeypatch.setattr(publication.sys, "platform", "darwin")
+        monkeypatch.setenv("PYTHONPATH", str(hostile))
+        result = publish_transaction(
+            [PublicationTarget(stage, parent / "published")],
+            overwrite=False,
+            destination_parent_fd=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+
+    assert result.pointer_path.is_file()
+    assert _value(parent / "published") == "new"
+    assert not marker.exists()
+
+
+def test_darwin_worker_parent_swap_is_fail_closed_for_public_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    moved = tmp_path / "moved"
+    stage = _stage_directory(tmp_path, "stage", "new")
+    real_worker = publication._darwin_pinned_worker_payload
+
+    def swap_then_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        parent.rename(moved)
+        parent.mkdir()
+        return real_worker(*args, **kwargs)
+
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        monkeypatch.setattr(publication.sys, "platform", "darwin")
+        monkeypatch.setattr(publication, "_darwin_pinned_worker_payload", swap_then_run)
+        with pytest.raises(PublicationError, match="identity differs after publication"):
+            publish_transaction(
+                [PublicationTarget(stage, parent / "published")],
+                overwrite=False,
+                destination_parent_fd=descriptor,
+            )
+    finally:
+        os.close(descriptor)
+
+    assert list(parent.iterdir()) == []
+    assert _value(moved / "published") == "new"
