@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
+from metriplane.strict_parsing import load_json_stream
+
 
 SCHEMA_VERSION = "metriplane.publication.v1"
 MANIFEST_NAME = "publication-manifest.json"
@@ -654,15 +656,10 @@ def _read_json(path: Path) -> dict[str, Any]:
             raise PublicationError(f"publication record is not a regular file: {path}")
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
         try:
-            chunks: list[bytes] = []
-            while True:
-                chunk = os.read(descriptor, 1024 * 1024)
-                if not chunk:
-                    break
-                chunks.append(chunk)
+            with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                value = load_json_stream(stream, label=f"publication record {path}")
         finally:
             os.close(descriptor)
-        value = json.loads(b"".join(chunks))
     except (OSError, json.JSONDecodeError) as exc:
         raise PublicationError(f"invalid publication record {path}: {exc}") from exc
     if not isinstance(value, dict):
