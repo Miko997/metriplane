@@ -6,9 +6,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -619,6 +621,39 @@ def test_source_symlink_swap_cannot_touch_victim(
     assert victim.read_text(encoding="utf-8") == "private"
     assert victim.stat().st_mode & 0o777 == 0o600
     assert not destination.exists()
+
+    # Darwin exposes these root-owned compatibility aliases on every supported
+    # local volume.  Only the exact stable aliases are normalized; a changed
+    # alias remains fail-closed and general source symlinks are still rejected.
+    alias_stat = SimpleNamespace(
+        st_dev=1,
+        st_ino=2,
+        st_mode=stat.S_IFLNK | 0o777,
+        st_uid=0,
+        st_ctime_ns=3,
+    )
+    real_lstat = Path.lstat
+    real_readlink = os.readlink
+
+    def root_alias_lstat(path: Path):
+        if path == Path("/var"):
+            return alias_stat
+        return real_lstat(path)
+
+    def root_alias_readlink(path: str | os.PathLike[str]) -> str:
+        if Path(path) == Path("/var"):
+            return "private/var"
+        return real_readlink(path)
+
+    monkeypatch.setattr(publication.sys, "platform", "darwin")
+    monkeypatch.setattr(Path, "lstat", root_alias_lstat)
+    monkeypatch.setattr(os, "readlink", root_alias_readlink)
+    assert publication._canonical_no_follow_source(Path("/var/folders/run.txt")) == Path(
+        "/private/var/folders/run.txt"
+    )
+    monkeypatch.setattr(os, "readlink", lambda _path: "attacker/var")
+    with pytest.raises(PublicationError, match="root alias differs"):
+        publication._canonical_no_follow_source(Path("/var/folders/run.txt"))
 
 
 def test_concurrent_publishers_serialize_without_recovering_live_transaction(

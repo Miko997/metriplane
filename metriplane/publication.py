@@ -35,6 +35,11 @@ _STORE_NAME = f".metriplane-publication-{_OWNER_ID}"
 _SAFE_NAMESPACE = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
 _HEX_64 = re.compile(r"[0-9a-f]{64}")
 _TRANSACTION_ID = re.compile(r"[0-9a-f]{32}")
+_DARWIN_ROOT_ALIASES = {
+    "etc": ("private", "etc"),
+    "tmp": ("private", "tmp"),
+    "var": ("private", "var"),
+}
 
 
 class PublicationError(ValueError):
@@ -176,8 +181,48 @@ def _write_all(descriptor: int, data: bytes) -> None:
         offset += written
 
 
-def _open_regular_no_symlinks(path: Path) -> int:
+def _canonical_no_follow_source(path: Path) -> Path:
+    """Normalize only Darwin's immutable root aliases before no-follow traversal."""
     absolute = Path(os.path.abspath(path))
+    if sys.platform != "darwin" or len(absolute.parts) < 2:
+        return absolute
+    replacement = _DARWIN_ROOT_ALIASES.get(absolute.parts[1])
+    if replacement is None:
+        return absolute
+
+    alias = Path("/") / absolute.parts[1]
+    expected_target = "/".join(replacement)
+    try:
+        before = alias.lstat()
+        target = os.readlink(alias)
+        after = alias.lstat()
+    except OSError as exc:
+        raise PublicationError(f"Darwin publication root alias is unavailable: {alias}") from exc
+    stable_identity = (
+        before.st_dev,
+        before.st_ino,
+        before.st_mode,
+        before.st_uid,
+        before.st_ctime_ns,
+    ) == (
+        after.st_dev,
+        after.st_ino,
+        after.st_mode,
+        after.st_uid,
+        after.st_ctime_ns,
+    )
+    if (
+        not stable_identity
+        or not stat.S_ISLNK(before.st_mode)
+        or before.st_uid != 0
+        or target != expected_target
+    ):
+        raise PublicationError(f"Darwin publication root alias differs: {alias}")
+    return Path("/", *replacement, *absolute.parts[2:])
+
+
+def _open_regular_no_symlinks(path: Path) -> int:
+    absolute = _canonical_no_follow_source(path)
     directory_descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for part in absolute.parts[1:-1]:
