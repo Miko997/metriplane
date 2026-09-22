@@ -40,6 +40,11 @@ from metriplane.atlas.run_references import (
 )
 from metriplane.atlas.training import training_case_from_incident, write_training_case
 from metriplane.provenance.run_provenance import sha256_file
+from metriplane.publication import (
+    PublicationError,
+    PublicationTarget,
+    publish_transaction,
+)
 from metriplane.schema import FrameStateModel
 from metriplane.strict_parsing import iter_jsonl_path
 
@@ -322,25 +327,20 @@ def run_atlas(
             external_source_provenance=external_source_provenance,
         )
 
-        if not overwrite:
-            try:
-                _rename_directory_no_replace(stage, output)
-            except FileExistsError as exc:
+        try:
+            publish_transaction(
+                [PublicationTarget(stage, output)],
+                overwrite=overwrite,
+                replace_fn=os.replace,
+                rename_no_replace_fn=_rename_directory_no_replace,
+            )
+        except PublicationError as exc:
+            if not overwrite and "without overwrite" in str(exc):
                 raise ValueError(
                     "Refusing to overwrite output created while the run was staged "
                     f"without --overwrite: {output}"
                 ) from exc
-        else:
-            backup = temp_root / "previous"
-            had_previous = output.exists() or output.is_symlink()
-            if had_previous:
-                os.replace(output, backup)
-            try:
-                os.replace(stage, output)
-            except Exception:
-                if had_previous and (backup.exists() or backup.is_symlink()):
-                    os.replace(backup, output)
-                raise
+            raise
     return manifest
 
 

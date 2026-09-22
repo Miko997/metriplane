@@ -36,6 +36,11 @@ from metriplane.atlas.models import (
     ExternalSourceProvenanceReference,
     external_source_provenance_reference,
 )
+from metriplane.publication import (
+    PublicationError,
+    PublicationTarget,
+    publish_transaction,
+)
 from metriplane.schema import FrameStateModel
 from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
@@ -511,8 +516,6 @@ def export_bundle(
         stage_bundle = validated_stage_bundle
         _zip_dir(stage_bundle, stage_zip)
 
-        previous: dict[Path, Path] = {}
-        published: list[Path] = []
         try:
             destinations = (bundle_dir, out)
             if not overwrite and any(
@@ -523,22 +526,20 @@ def export_bundle(
                     "refusing to replace bundle output created while staging "
                     "without --overwrite"
                 )
-            for index, destination in enumerate(destinations):
-                if destination.exists() or destination.is_symlink():
-                    backup = stage_root / f"previous-{index}"
-                    os.replace(destination, backup)
-                    previous[destination] = backup
-            os.replace(stage_bundle, bundle_dir)
-            published.append(bundle_dir)
-            os.replace(stage_zip, out)
-            published.append(out)
-        except Exception:
-            for destination in published:
-                if destination.exists() or destination.is_symlink():
-                    _remove_path(destination)
-            for destination, backup in previous.items():
-                if backup.exists() or backup.is_symlink():
-                    os.replace(backup, destination)
+            publish_transaction(
+                [
+                    PublicationTarget(stage_bundle, bundle_dir),
+                    PublicationTarget(stage_zip, out),
+                ],
+                overwrite=overwrite,
+                replace_fn=os.replace,
+            )
+        except PublicationError as exc:
+            if not overwrite and "without overwrite" in str(exc):
+                raise ValueError(
+                    "refusing to replace bundle output created while staging "
+                    "without --overwrite"
+                ) from exc
             raise
     return out
 

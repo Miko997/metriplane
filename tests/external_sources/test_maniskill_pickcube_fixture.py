@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import shutil
@@ -470,13 +471,37 @@ def _assert_no_generic_private_path(raw: bytes, location: object) -> None:
     assert _GENERIC_PRIVATE_PATH.search(raw) is None, location
 
 
+def _zip_metadata_chunks(raw: bytes, archive: zipfile.ZipFile) -> list[bytes]:
+    chunks: list[bytes] = []
+    cursor = 0
+    for info in sorted(archive.infolist(), key=lambda item: item.header_offset):
+        header_start = info.header_offset
+        header_end = header_start + 30
+        assert header_start >= cursor
+        assert raw[header_start : header_start + 4] == b"PK\x03\x04"
+        assert header_end <= len(raw)
+        name_length = int.from_bytes(raw[header_start + 26 : header_start + 28], "little")
+        extra_length = int.from_bytes(raw[header_start + 28 : header_start + 30], "little")
+        payload_start = header_end + name_length + extra_length
+        payload_end = payload_start + info.compress_size
+        assert payload_end <= len(raw)
+        chunks.append(raw[cursor:payload_start])
+        cursor = payload_end
+    chunks.append(raw[cursor:])
+    return chunks
+
+
 def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
     forbidden_bytes = [value.encode("utf-8") for value in forbidden]
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        if path.suffix.lower() == ".zip":
-            with zipfile.ZipFile(path) as archive:
+        raw = path.read_bytes()
+        if zipfile.is_zipfile(io.BytesIO(raw)):
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                for metadata in _zip_metadata_chunks(raw, archive):
+                    assert all(value not in metadata for value in forbidden_bytes), path
+                    _assert_no_generic_private_path(metadata, path)
                 for info in archive.infolist():
                     name = info.filename
                     name_bytes = name.encode("utf-8")
@@ -496,7 +521,6 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
                     )
                     _assert_no_generic_private_path(member, (path, name))
             continue
-        raw = path.read_bytes()
         assert all(value not in raw for value in forbidden_bytes), path
         _assert_no_generic_private_path(raw, path)
 
@@ -664,14 +688,16 @@ def test_checked_in_fixtures_contain_no_local_paths(tmp_path: Path) -> None:
     for root in (INCIDENT_FIXTURE, CONTROL_FIXTURE):
         _assert_no_path_leak(root, forbidden)
 
-    for archive_name, member_name, member in (
-        ("name.zip", "C:/private/data.json", b"{}"),
-        ("content.zip", "data.json", b'{"source":"/home/private/data.json"}'),
+    for archive_name, member_name, member, comment in (
+        ("name.zip", "C:/private/data.json", b"{}", b""),
+        ("content.blob", "data.json", b'{"source":"/home/private/data.json"}', b""),
+        ("comment.blob", "data.json", b"{}", b"/home/private/comment"),
     ):
         root = tmp_path / archive_name.removesuffix(".zip")
         root.mkdir()
         with zipfile.ZipFile(root / archive_name, "w") as archive:
             archive.writestr(member_name, member)
+            archive.comment = comment
         with pytest.raises(AssertionError):
             _assert_no_path_leak(root, [])
 
