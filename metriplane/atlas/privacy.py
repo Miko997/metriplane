@@ -4,13 +4,17 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import os
 import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from metriplane.public_export import (
+    canonical_public_bytes,
+    replace_private_file,
+    write_private_file,
+)
+from metriplane.publication import PublicationTarget, publish_transaction
 from metriplane.strict_parsing import iter_jsonl_path, load_json_path
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -105,7 +109,9 @@ def privacy_report(
             raise ValueError(f"run path must not be a symlink: {path.relative_to(run)}")
         if path.is_file():
             files.append(path)
-    video_files = [str(path.relative_to(run)) for path in files if path.suffix.lower() in VIDEO_EXTENSIONS]
+    video_files = [
+        str(path.relative_to(run)) for path in files if path.suffix.lower() in VIDEO_EXTENSIONS
+    ]
     identity_hits: list[str] = []
     for path in files:
         if path.suffix.lower() not in {".json", ".jsonl", ".yaml", ".yml", ".md"}:
@@ -114,16 +120,11 @@ def privacy_report(
         for key in IDENTITY_KEYS:
             if key in text:
                 identity_hits.append(f"{path.relative_to(run)}:{key}")
-    displayed_run = str(run)
-    if out_path is not None:
-        try:
-            Path(out_path).resolve().relative_to(run.resolve())
-            displayed_run = "."
-        except ValueError:
-            pass
     result = {
         "schema_version": "metriplane.atlas.privacy_report.v1",
-        "run_dir": displayed_run,
+        # A privacy report is itself shareable evidence. Never persist a host
+        # checkout, user-home, or run-root path into that public projection.
+        "run_dir": ".",
         "raw_video_files": video_files,
         "identity_key_hits": sorted(identity_hits),
         "video_free": not video_files,
@@ -135,8 +136,8 @@ def privacy_report(
         ],
     }
     if out_path:
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(out_path).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        target = Path(out_path)
+        replace_private_file(target, canonical_public_bytes(result))
     return result
 
 
@@ -327,25 +328,27 @@ def pseudonymize_run(
 
     with TemporaryDirectory(prefix=f".{out.name}-", dir=out.parent) as temp_dir:
         stage = Path(temp_dir) / "pseudonymized"
-        stage.mkdir()
+        stage.mkdir(mode=0o700)
         for rel in ANONYMIZED_JSONL_FILES:
             rows = documents[rel]
-            with (stage / rel).open("w", encoding="utf-8") as handle:
-                for row in rows:
-                    pseudonymized = _pseudonymize(row, proxies, text_replacements)
-                    handle.write(json.dumps(pseudonymized, sort_keys=True) + "\n")
+            write_private_file(
+                stage / rel,
+                b"".join(
+                    canonical_public_bytes(_pseudonymize(row, proxies, text_replacements))
+                    for row in rows
+                ),
+            )
         for rel in ANONYMIZED_JSON_FILES:
             if rel in documents:
-                (stage / rel).write_text(
-                    json.dumps(
-                        _pseudonymize(documents[rel], proxies, text_replacements),
-                        indent=2,
-                        sort_keys=True,
-                    ) + "\n",
-                    encoding="utf-8",
+                write_private_file(
+                    stage / rel,
+                    canonical_public_bytes(
+                        _pseudonymize(documents[rel], proxies, text_replacements)
+                    ),
                 )
-        (stage / "privacy_metadata.json").write_text(
-            json.dumps(
+        write_private_file(
+            stage / "privacy_metadata.json",
+            canonical_public_bytes(
                 {
                     "schema_version": "metriplane.atlas.pseudonymization.v1",
                     "privacy_method": "deterministic_pseudonymization",
@@ -362,31 +365,17 @@ def pseudonymize_run(
                         ),
                     ],
                 },
-                indent=2,
-                sort_keys=True,
-            ) + "\n",
-            encoding="utf-8",
+            ),
         )
-        backup = Path(temp_dir) / "previous"
-        had_previous = out.exists() or out.is_symlink()
-        if had_previous and not overwrite:
-            raise ValueError(
-                "refusing to replace pseudonymized output created while staging "
-                f"without --overwrite: {out}"
-            )
-        if had_previous:
-            os.replace(out, backup)
-        try:
-            os.replace(stage, out)
-        except Exception:
-            if had_previous and (backup.exists() or backup.is_symlink()):
-                os.replace(backup, out)
-            raise
+        publish_transaction(
+            [PublicationTarget(stage, out)],
+            overwrite=overwrite,
+        )
     return {
         "schema_version": "metriplane.atlas.pseudonymized_proxy.v1",
         "privacy_method": "deterministic_pseudonymization",
-        "source_run_dir": str(run),
-        "out_dir": str(out),
+        "source_run_dir": ".",
+        "out_dir": ".",
         "mapped_values": len(proxies),
         "mapping_exported": False,
     }

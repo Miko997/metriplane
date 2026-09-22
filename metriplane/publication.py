@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -27,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
-from metriplane.strict_parsing import load_json_stream
+from metriplane.strict_parsing import load_json, load_json_stream
 
 
 SCHEMA_VERSION = "metriplane.publication.v1"
@@ -142,7 +143,8 @@ def _require_real_directory(
     mode: int | None = None,
     owner: bool = False,
 ) -> os.stat_result:
-    info = path.lstat()
+    descriptor = _descriptor_alias(path)
+    info = os.fstat(descriptor) if descriptor is not None else path.lstat()
     if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
         raise PublicationError(f"publication path is not a real directory: {path}")
     if mode is not None and stat.S_IMODE(info.st_mode) != mode:
@@ -150,6 +152,27 @@ def _require_real_directory(
     if owner and hasattr(os, "getuid") and info.st_uid != os.getuid():
         raise PublicationError(f"publication directory owner differs: {path}")
     return info
+
+
+def _descriptor_path(descriptor: int) -> Path:
+    """Return a process-local path whose children remain relative to an open fd."""
+    if os.name != "posix":
+        raise PublicationError("descriptor-pinned publication is unsupported on this platform")
+    if sys.platform.startswith("linux"):
+        root = Path("/proc/self/fd")
+        if not root.exists():
+            raise PublicationError("descriptor filesystem is unavailable")
+        return root / str(descriptor)
+    raise PublicationError("descriptor-pinned publication is unsupported on this platform")
+
+
+def _descriptor_alias(path: Path) -> int | None:
+    parts = path.parts
+    if len(parts) == 5 and parts[:4] == ("/", "proc", "self", "fd") and parts[4].isdigit():
+        return int(parts[4])
+    if len(parts) == 4 and parts[:3] == ("/", "dev", "fd") and parts[3].isdigit():
+        return int(parts[3])
+    return None
 
 
 def _mkdir_private(path: Path) -> None:
@@ -167,7 +190,12 @@ def _mkdir_private(path: Path) -> None:
 
 
 def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    alias = _descriptor_alias(path)
+    descriptor = (
+        os.dup(alias)
+        if alias is not None
+        else os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    )
     try:
         os.fsync(descriptor)
     finally:
@@ -225,9 +253,18 @@ def _canonical_no_follow_source(path: Path) -> Path:
 
 def _open_regular_no_symlinks(path: Path) -> int:
     absolute = _canonical_no_follow_source(path)
-    directory_descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    parts = absolute.parts
+    if len(parts) > 5 and parts[:4] == ("/", "proc", "self", "fd") and parts[4].isdigit():
+        directory_descriptor = os.dup(int(parts[4]))
+        directory_parts = parts[5:-1]
+    elif len(parts) > 4 and parts[:3] == ("/", "dev", "fd") and parts[3].isdigit():
+        directory_descriptor = os.dup(int(parts[3]))
+        directory_parts = parts[4:-1]
+    else:
+        directory_descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        directory_parts = parts[1:-1]
     try:
-        for part in absolute.parts[1:-1]:
+        for part in directory_parts:
             next_descriptor = os.open(
                 part,
                 os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
@@ -1080,8 +1117,9 @@ def _rollback(
     journal: dict[str, Any],
     manifest: Mapping[str, Any],
     replace_fn: Callable[[Path, Path], None],
+    publication_parent: Path | None = None,
 ) -> None:
-    parent = Path(str(journal["parent"]))
+    parent = publication_parent or Path(str(journal["parent"]))
     destinations = _journal_destinations(journal, parent)
     backup_root = _transaction_root(namespace_root, journal)
     overwrite, backed_up, previous, published, operation = _journal_progress(
@@ -1208,9 +1246,11 @@ def _recover_publication_locked(
     namespace: str,
     *,
     replace_fn: Callable[[Path, Path], None] = os.replace,
+    recorded_parent: Path | None = None,
 ) -> PublicationResult | None:
     """Recover one journaled transaction without inventing missing state."""
-    publication_parent = Path(parent).resolve()
+    publication_parent = Path(parent) if recorded_parent is not None else Path(parent).resolve()
+    durable_parent = recorded_parent or publication_parent
     namespace = _safe_namespace(namespace)
     namespace_root, journal_path, pointer_path = _paths(publication_parent, namespace)
     if not _lexists(journal_path):
@@ -1221,7 +1261,7 @@ def _recover_publication_locked(
     if (
         journal.get("schema_version") != SCHEMA_VERSION
         or journal.get("publication_id") != namespace
-        or journal.get("parent") != str(publication_parent)
+        or journal.get("parent") != str(durable_parent)
     ):
         raise PublicationError("publication journal binding differs")
     generation_id = journal.get("generation_id")
@@ -1271,6 +1311,7 @@ def _recover_publication_locked(
         journal=journal,
         manifest=manifest,
         replace_fn=replace_fn,
+        publication_parent=publication_parent,
     )
     return None
 
@@ -1301,6 +1342,8 @@ def _publish_transaction_locked(
     replace_fn: Callable[[Path, Path], None] = os.replace,
     rename_no_replace_fn: Callable[[Path, Path], None] = rename_no_replace,
     failpoint: Callable[[str], None] | None = None,
+    operation_parent: Path | None = None,
+    recorded_parent: Path | None = None,
 ) -> PublicationResult:
     """Publish staged sibling artifacts through a durable generation transaction."""
     if not targets:
@@ -1309,8 +1352,15 @@ def _publish_transaction_locked(
     raw_parent = raw[0].destination.parent
     if any(target.destination.parent != raw_parent for target in raw):
         raise PublicationError("publication destinations must share one parent")
-    raw_parent.mkdir(parents=True, exist_ok=True)
-    parent = raw_parent.resolve()
+    if operation_parent is None:
+        raw_parent.mkdir(parents=True, exist_ok=True)
+        parent = raw_parent.resolve()
+        durable_parent = parent
+    else:
+        parent = operation_parent
+        if recorded_parent is None:
+            raise PublicationError("descriptor-pinned publication lacks durable parent identity")
+        durable_parent = recorded_parent
     normalized = [
         PublicationTarget(target.staged, parent / target.destination.name) for target in raw
     ]
@@ -1326,7 +1376,12 @@ def _publish_transaction_locked(
         raise PublicationError("publication namespace does not bind destination set")
     selected_namespace = canonical_namespace
     namespace_root, journal_path, pointer_path = _paths(parent, selected_namespace)
-    _recover_publication_locked(parent, selected_namespace, replace_fn=replace_fn)
+    _recover_publication_locked(
+        parent,
+        selected_namespace,
+        replace_fn=replace_fn,
+        recorded_parent=durable_parent if operation_parent is not None else None,
+    )
     _validate_destination_ownership(
         namespace_root,
         selected_namespace,
@@ -1358,7 +1413,7 @@ def _publish_transaction_locked(
         "previous": [],
         "previous_targets": previous_targets,
         "publication_id": selected_namespace,
-        "parent": str(parent),
+        "parent": str(durable_parent),
         "phase": "prepared",
         "published": [],
         "rollback": None,
@@ -1468,7 +1523,12 @@ def _publish_transaction_locked(
     except PublicationCrash:
         raise
     except Exception:
-        _recover_publication_locked(parent, selected_namespace, replace_fn=replace_fn)
+        _recover_publication_locked(
+            parent,
+            selected_namespace,
+            replace_fn=replace_fn,
+            recorded_parent=durable_parent if operation_parent is not None else None,
+        )
         raise
     return PublicationResult(
         selected_namespace,
@@ -1476,6 +1536,177 @@ def _publish_transaction_locked(
         manifest_sha256,
         pointer_path,
     )
+
+
+def _darwin_pinned_worker_payload(
+    targets: Sequence[PublicationTarget],
+    *,
+    overwrite: bool,
+    namespace: str,
+    recorded_parent: Path,
+    destination_parent_fd: int,
+) -> dict[str, Any]:
+    """Run path operations from a process cwd pinned to the inherited directory fd."""
+    payload = {
+        "destination_names": [Path(target.destination).name for target in targets],
+        "destination_parent_fd": destination_parent_fd,
+        "namespace": namespace,
+        "overwrite": overwrite,
+        "recorded_parent": str(recorded_parent),
+        "schema_version": "metriplane.pinned-publication-worker.v1",
+        "staged_paths": [str(Path(os.path.abspath(target.staged))) for target in targets],
+    }
+    completed = subprocess.run(
+        [sys.executable, "-I", "-m", "metriplane.publication", "--pinned-publication-worker"],
+        check=False,
+        input=_canonical(payload),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        pass_fds=(destination_parent_fd,),
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise PublicationError(
+            "descriptor-pinned Darwin publication worker failed" + (f": {detail}" if detail else "")
+        )
+    try:
+        result = load_json(completed.stdout, label="descriptor-pinned Darwin worker result")
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PublicationError("descriptor-pinned Darwin worker result is invalid") from exc
+    if not isinstance(result, dict) or _canonical(result) != completed.stdout:
+        raise PublicationError("descriptor-pinned Darwin worker result is noncanonical")
+    return result
+
+
+def _publish_transaction_darwin_pinned(
+    targets: Sequence[PublicationTarget],
+    *,
+    overwrite: bool,
+    namespace: str,
+    recorded_parent: Path,
+    destination_parent_fd: int,
+) -> PublicationResult:
+    result = _darwin_pinned_worker_payload(
+        targets,
+        overwrite=overwrite,
+        namespace=namespace,
+        recorded_parent=recorded_parent,
+        destination_parent_fd=destination_parent_fd,
+    )
+    required = {"generation_id", "manifest_sha256", "namespace", "schema_version"}
+    if (
+        set(result) != required
+        or result.get("schema_version") != "metriplane.pinned-publication-result.v1"
+    ):
+        raise PublicationError("descriptor-pinned Darwin worker result shape differs")
+    if result.get("namespace") != namespace:
+        raise PublicationError("descriptor-pinned Darwin worker namespace differs")
+    generation_id = result.get("generation_id")
+    manifest_sha256 = result.get("manifest_sha256")
+    if not isinstance(generation_id, str) or _HEX_64.fullmatch(generation_id) is None:
+        raise PublicationError("descriptor-pinned Darwin generation identity is invalid")
+    if not isinstance(manifest_sha256, str) or _HEX_64.fullmatch(manifest_sha256) is None:
+        raise PublicationError("descriptor-pinned Darwin manifest identity is invalid")
+    try:
+        pinned_info = os.fstat(destination_parent_fd)
+        path_info = os.stat(recorded_parent, follow_symlinks=False)
+    except OSError as exc:
+        raise PublicationError("descriptor-pinned Darwin parent readback is unavailable") from exc
+    if (
+        not stat.S_ISDIR(pinned_info.st_mode)
+        or not stat.S_ISDIR(path_info.st_mode)
+        or stat.S_ISLNK(path_info.st_mode)
+        or (pinned_info.st_dev, pinned_info.st_ino) != (path_info.st_dev, path_info.st_ino)
+    ):
+        raise PublicationError("descriptor-pinned Darwin parent identity differs after publication")
+    pointer_path = recorded_parent / _STORE_NAME / "namespaces" / namespace / "current.json"
+    return PublicationResult(namespace, generation_id, manifest_sha256, pointer_path)
+
+
+def _run_pinned_publication_worker(raw: bytes) -> int:
+    """Internal subprocess entry point; the inherited cwd capability is the authority."""
+    try:
+        payload = load_json(raw, label="descriptor-pinned Darwin worker input")
+        if not isinstance(payload, dict) or _canonical(payload) != raw:
+            raise PublicationError("pinned worker input is noncanonical")
+        if (
+            set(payload)
+            != {
+                "destination_names",
+                "destination_parent_fd",
+                "namespace",
+                "overwrite",
+                "recorded_parent",
+                "schema_version",
+                "staged_paths",
+            }
+            or payload.get("schema_version") != "metriplane.pinned-publication-worker.v1"
+        ):
+            raise PublicationError("pinned worker input shape differs")
+        descriptor = payload.get("destination_parent_fd")
+        names = payload.get("destination_names")
+        staged_paths = payload.get("staged_paths")
+        recorded_parent = payload.get("recorded_parent")
+        namespace = payload.get("namespace")
+        overwrite = payload.get("overwrite")
+        if (
+            not isinstance(descriptor, int)
+            or isinstance(descriptor, bool)
+            or not isinstance(names, list)
+            or not names
+            or not isinstance(staged_paths, list)
+            or len(staged_paths) != len(names)
+            or not isinstance(recorded_parent, str)
+            or not Path(recorded_parent).is_absolute()
+            or not isinstance(namespace, str)
+            or not isinstance(overwrite, bool)
+        ):
+            raise PublicationError("pinned worker input values differ")
+        if any(
+            not isinstance(name, str)
+            or name in {"", ".", "..", _STORE_NAME}
+            or Path(name).name != name
+            for name in names
+        ):
+            raise PublicationError("pinned worker destination name is unsafe")
+        if len(set(names)) != len(names):
+            raise PublicationError("pinned worker destination names differ")
+        if any(not isinstance(path, str) or not Path(path).is_absolute() for path in staged_paths):
+            raise PublicationError("pinned worker staged path is invalid")
+        pinned = os.fstat(descriptor)
+        if not stat.S_ISDIR(pinned.st_mode):
+            raise PublicationError("pinned worker descriptor is not a directory")
+        os.fchdir(descriptor)
+        operation_parent = Path(".")
+        _require_real_directory(operation_parent)
+        targets = [
+            PublicationTarget(Path(staged), operation_parent / name)
+            for staged, name in zip(staged_paths, names, strict=True)
+        ]
+        canonical_namespace = publication_namespace([target.destination for target in targets])
+        if _safe_namespace(namespace) != canonical_namespace:
+            raise PublicationError("pinned worker namespace binding differs")
+        namespace_root, _, _ = _paths(operation_parent, namespace)
+        with _publication_lock(_store_root(namespace_root)):
+            result = _publish_transaction_locked(
+                targets,
+                overwrite=overwrite,
+                namespace=namespace,
+                operation_parent=operation_parent,
+                recorded_parent=Path(recorded_parent),
+            )
+        output = {
+            "generation_id": result.generation_id,
+            "manifest_sha256": result.manifest_sha256,
+            "namespace": result.namespace,
+            "schema_version": "metriplane.pinned-publication-result.v1",
+        }
+        sys.stdout.buffer.write(_canonical(output))
+        sys.stdout.buffer.flush()
+        return 0
+    except (OSError, PublicationError, ValueError, json.JSONDecodeError) as exc:
+        print(f"pinned publication blocked: {exc}", file=sys.stderr)
+        return 3
 
 
 def publish_transaction(
@@ -1486,6 +1717,7 @@ def publish_transaction(
     replace_fn: Callable[[Path, Path], None] = os.replace,
     rename_no_replace_fn: Callable[[Path, Path], None] = rename_no_replace,
     failpoint: Callable[[str], None] | None = None,
+    destination_parent_fd: int | None = None,
 ) -> PublicationResult:
     """Publish staged sibling artifacts through a serialized transaction."""
     if not targets:
@@ -1494,8 +1726,45 @@ def publish_transaction(
     raw_parent = destinations[0].parent
     if any(destination.parent != raw_parent for destination in destinations):
         raise PublicationError("publication destinations must share one parent")
-    raw_parent.mkdir(parents=True, exist_ok=True)
-    parent = raw_parent.resolve()
+    if destination_parent_fd is None:
+        raw_parent.mkdir(parents=True, exist_ok=True)
+        parent = raw_parent.resolve()
+        recorded_parent = parent
+    else:
+        try:
+            pinned_info = os.fstat(destination_parent_fd)
+            path_info = os.stat(raw_parent, follow_symlinks=False)
+        except OSError as exc:
+            raise PublicationError("descriptor-pinned publication parent is unavailable") from exc
+        if (
+            not stat.S_ISDIR(pinned_info.st_mode)
+            or not stat.S_ISDIR(path_info.st_mode)
+            or stat.S_ISLNK(path_info.st_mode)
+            or (pinned_info.st_dev, pinned_info.st_ino) != (path_info.st_dev, path_info.st_ino)
+        ):
+            raise PublicationError("descriptor-pinned publication parent identity differs")
+        recorded_parent = Path(os.path.abspath(raw_parent))
+        if sys.platform == "darwin":
+            if (
+                replace_fn is not os.replace
+                or rename_no_replace_fn is not rename_no_replace
+                or failpoint is not None
+            ):
+                raise PublicationError(
+                    "descriptor-pinned Darwin publication requires default transaction operations"
+                )
+            canonical_namespace = publication_namespace(destinations)
+            if namespace is not None and _safe_namespace(namespace) != canonical_namespace:
+                raise PublicationError("publication namespace does not bind destination set")
+            return _publish_transaction_darwin_pinned(
+                targets,
+                overwrite=overwrite,
+                namespace=canonical_namespace,
+                recorded_parent=recorded_parent,
+                destination_parent_fd=destination_parent_fd,
+            )
+        parent = _descriptor_path(destination_parent_fd)
+        _require_real_directory(parent)
     normalized_destinations = [parent / destination.name for destination in destinations]
     canonical_namespace = publication_namespace(normalized_destinations)
     if namespace is not None and _safe_namespace(namespace) != canonical_namespace:
@@ -1510,6 +1779,8 @@ def publish_transaction(
             replace_fn=replace_fn,
             rename_no_replace_fn=rename_no_replace_fn,
             failpoint=failpoint,
+            operation_parent=parent if destination_parent_fd is not None else None,
+            recorded_parent=recorded_parent if destination_parent_fd is not None else None,
         )
 
 
@@ -1524,3 +1795,9 @@ __all__ = [
     "recover_publication",
     "rename_no_replace",
 ]
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["--pinned-publication-worker"]:
+        raise SystemExit("unsupported publication module invocation")
+    raise SystemExit(_run_pinned_publication_worker(sys.stdin.buffer.read()))

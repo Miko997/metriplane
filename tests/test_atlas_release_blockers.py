@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 import metriplane.atlas.bundles as atlas_bundles
+import metriplane.atlas.privacy as atlas_privacy
 import metriplane.atlas.runtime as atlas_runtime
 from metriplane.atlas.bundles import export_bundle, verify_bundle
 from metriplane.atlas.domain_packs import load_domain_pack, validate_domain_pack
@@ -574,14 +575,16 @@ def test_failed_pseudonymized_publish_restores_previous_output(
     output.mkdir()
     sentinel = output / "important.txt"
     sentinel.write_text("keep", encoding="utf-8")
-    real_replace = os.replace
+    real_publish = atlas_privacy.publish_transaction
 
-    def fail_publish(source: str | Path, destination: str | Path) -> None:
-        if Path(source).name == "pseudonymized" and Path(destination) == output:
-            raise OSError("simulated pseudonymized publish failure")
-        real_replace(source, destination)
+    def fail_publish(targets, *, overwrite):  # type: ignore[no-untyped-def]
+        def failpoint(name: str) -> None:
+            if name == "publish_0":
+                raise OSError("simulated pseudonymized publish failure")
 
-    monkeypatch.setattr("metriplane.atlas.privacy.os.replace", fail_publish)
+        return real_publish(targets, overwrite=overwrite, failpoint=failpoint)
+
+    monkeypatch.setattr(atlas_privacy, "publish_transaction", fail_publish)
 
     with pytest.raises(OSError, match="simulated pseudonymized publish failure"):
         anonymize_run(atlas_run, output, overwrite=True)
