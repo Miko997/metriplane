@@ -28,6 +28,7 @@ Integration test (TestStartStatusStop):
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import signal
@@ -1641,6 +1642,92 @@ def test_launcher_darwin_identity_and_group_inventory_use_native_providers(monke
 
     assert lm._capture_process_identity(72) == expected
     assert lm._process_group_size(72) == 2
+
+
+def test_launcher_darwin_status_searches_zombie_processes(monkeypatch) -> None:
+    import metriplane.launcher as lm
+
+    class FakeFunction:
+        def __init__(self, implementation):
+            self.implementation = implementation
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.implementation(*args)
+
+    def read_info(pid: int, flavor: int, arg: int, info_pointer, size: int) -> int:
+        assert (pid, flavor, arg) == (72, 3, 1)
+        info_pointer._obj.pbi_pid = pid
+        info_pointer._obj.pbi_status = 5
+        return size
+
+    class FakeLibproc:
+        proc_pidinfo = FakeFunction(read_info)
+
+    monkeypatch.setattr(lm.sys, "platform", "darwin")
+    monkeypatch.setattr(lm.ctypes, "CDLL", lambda *_args, **_kwargs: FakeLibproc())
+
+    assert lm._darwin_process_status(72) == 5
+
+
+@pytest.mark.parametrize(("provider_errno", "expected"), [(errno.ESRCH, 0), (errno.EPERM, None)])
+def test_launcher_darwin_group_only_skips_verified_raced_away_pid(
+    monkeypatch, provider_errno, expected
+) -> None:
+    import metriplane.launcher as lm
+
+    class FakeFunction:
+        def __init__(self, implementation):
+            self.implementation = implementation
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.implementation(*args)
+
+    def list_group(_pgid, pids, _size):
+        if pids is None:
+            return 1
+        pids[0] = 72
+        return 1
+
+    def read_info(_pid, flavor, arg, _info, _size):
+        assert (flavor, arg) == (3, 1)
+        lm.ctypes.set_errno(provider_errno)
+        return 0
+
+    class FakeLibproc:
+        proc_listpgrppids = FakeFunction(list_group)
+        proc_pidinfo = FakeFunction(read_info)
+
+    monkeypatch.setattr(lm.sys, "platform", "darwin")
+    monkeypatch.setattr(lm.ctypes, "CDLL", lambda *_args, **_kwargs: FakeLibproc())
+
+    assert lm._darwin_process_group_size(9) == expected
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin zombie kernel semantics")
+def test_launcher_darwin_unreaped_zombie_is_not_live() -> None:
+    import metriplane.launcher as lm
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    try:
+        pgid = os.getpgid(proc.pid)
+        proc.kill()
+        deadline = time.monotonic() + 5
+        status = None
+        while status != 5 and time.monotonic() < deadline:
+            status = lm._darwin_process_status(proc.pid)
+            time.sleep(0.01)
+        assert status == 5
+        assert lm._is_running(proc.pid) is False
+        assert lm._darwin_process_group_size(pgid) == 0
+    finally:
+        proc.wait(timeout=5)
 
 
 def test_launcher_unknown_posix_group_inventory_blocks_cleanup(monkeypatch) -> None:

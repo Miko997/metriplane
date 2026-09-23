@@ -9,6 +9,7 @@ Uses subprocess without shell=True for security.
 """
 
 import ctypes
+import errno
 import select
 import subprocess
 import signal
@@ -399,9 +400,12 @@ def _darwin_process_group_size(pgid: int) -> int | None:
                 continue
             info = _DarwinProcBsdInfo()
             size = ctypes.sizeof(info)
-            read = libproc.proc_pidinfo(int(listed_pid), 3, 0, ctypes.byref(info), size)
+            ctypes.set_errno(0)
+            read = libproc.proc_pidinfo(int(listed_pid), 3, 1, ctypes.byref(info), size)
             if read == 0:
-                continue
+                if ctypes.get_errno() == errno.ESRCH:
+                    continue
+                return None
             if read != size:
                 return None
             if int(info.pbi_pgid) != int(pgid):

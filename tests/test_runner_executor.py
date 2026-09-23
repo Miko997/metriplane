@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import select
 import signal
@@ -441,8 +442,9 @@ def test_darwin_group_inventory_uses_exact_group_api_and_excludes_zombies(
         pids[1] = 42
         return 2
 
-    def read_info(pid: int, flavor: int, _arg: int, info_pointer, size: int) -> int:
+    def read_info(pid: int, flavor: int, arg: int, info_pointer, size: int) -> int:
         assert flavor == 3
+        assert arg == 1
         info = info_pointer._obj
         info.pbi_pid = pid
         info.pbi_pgid = 9
@@ -460,6 +462,44 @@ def test_darwin_group_inventory_uses_exact_group_api_and_excludes_zombies(
     assert calls[0] == (9, True, 0)
     assert calls[1][0] == 9
     assert calls[1][1] is False
+
+
+@pytest.mark.parametrize(("provider_errno", "expected"), [(errno.ESRCH, 0), (errno.EPERM, None)])
+def test_darwin_group_inventory_only_skips_verified_raced_away_pid(
+    monkeypatch: pytest.MonkeyPatch,
+    provider_errno: int,
+    expected: int | None,
+) -> None:
+    import metriplane.runner.executor as executor_module
+
+    class FakeFunction:
+        def __init__(self, implementation):
+            self.implementation = implementation
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.implementation(*args)
+
+    def list_group(_pgid: int, pids, _size: int) -> int:
+        if pids is None:
+            return 1
+        pids[0] = 41
+        return 1
+
+    def read_info(_pid: int, flavor: int, arg: int, _info, _size: int) -> int:
+        assert (flavor, arg) == (3, 1)
+        executor_module.ctypes.set_errno(provider_errno)
+        return 0
+
+    class FakeLibproc:
+        proc_listpgrppids = FakeFunction(list_group)
+        proc_pidinfo = FakeFunction(read_info)
+
+    monkeypatch.setattr(executor_module.sys, "platform", "darwin")
+    monkeypatch.setattr(executor_module.ctypes, "CDLL", lambda *_args, **_kwargs: FakeLibproc())
+
+    assert executor_module._darwin_process_group_size(9) == expected
 
 
 def test_darwin_group_inventory_fails_closed_when_provider_fills_buffer(

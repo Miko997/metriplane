@@ -799,7 +799,11 @@ def _darwin_process_status(pid: int) -> int | None:
         libproc.proc_pidinfo.restype = ctypes.c_int
         info = _DarwinProcBsdInfo()
         size = ctypes.sizeof(info)
-        if libproc.proc_pidinfo(int(pid), 3, 0, ctypes.byref(info), size) != size:
+        # A non-zero PROC_PIDTBSDINFO argument asks XNU to search zombproc as
+        # well as allproc. Without it an unreaped zombie is indistinguishable
+        # from an unavailable provider result and kill(pid, 0) reports it as
+        # present.
+        if libproc.proc_pidinfo(int(pid), 3, 1, ctypes.byref(info), size) != size:
             return None
         if int(info.pbi_pid) != int(pid):
             return None
@@ -843,9 +847,12 @@ def _darwin_process_group_size(pgid: int) -> int | None:
                 continue
             info = _DarwinProcBsdInfo()
             size = ctypes.sizeof(info)
-            read = libproc.proc_pidinfo(int(listed_pid), 3, 0, ctypes.byref(info), size)
+            ctypes.set_errno(0)
+            read = libproc.proc_pidinfo(int(listed_pid), 3, 1, ctypes.byref(info), size)
             if read == 0:
-                continue
+                if ctypes.get_errno() == errno.ESRCH:
+                    continue
+                return None
             if read != size:
                 return None
             if int(info.pbi_pgid) != int(pgid):
