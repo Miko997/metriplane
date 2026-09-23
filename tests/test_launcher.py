@@ -33,6 +33,7 @@ import os
 import signal
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import threading
@@ -87,6 +88,19 @@ from metriplane.paths import PlatformPaths
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _process_double(pid: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        pid=pid,
+        _metriplane_test_identity={
+            "pid": pid,
+            "pgid": pid,
+            "birth": f"test-double:{pid}",
+            "executable": "test-double",
+            "argv": ["test-double"],
+        },
+    )
 
 
 def _free_port() -> int:
@@ -441,7 +455,7 @@ class TestLauncherDefaults:
 
         paths = _test_platform_paths(tmp_path / "platform")
         captured = {}
-        processes = iter((SimpleNamespace(pid=101), SimpleNamespace(pid=102)))
+        processes = iter((_process_double(101), _process_double(102)))
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
         monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
@@ -476,7 +490,7 @@ class TestLauncherDefaults:
 
         paths = _test_platform_paths(tmp_path / "platform")
         captured = {}
-        processes = iter((SimpleNamespace(pid=101), SimpleNamespace(pid=102)))
+        processes = iter((_process_double(101), _process_double(102)))
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
         monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
@@ -1110,7 +1124,11 @@ class TestWindowsProcessLifecycle:
         paths = _test_platform_paths(tmp_path)
         alive = {71}
         calls: list[list[str]] = []
-        lm._save_state({"runner": {"pid": 71, "pgid": 71, "port": 9000}}, paths)
+        identity = _process_double(71)._metriplane_test_identity
+        lm._save_state(
+            {"runner": {"pid": 71, "pgid": 71, "port": 9000, "identity": identity}},
+            paths,
+        )
 
         def fake_run(command, **_kwargs):
             calls.append(command)
@@ -1120,6 +1138,11 @@ class TestWindowsProcessLifecycle:
             return self._tasklist_result(command, alive)
 
         monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(
+            lm,
+            "_process_identity_matches",
+            lambda expected: int(expected["pid"]) in alive,
+        )
         monkeypatch.setattr(lm.subprocess, "run", fake_run)
         monkeypatch.setattr(
             lm.os,
@@ -1146,29 +1169,24 @@ class TestWindowsProcessLifecycle:
 
         assert lm._get_pgid(41) == 41
 
-    def test_launch_uses_windows_process_group_flags(self, tmp_path, monkeypatch):
+    def test_windows_launch_fails_closed_without_exact_identity_provider(
+        self, tmp_path, monkeypatch
+    ):
         import metriplane.launcher as lm
 
-        captured = {}
-
-        def fake_popen(command, **kwargs):
-            captured["command"] = command
-            captured.update(kwargs)
-            return SimpleNamespace(pid=42)
-
         monkeypatch.setattr(lm, "_is_windows", lambda: True)
-        monkeypatch.setattr(lm.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
-        monkeypatch.setattr(lm.subprocess, "Popen", fake_popen)
-
-        process = lm._launch(
-            [sys.executable, "-c", "pass"],
-            tmp_path / "child.log",
-            tmp_path,
+        monkeypatch.setattr(
+            lm.subprocess,
+            "Popen",
+            lambda *_args, **_kwargs: pytest.fail("unsupported Windows child must not start"),
         )
 
-        assert process.pid == 42
-        assert captured["creationflags"] == 0x200
-        assert "start_new_session" not in captured
+        with pytest.raises(lm._LauncherStateError, match="exact Windows process-identity"):
+            lm._launch(
+                [sys.executable, "-c", "pass"],
+                tmp_path / "child.log",
+                tmp_path,
+            )
 
     def test_stop_uses_taskkill_tree_without_posix_signals(self, monkeypatch):
         import metriplane.launcher as lm
@@ -1177,6 +1195,7 @@ class TestWindowsProcessLifecycle:
         running = iter((True, False))
         monkeypatch.setattr(lm, "_is_windows", lambda: True)
         monkeypatch.setattr(lm, "_is_running", lambda _pid: next(running))
+        monkeypatch.setattr(lm, "_process_identity_matches", lambda _identity: True)
         monkeypatch.setattr(lm.subprocess, "run", lambda command, **_kwargs: calls.append(command))
         monkeypatch.setattr(
             lm.os,
@@ -1184,7 +1203,11 @@ class TestWindowsProcessLifecycle:
             lambda *_args: pytest.fail("Windows must not call os.killpg"),
         )
 
-        lm._stop_pg(43, 43)
+        lm._stop_pg(
+            43,
+            43,
+            expected_identity=_process_double(43)._metriplane_test_identity,
+        )
 
         assert calls == [["taskkill", "/PID", "43", "/T"]]
 
@@ -1195,10 +1218,16 @@ class TestWindowsProcessLifecycle:
         monotonic = iter((0.0, 6.0, 10.0, 13.0))
         monkeypatch.setattr(lm, "_is_windows", lambda: True)
         monkeypatch.setattr(lm, "_is_running", lambda _pid: True)
+        monkeypatch.setattr(lm, "_process_identity_matches", lambda _identity: True)
         monkeypatch.setattr(lm.time, "monotonic", lambda: next(monotonic))
         monkeypatch.setattr(lm.subprocess, "run", lambda command, **_kwargs: calls.append(command))
 
-        lm._stop_pg(44, 44, name="runner")
+        lm._stop_pg(
+            44,
+            44,
+            expected_identity=_process_double(44)._metriplane_test_identity,
+            name="runner",
+        )
 
         assert calls == [
             ["taskkill", "/PID", "44", "/T"],
@@ -1222,9 +1251,120 @@ class TestMakeProcEntry:
             entry = _make_proc_entry(proc)
             assert entry["pid"] == proc.pid
             assert entry["pgid"] == proc.pid  # new session: pgid == pid
+            assert entry["identity"]["pid"] == proc.pid
+            assert entry["identity"]["pgid"] == proc.pid
+            assert entry["identity"]["birth"]
+            assert entry["identity"]["executable"]
+            assert entry["identity"]["argv"][:2] == [sys.executable, "-c"]
         finally:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
+
+    def test_windows_without_exact_identity_provider_fails_closed(self, monkeypatch):
+        import metriplane.launcher as lm
+
+        proc = SimpleNamespace(pid=77, poll=lambda: None)
+        monotonic = iter((0.0, 1.0))
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm.time, "monotonic", lambda: next(monotonic))
+
+        with pytest.raises(lm._LauncherStateError, match="could not retain child"):
+            lm._make_proc_entry(proc)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_user_command_starts_only_after_identity_is_retained(self, tmp_path):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "started"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        try:
+            time.sleep(0.1)
+            assert not marker.exists()
+            entry = lm._make_proc_entry(proc)
+            assert entry["pid"] == proc.pid
+            assert proc.wait(timeout=5) == 0
+            assert marker.exists()
+        finally:
+            lm._discard_unreleased_process(proc)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_identity_failure_never_releases_user_command(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "must-not-start"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        monkeypatch.setattr(lm, "_capture_process_identity", lambda _pid: None)
+        monkeypatch.setattr(lm.time, "sleep", lambda _seconds: None)
+        try:
+            with pytest.raises(lm._LauncherStateError, match="could not retain child"):
+                lm._make_proc_entry(proc)
+            lm._discard_unreleased_process(proc)
+            assert proc.returncode == 125
+            assert not marker.exists()
+        finally:
+            lm._discard_unreleased_process(proc)
+
+
+def test_launcher_linux_proc_stat_parser_handles_complex_comm() -> None:
+    import metriplane.launcher as lm
+
+    tail = ["S", "1", "71", *(["0"] * 16), "123456", "0"]
+    value = f"71 (launcher worker)) {' '.join(tail)}"
+
+    assert lm._parse_linux_proc_stat(value) == ("S", 71, "123456")
+
+
+def test_launcher_darwin_procargs_preserve_exact_boundaries() -> None:
+    import metriplane.launcher as lm
+
+    value = (
+        struct.pack("=i", 3)
+        + b"/usr/bin/python3\0\0"
+        + b"/usr/bin/python3\0-m\0metriplane.runner.service\0ENV=value\0"
+    )
+
+    assert lm._parse_darwin_procargs(value) == [
+        "/usr/bin/python3",
+        "-m",
+        "metriplane.runner.service",
+    ]
+
+
+def test_launcher_darwin_identity_and_group_inventory_use_native_providers(monkeypatch) -> None:
+    import metriplane.launcher as lm
+
+    expected = {
+        "pid": 72,
+        "pgid": 72,
+        "birth": "1780000000.654321",
+        "executable": "/usr/bin/python3",
+        "argv": ["/usr/bin/python3", "-m", "metriplane.runner.service"],
+    }
+    monkeypatch.setattr(lm.sys, "platform", "darwin")
+    monkeypatch.setattr(lm, "_darwin_process_identity", lambda _pid: expected)
+    monkeypatch.setattr(lm, "_darwin_process_group_size", lambda _pgid: 2)
+
+    assert lm._capture_process_identity(72) == expected
+    assert lm._process_group_size(72) == 2
+
+
+def test_launcher_unknown_posix_group_inventory_blocks_cleanup(monkeypatch) -> None:
+    import metriplane.launcher as lm
+
+    monkeypatch.setattr(lm, "_is_windows", lambda: False)
+    monkeypatch.setattr(lm.sys, "platform", "freebsd")
+    monkeypatch.setattr(lm.Path, "is_dir", lambda _path: False)
+
+    assert lm._process_group_size(73) is None
+    assert lm._process_group_alive(73) is True
 
 
 # ---------------------------------------------------------------------------
@@ -1303,6 +1443,133 @@ class TestIsVtSafeToKill:
 
     def test_empty_cmdline_not_safe(self):
         assert _is_vt_safe_to_kill("") is False
+
+    def test_spoofed_console_script_argv0_is_not_safe(self):
+        assert _is_vt_safe_to_kill("metriplane --serve-attacker-content") is False
+        assert _is_vt_safe_to_kill("metriplane-run-fusion --serve-attacker-content") is False
+
+    def test_cleanup_identity_binds_argv0_to_kernel_executable(self):
+        import metriplane.launcher as lm
+
+        valid = {
+            "executable": sys.executable,
+            "argv": [sys.executable, "-m", "metriplane.runner.service"],
+        }
+        spoofed = {
+            "executable": sys.executable,
+            "argv": ["/tmp/python", "-m", "metriplane.runner.service"],
+        }
+
+        assert lm._is_metriplane_process_identity(valid) is True
+        assert lm._is_metriplane_process_identity(spoofed) is False
+
+    @pytest.mark.parametrize(
+        "cmdline",
+        [
+            "python -c 'print(1)' metriplane.runner.service",
+            "python -c 'pass' -m metriplane.runner.service",
+            "python -m pytest tests/metriplane.run/test_fake.py",
+            "sh -c 'echo metriplane.run_fusion'",
+            "/tmp/metriplane.runner.service-wrapper --serve",
+            "python -m metriplane.runner.service_evil",
+        ],
+    )
+    def test_substring_or_similar_argv_is_never_safe(self, cmdline):
+        assert _is_vt_safe_to_kill(cmdline) is False
+
+
+def test_stop_refuses_pid_reuse_without_sending_a_signal(monkeypatch, capsys):
+    import metriplane.launcher as lm
+
+    sent: list[tuple[int, signal.Signals]] = []
+    expected = _process_double(901)._metriplane_test_identity
+    monkeypatch.setattr(lm, "_is_running", lambda _pid: True)
+    monkeypatch.setattr(lm, "_process_identity_matches", lambda _identity: False)
+    monkeypatch.setattr(lm.os, "killpg", lambda pgid, sig: sent.append((pgid, sig)))
+
+    assert lm._stop_pg(901, 901, expected_identity=expected, name="reused") is False
+    assert sent == []
+    assert "refusing signal" in capsys.readouterr().out
+
+
+def test_retained_live_state_without_identity_fails_closed(tmp_path, monkeypatch, capsys):
+    import metriplane.launcher as lm
+
+    paths = _test_platform_paths(tmp_path)
+    lm._save_state({"runner": {"pid": 902, "pgid": 902, "port": 9000}}, paths)
+    monkeypatch.setattr(lm, "_is_running", lambda pid: pid == 902)
+    monkeypatch.setattr(
+        lm,
+        "_stop_pg",
+        lambda *_args, **_kwargs: pytest.fail("unidentified retained PID must not be signalled"),
+    )
+
+    assert lm.cmd_stop(paths=paths) == 2
+    assert lm._state_file(paths).exists()
+    assert "no retained process identity" in capsys.readouterr().out
+
+
+def test_stop_cleans_retained_group_after_leader_exit(tmp_path, monkeypatch):
+    import metriplane.launcher as lm
+
+    paths = _test_platform_paths(tmp_path)
+    identity = _process_double(903)._metriplane_test_identity
+    lm._save_state(
+        {"runner": {"pid": 903, "pgid": 903, "port": 9000, "identity": identity}},
+        paths,
+    )
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(lm, "_is_running", lambda _pid: False)
+    monkeypatch.setattr(lm, "_process_group_alive", lambda pgid: pgid == 903)
+    monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
+
+    def stop_group(pgid, pid, **kwargs):
+        calls.append({"pgid": pgid, "pid": pid, **kwargs})
+        return True
+
+    monkeypatch.setattr(lm, "_stop_pg", stop_group)
+
+    assert lm.cmd_stop(paths=paths) == 0
+    assert calls == [
+        {
+            "pgid": 903,
+            "pid": 903,
+            "expected_identity": identity,
+            "name": "runner",
+        }
+    ]
+
+
+def test_start_refuses_stale_state_while_retained_fusion_group_is_alive(
+    tmp_path, monkeypatch, capsys
+):
+    import metriplane.launcher as lm
+
+    paths = _test_platform_paths(tmp_path)
+    lm._save_state(
+        {
+            "runner": {"pid": 901, "pgid": 901},
+            "dashboard": {"pid": 902, "pgid": 902},
+            "fusion": {"pid": 903, "pgid": 903},
+        },
+        paths,
+    )
+    monkeypatch.setattr(lm, "_is_running", lambda _pid: False)
+    monkeypatch.setattr(lm, "_process_group_alive", lambda pgid: pgid == 903)
+    monkeypatch.setattr(
+        lm,
+        "_clear_state",
+        lambda *_args, **_kwargs: pytest.fail("live fusion state must not be cleared"),
+    )
+    monkeypatch.setattr(
+        lm,
+        "_start_runner",
+        lambda **_kwargs: pytest.fail("new launcher children must not start"),
+    )
+
+    assert lm.cmd_start(paths=paths, open_browser=False) == 1
+    assert "already running" in capsys.readouterr().out.lower()
+    assert lm._state_file(paths).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -1432,15 +1699,13 @@ class TestStartStatusStop:
     def test_live_readiness_failure_stops_children_and_does_not_save_state(
         self, monkeypatch, tmp_path, capsys
     ):
-        import types
-
         import metriplane.launcher as lm
 
         processes = iter(
             [
-                types.SimpleNamespace(pid=101),
-                types.SimpleNamespace(pid=102),
-                types.SimpleNamespace(pid=103),
+                _process_double(101),
+                _process_double(102),
+                _process_double(103),
             ]
         )
         paths = _test_platform_paths(tmp_path)
@@ -1478,7 +1743,7 @@ class TestStartStatusStop:
         import metriplane.launcher as lm
 
         paths = _test_platform_paths(tmp_path)
-        processes = iter((SimpleNamespace(pid=201), SimpleNamespace(pid=202)))
+        processes = iter((_process_double(201), _process_double(202)))
         stopped: list[int] = []
         monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
         monkeypatch.setattr(lm, "_log_dir_path", lambda _runs_dir, _timestamp: tmp_path)
@@ -1510,7 +1775,7 @@ class TestStartStatusStop:
         import metriplane.launcher as lm
 
         paths = _test_platform_paths(tmp_path)
-        processes = iter((SimpleNamespace(pid=211), SimpleNamespace(pid=212)))
+        processes = iter((_process_double(211), _process_double(212)))
         stopped: list[int] = []
         monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
         monkeypatch.setattr(lm, "_log_dir_path", lambda _runs_dir, _timestamp: tmp_path)
@@ -1538,7 +1803,7 @@ class TestStartStatusStop:
 
         capability = "private-launch-capability"
         paths = _test_platform_paths(tmp_path)
-        processes = iter((SimpleNamespace(pid=221), SimpleNamespace(pid=222)))
+        processes = iter((_process_double(221), _process_double(222)))
         opened_urls: list[str] = []
         monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
         monkeypatch.setattr(lm, "_log_dir_path", lambda _runs_dir, _timestamp: tmp_path)
@@ -1578,7 +1843,7 @@ class TestStartStatusStop:
             with launch_lock:
                 pid = next(next_pid)
                 launched.append(pid)
-            return SimpleNamespace(pid=pid)
+            return _process_double(pid)
 
         monkeypatch.setattr(lm, "_start_runner", launch)
         monkeypatch.setattr(lm, "_start_dashboard", launch)

@@ -100,9 +100,9 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 6,037 items. In the exact core
+The ordered node-id stream must contain exactly 6,079 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the integrated source profile requires 6,022 passed and 15 expected skips.
+cache, the integrated source profile requires 6,064 passed and 15 expected skips.
 Fourteen result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and
@@ -180,6 +180,39 @@ full-matrix generations, cumulative runner time, implementation-to-merge wall
 clock and every rerun reason. Historical evidence lacking a node collection must
 say that it is unavailable. Benchmark the first four-shard hosted run against
 retained original timings before claiming a macOS speedup.
+
+## Bounded child-process lifecycle
+
+The runner executes one allowlisted job in a new process group with a fixed
+working directory, an allowlisted environment, an isolated writable home when
+platform paths are configured, a wall-clock and CPU limit, bounded open-file and
+process-group limits, and continuously drained stdout/stderr. Each retained
+stream is capped at 1,048,576 characters and carries an explicit truncation
+marker; excess bytes are drained rather than allowed to block the child.
+
+On the governed Linux and macOS profiles, a gated supervisor retains the child's
+PID, process group, birth token, executable and exact argv before any user command
+can start. Linux parses the kernel `/proc` record after its parenthesized command
+field; macOS uses `libproc` and `KERN_PROCARGS2` rather than display-oriented
+`ps` text. A signal is refused if those values change. Unavailable identity or
+process-group inventory fails closed. If the group leader exits normally or
+during cancellation while a descendant remains, the retained process group is
+still force-stopped and a normal-exit leak fails the job.
+The launcher persists the same identity tuple for every child and refuses to
+signal live legacy state that has only numeric PID/PGID fields. Historical state
+remains parseable and recoverable through the existing cleanup path.
+
+Orphan cleanup no longer uses substring matches. It parses argv and accepts only
+an exact installed Metriplane executable or an exact `python -m` module from the
+maintained launcher allowlist, then rechecks the retained identity before every
+signal. Flood, PID-reuse, missing-identity, stubborn-descendant, environment and
+process-limit regressions are part of the ordinary complete source profile and
+close R-009 without changing the supported platform claim.
+
+The retained Windows launcher helpers remain non-destructive compatibility code,
+but Windows is not a current governed environment row and launcher start fails
+closed until an exact Windows birth/executable/argv provider is qualified. Other
+POSIX systems without the Linux or Darwin kernel providers also fail closed.
 
 ## Installed profiles
 
