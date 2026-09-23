@@ -1338,6 +1338,62 @@ def test_launcher_darwin_procargs_preserve_exact_boundaries() -> None:
     ]
 
 
+def test_launcher_darwin_process_argv_uses_kern_argmax_as_bounded_capacity(monkeypatch) -> None:
+    import metriplane.launcher as lm
+
+    class FakeFunction:
+        def __init__(self, implementation):
+            self.implementation = implementation
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.implementation(*args)
+
+    payload = struct.pack("=i", 2) + b"/usr/bin/python3\0\0/usr/bin/python3\0-m\0"
+    observed = []
+
+    def sysctlbyname(name, value, value_size, replacement, replacement_size):
+        observed.append((name, replacement, replacement_size))
+        value._obj.value = 4096
+        value_size._obj.value = 4
+        return 0
+
+    def sysctl(mib, mib_size, value, value_size, replacement, replacement_size):
+        observed.append(([mib[index] for index in range(mib_size)], value_size._obj.value))
+        assert value is not None
+        assert replacement is None
+        assert replacement_size == 0
+        lm.ctypes.memmove(value, payload, len(payload))
+        value_size._obj.value = len(payload)
+        return 0
+
+    class FakeLibc:
+        pass
+
+    fake_libc = FakeLibc()
+    fake_libc.sysctlbyname = FakeFunction(sysctlbyname)
+    fake_libc.sysctl = FakeFunction(sysctl)
+
+    monkeypatch.setattr(lm.ctypes, "CDLL", lambda *_args, **_kwargs: fake_libc)
+
+    assert lm._darwin_process_argv(72) == ["/usr/bin/python3", "-m"]
+    assert observed == [(b"kern.argmax", None, 0), ([1, 49, 72], 4096)]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin kernel provider regression")
+def test_launcher_darwin_live_identity_is_available_for_current_process() -> None:
+    import metriplane.launcher as lm
+
+    identity = lm._darwin_process_identity(os.getpid())
+
+    assert identity is not None
+    assert identity["pid"] == os.getpid()
+    assert identity["pgid"] == os.getpgid(0)
+    assert identity["executable"]
+    assert identity["argv"]
+
+
 def test_launcher_darwin_identity_and_group_inventory_use_native_providers(monkeypatch) -> None:
     import metriplane.launcher as lm
 

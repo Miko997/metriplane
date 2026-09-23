@@ -167,6 +167,58 @@ def _parse_darwin_procargs(value: bytes) -> list[str] | None:
     return argv if all(argv) else None
 
 
+def _darwin_process_argv(pid: int) -> list[str] | None:
+    """Read KERN_PROCARGS2 with the kernel's declared maximum argument size."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.sysctlbyname.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        libc.sysctlbyname.restype = ctypes.c_int
+        maximum = ctypes.c_int()
+        maximum_size = ctypes.c_size_t(ctypes.sizeof(maximum))
+        if (
+            libc.sysctlbyname(
+                b"kern.argmax",
+                ctypes.byref(maximum),
+                ctypes.byref(maximum_size),
+                None,
+                0,
+            )
+            != 0
+        ):
+            return None
+        if maximum_size.value != ctypes.sizeof(maximum):
+            return None
+        capacity = int(maximum.value)
+        if capacity <= 4 or capacity > 16 * 1024 * 1024:
+            return None
+
+        libc.sysctl.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        libc.sysctl.restype = ctypes.c_int
+        mib = (ctypes.c_int * 3)(1, 49, int(pid))
+        args_size = ctypes.c_size_t(capacity)
+        args_buffer = ctypes.create_string_buffer(capacity)
+        if libc.sysctl(mib, 3, args_buffer, ctypes.byref(args_size), None, 0) != 0:
+            return None
+        if args_size.value <= 4 or args_size.value > capacity:
+            return None
+        return _parse_darwin_procargs(args_buffer.raw[: args_size.value])
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
 def _darwin_process_identity(pid: int) -> dict[str, Any] | None:
     """Read exact Darwin birth/executable/argv identity through kernel APIs."""
     if sys.platform != "darwin":
@@ -199,36 +251,7 @@ def _darwin_process_identity(pid: int) -> dict[str, Any] | None:
         if path_size <= 0:
             return None
 
-        libc = ctypes.CDLL(None, use_errno=True)
-        libc.sysctl.argtypes = [
-            ctypes.POINTER(ctypes.c_int),
-            ctypes.c_uint,
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_size_t),
-            ctypes.c_void_p,
-            ctypes.c_size_t,
-        ]
-        libc.sysctl.restype = ctypes.c_int
-        mib = (ctypes.c_int * 3)(1, 49, int(pid))
-        args_size = ctypes.c_size_t()
-        if libc.sysctl(mib, 3, None, ctypes.byref(args_size), None, 0) != 0:
-            return None
-        if args_size.value <= 4 or args_size.value > 16 * 1024 * 1024:
-            return None
-        args_buffer = ctypes.create_string_buffer(args_size.value)
-        if (
-            libc.sysctl(
-                mib,
-                3,
-                args_buffer,
-                ctypes.byref(args_size),
-                None,
-                0,
-            )
-            != 0
-        ):
-            return None
-        argv = _parse_darwin_procargs(args_buffer.raw[: args_size.value])
+        argv = _darwin_process_argv(int(pid))
         if argv is None:
             return None
         return {

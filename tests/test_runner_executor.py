@@ -210,6 +210,64 @@ def test_darwin_procargs_parser_preserves_exact_argument_boundaries() -> None:
     ]
 
 
+def test_darwin_process_argv_uses_kern_argmax_as_bounded_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metriplane.runner.executor as executor_module
+
+    class FakeFunction:
+        def __init__(self, implementation):
+            self.implementation = implementation
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.implementation(*args)
+
+    payload = struct.pack("=i", 2) + b"/usr/bin/python3\0\0/usr/bin/python3\0-c\0"
+    observed: list[object] = []
+
+    def sysctlbyname(name, value, value_size, replacement, replacement_size):
+        observed.append((name, replacement, replacement_size))
+        value._obj.value = 4096
+        value_size._obj.value = 4
+        return 0
+
+    def sysctl(mib, mib_size, value, value_size, replacement, replacement_size):
+        observed.append(([mib[index] for index in range(mib_size)], value_size._obj.value))
+        assert value is not None
+        assert replacement is None
+        assert replacement_size == 0
+        executor_module.ctypes.memmove(value, payload, len(payload))
+        value_size._obj.value = len(payload)
+        return 0
+
+    class FakeLibc:
+        pass
+
+    fake_libc = FakeLibc()
+    fake_libc.sysctlbyname = FakeFunction(sysctlbyname)
+    fake_libc.sysctl = FakeFunction(sysctl)
+
+    monkeypatch.setattr(executor_module.ctypes, "CDLL", lambda *_args, **_kwargs: fake_libc)
+
+    assert executor_module._darwin_process_argv(41) == ["/usr/bin/python3", "-c"]
+    assert observed == [(b"kern.argmax", None, 0), ([1, 49, 41], 4096)]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin kernel provider regression")
+def test_darwin_live_identity_is_available_for_current_process() -> None:
+    import metriplane.runner.executor as executor_module
+
+    identity = executor_module._darwin_process_identity(os.getpid())
+
+    assert identity is not None
+    assert identity["pid"] == os.getpid()
+    assert identity["pgid"] == os.getpgid(0)
+    assert identity["executable"]
+    assert identity["argv"]
+
+
 def test_darwin_identity_uses_native_kernel_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
