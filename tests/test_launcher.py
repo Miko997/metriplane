@@ -995,6 +995,34 @@ class TestIsRunning:
         time.sleep(0.1)
         assert _is_running(pid) is False
 
+    @pytest.mark.parametrize(("status", "expected"), [(2, True), (5, False)])
+    def test_darwin_native_status_distinguishes_live_and_zombie(
+        self, status, expected, monkeypatch
+    ):
+        import metriplane.launcher as lm
+
+        monkeypatch.setattr(lm.sys, "platform", "darwin")
+        monkeypatch.setattr(lm, "_darwin_process_status", lambda _pid: status)
+        monkeypatch.setattr(
+            lm.os,
+            "kill",
+            lambda *_args: pytest.fail("native Darwin status should decide liveness"),
+        )
+
+        assert lm._is_running(41) is expected
+
+    def test_darwin_unavailable_status_keeps_permission_denied_process_live(self, monkeypatch):
+        import metriplane.launcher as lm
+
+        monkeypatch.setattr(lm.sys, "platform", "darwin")
+        monkeypatch.setattr(lm, "_darwin_process_status", lambda _pid: None)
+
+        def permission_denied(*_args):
+            raise PermissionError("provider denied status")
+
+        monkeypatch.setattr(lm.os, "kill", permission_denied)
+        assert lm._is_running(41) is True
+
 
 # ---------------------------------------------------------------------------
 # _get_pgid
@@ -1681,6 +1709,22 @@ def test_stop_refuses_pid_reuse_without_sending_a_signal(monkeypatch, capsys):
     assert lm._stop_pg(901, 901, expected_identity=expected, name="reused") is False
     assert sent == []
     assert "refusing signal" in capsys.readouterr().out
+
+
+def test_stop_accepts_reaped_group_with_zombie_supervisor(monkeypatch):
+    import metriplane.launcher as lm
+
+    expected = _process_double(903)._metriplane_test_identity
+    live = iter([True, True, False])
+    group_live = iter([True, True, False])
+    sent: list[tuple[int, signal.Signals]] = []
+    monkeypatch.setattr(lm, "_is_running", lambda _pid: next(live))
+    monkeypatch.setattr(lm, "_process_group_alive", lambda _pgid: next(group_live))
+    monkeypatch.setattr(lm, "_capture_process_identity", lambda _pid: expected)
+    monkeypatch.setattr(lm.os, "killpg", lambda pgid, sig: sent.append((pgid, sig)))
+
+    assert lm._stop_pg(903, 903, expected_identity=expected, name="zombie") is True
+    assert sent == [(903, signal.SIGTERM)]
 
 
 def test_retained_live_state_without_identity_fails_closed(tmp_path, monkeypatch, capsys):

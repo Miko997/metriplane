@@ -480,7 +480,7 @@ def _windows_process_is_running(pid: int) -> bool:
 
 
 def _is_running(pid: int | None) -> bool:
-    """Return True if the process exists (any state)."""
+    """Return True if the process is live rather than a retained zombie."""
     if pid is None:
         return False
     try:
@@ -489,6 +489,12 @@ def _is_running(pid: int | None) -> bool:
             return False
         if _is_windows():
             return _windows_process_is_running(pid_value)
+        if sys.platform == "darwin":
+            darwin_status = _darwin_process_status(pid_value)
+            if darwin_status == 5:  # SZOMB in Darwin's proc.h
+                return False
+            if darwin_status is not None:
+                return True
         if Path("/proc").is_dir():
             try:
                 parsed = _parse_linux_proc_stat(Path(f"/proc/{pid_value}/stat").read_text())
@@ -500,8 +506,10 @@ def _is_running(pid: int | None) -> bool:
                 pass
         os.kill(pid_value, 0)
         return True
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        return True
     except Exception:
         return False
 
@@ -685,6 +693,31 @@ def _darwin_process_identity(pid: int) -> dict[str, Any] | None:
             "executable": path_buffer.value.decode("utf-8", errors="surrogateescape"),
             "argv": argv,
         }
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _darwin_process_status(pid: int) -> int | None:
+    """Read Darwin's native process status, including a positive zombie state."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_pidinfo.restype = ctypes.c_int
+        info = _DarwinProcBsdInfo()
+        size = ctypes.sizeof(info)
+        if libproc.proc_pidinfo(int(pid), 3, 0, ctypes.byref(info), size) != size:
+            return None
+        if int(info.pbi_pid) != int(pid):
+            return None
+        return int(info.pbi_status)
     except (AttributeError, OSError, OverflowError, ValueError):
         return None
 

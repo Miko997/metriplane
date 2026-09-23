@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import select
 import struct
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -183,6 +184,119 @@ def test_missing_supervisor_identity_never_releases_user_code(
     assert job is not None and job["status"] == "failed"
     assert "could not retain child birth/executable/argv identity" in job["stderr"]
     assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX identity gate")
+def test_supervisor_acknowledges_before_identity_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metriplane.runner.executor as executor_module
+
+    acknowledged = False
+    real_ready = executor_module._await_supervisor_ready
+    real_identity = executor_module._process_identity
+
+    def observe_ready(ready_fd, *, timeout=2.0):
+        nonlocal acknowledged
+        real_ready(ready_fd, timeout=timeout)
+        acknowledged = True
+
+    def observe_identity(pid):
+        assert acknowledged
+        return real_identity(pid)
+
+    monkeypatch.setattr(executor_module, "_await_supervisor_ready", observe_ready)
+    monkeypatch.setattr(executor_module, "_process_identity", observe_identity)
+    executor = CommandExecutor()
+    executor.repo_root = tmp_path
+    job_id = executor.execute("ready-before-identity", [sys.executable, "-c", "pass"], 10)
+
+    assert _wait_until(lambda: executor.get_job(job_id)["status"] != "running")  # type: ignore[index]
+    job = executor.get_job(job_id)
+    assert job is not None and job["status"] == "succeeded"
+    assert acknowledged
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX identity gate")
+def test_missing_supervisor_acknowledgement_never_releases_user_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metriplane.runner.executor as executor_module
+
+    marker = tmp_path / "user-code-started"
+    observed: list[subprocess.Popen[str]] = []
+    real_popen = executor_module.subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        observed.append(process)
+        return process
+
+    monkeypatch.setattr(executor_module.subprocess, "Popen", recording_popen)
+    monkeypatch.setattr(executor_module.select, "select", lambda *_args: ([], [], []))
+    executor = CommandExecutor()
+    executor.repo_root = tmp_path
+    job_id = executor.execute(
+        "missing-ready-gate",
+        [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+        10,
+    )
+
+    assert _wait_until(lambda: executor.get_job(job_id)["status"] != "running")  # type: ignore[index]
+    job = executor.get_job(job_id)
+    assert job is not None and job["status"] == "failed"
+    assert "did not reach its identity gate" in job["stderr"]
+    assert observed and observed[0].returncode == 125
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("forced readiness failure"), ValueError("descriptor out of range")],
+)
+def test_supervisor_acknowledgement_failure_closes_descriptor(
+    failure: Exception,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metriplane.runner.executor as executor_module
+
+    ready_read, ready_write = os.pipe()
+    os.close(ready_write)
+
+    def fail_select(*_args):
+        raise failure
+
+    monkeypatch.setattr(executor_module.select, "select", fail_select)
+    with pytest.raises(RuntimeError, match="readiness channel failed"):
+        executor_module._await_supervisor_ready(ready_read)
+    with pytest.raises(OSError):
+        os.fstat(ready_read)
+
+
+def test_second_supervisor_pipe_failure_closes_first_pipe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metriplane.runner.executor as executor_module
+
+    real_pipe = os.pipe
+    allocated: list[tuple[int, int]] = []
+
+    def fail_second_pipe():
+        if allocated:
+            raise OSError("forced second pipe failure")
+        pair = real_pipe()
+        allocated.append(pair)
+        return pair
+
+    monkeypatch.setattr(executor_module.os, "pipe", fail_second_pipe)
+    with pytest.raises(OSError, match="forced second pipe failure"):
+        executor_module._supervisor_pipes()
+    assert allocated
+    for descriptor in allocated[0]:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
 
 
 def test_linux_proc_stat_parser_preserves_comm_spaces_and_parentheses() -> None:
@@ -664,6 +778,15 @@ def test_unavailable_process_inventory_fails_closed(
     import metriplane.runner.executor as executor_module
 
     monkeypatch.setattr(executor_module, "_process_group_size", lambda _pgid: None)
+    observed: list[subprocess.Popen[str]] = []
+    real_popen = executor_module.subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        observed.append(process)
+        return process
+
+    monkeypatch.setattr(executor_module.subprocess, "Popen", recording_popen)
     executor = CommandExecutor()
     executor.repo_root = tmp_path
     job_id = executor.execute(
@@ -680,6 +803,8 @@ def test_unavailable_process_inventory_fails_closed(
     assert job is not None and job["status"] == "failed"
     assert "PROCESS INVENTORY" in job["stderr"]
     assert "CLEANUP UNVERIFIED" in job["stderr"]
+    assert observed and observed[0].poll() is not None
+    assert observed[0].wait(timeout=1) is not None
 
 
 def test_cancel_refuses_changed_process_identity(

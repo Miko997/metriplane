@@ -9,6 +9,7 @@ Uses subprocess without shell=True for security.
 """
 
 import ctypes
+import select
 import subprocess
 import signal
 import struct
@@ -37,8 +38,9 @@ import sys
 nofile = int(sys.argv[2])
 cpu = int(sys.argv[3])
 gate_fd = int(sys.argv[4])
-inherited_fds = tuple(int(value) for value in sys.argv[5].split(",") if value)
-command = sys.argv[6:]
+ready_fd = int(sys.argv[5])
+inherited_fds = tuple(int(value) for value in sys.argv[6].split(",") if value)
+command = sys.argv[7:]
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 nofile_hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
 if nofile_hard != resource.RLIM_INFINITY:
@@ -48,6 +50,12 @@ cpu_hard = resource.getrlimit(resource.RLIMIT_CPU)[1]
 if cpu_hard != resource.RLIM_INFINITY:
     cpu = min(cpu, cpu_hard)
 resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+try:
+    os.write(ready_fd, b"\\n")
+except OSError:
+    raise SystemExit(125)
+finally:
+    os.close(ready_fd)
 if os.read(gate_fd, 1) != b"\\n":
     raise SystemExit(125)
 os.close(gate_fd)
@@ -418,6 +426,7 @@ def _limited_command(
     command: list[str],
     timeout_s: int,
     gate_fd: int | None,
+    ready_fd: int | None,
     inherited_fds: tuple[int, ...],
 ) -> list[str]:
     """Apply limits in a retained supervisor gated before user code starts."""
@@ -425,6 +434,8 @@ def _limited_command(
         return command
     if gate_fd is None:
         raise ValueError("POSIX child supervisor requires an identity gate")
+    if ready_fd is None:
+        raise ValueError("POSIX child supervisor requires a readiness channel")
     return [
         sys.executable,
         "-c",
@@ -433,9 +444,58 @@ def _limited_command(
         str(_MAX_CHILD_OPEN_FILES),
         str(max(1, int(timeout_s) + 1)),
         str(gate_fd),
+        str(ready_fd),
         ",".join(str(value) for value in inherited_fds),
         *command,
     ]
+
+
+def _supervisor_pipes() -> tuple[int, int, int, int]:
+    """Allocate both supervisor channels without leaking a partial pair."""
+    gate_read, gate_write = os.pipe()
+    try:
+        ready_read, ready_write = os.pipe()
+    except BaseException:
+        os.close(gate_read)
+        os.close(gate_write)
+        raise
+    return gate_read, gate_write, ready_read, ready_write
+
+
+def _await_supervisor_ready(ready_fd: int, *, timeout: float = 2.0) -> None:
+    """Require a stable post-initialization supervisor before identity capture."""
+    readiness_error: Exception | None = None
+    acknowledged = False
+    try:
+        try:
+            readable, _, _ = select.select([int(ready_fd)], [], [], timeout)
+            acknowledged = bool(readable) and os.read(int(ready_fd), 2) == b"\n"
+        except (OSError, ValueError) as exc:
+            readiness_error = exc
+    finally:
+        try:
+            os.close(int(ready_fd))
+        except OSError as exc:
+            if readiness_error is None:
+                readiness_error = exc
+    if readiness_error is not None:
+        raise RuntimeError("child supervisor readiness channel failed") from readiness_error
+    if not acknowledged:
+        raise RuntimeError("child supervisor did not reach its identity gate")
+
+
+def _discard_gated_process(process: subprocess.Popen[str], gate_write_fd: int | None) -> None:
+    """Close an unreleased gate and synchronously reap the unused supervisor."""
+    if gate_write_fd is not None:
+        try:
+            os.close(gate_write_fd)
+        except OSError:
+            pass
+    try:
+        process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate(timeout=5)
 
 
 def _await_process_identity(
@@ -743,20 +803,38 @@ class CommandExecutor:
         process: subprocess.Popen[str] | None = None
         identity: dict[str, Any] | None = None
         gate_write_fd: int | None = None
+        ready_read_fd: int | None = None
         try:
             print(f"[Executor] Subprocess starting: {' '.join(command)}")
             # Execute without shell=True (security: no shell injection)
             popen_options: dict[str, Any] = _popen_group_options()
             child_fds = list(pass_fds)
             gate_read_fd: int | None = None
+            ready_write_fd: int | None = None
             if os.name == "posix":
-                gate_read_fd, gate_write_fd = os.pipe()
-                child_fds.append(gate_read_fd)
+                try:
+                    (
+                        gate_read_fd,
+                        gate_write_fd,
+                        ready_read_fd,
+                        ready_write_fd,
+                    ) = _supervisor_pipes()
+                except BaseException:
+                    for file_fd in child_fds:
+                        os.close(file_fd)
+                    raise
+                child_fds.extend((gate_read_fd, ready_write_fd))
             if child_fds:
                 popen_options["pass_fds"] = tuple(child_fds)
             try:
                 process = subprocess.Popen(
-                    _limited_command(command, timeout_s, gate_read_fd, pass_fds),
+                    _limited_command(
+                        command,
+                        timeout_s,
+                        gate_read_fd,
+                        ready_write_fd,
+                        pass_fds,
+                    ),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -770,13 +848,19 @@ class CommandExecutor:
                 for file_fd in child_fds:
                     os.close(file_fd)
             print(f"[Executor] Subprocess spawned, PID: {process.pid}")
+            if ready_read_fd is not None:
+                try:
+                    _await_supervisor_ready(ready_read_fd)
+                except Exception:
+                    ready_read_fd = None
+                    _discard_gated_process(process, gate_write_fd)
+                    gate_write_fd = None
+                    raise
+                ready_read_fd = None
             identity = _await_process_identity(process)
             if os.name == "posix" and identity is None:
-                if gate_write_fd is not None:
-                    os.close(gate_write_fd)
-                    gate_write_fd = None
-                process.kill()
-                process.communicate(timeout=5)
+                _discard_gated_process(process, gate_write_fd)
+                gate_write_fd = None
                 raise RuntimeError("could not retain child birth/executable/argv identity")
 
             # Store process for cancellation
@@ -909,6 +993,11 @@ class CommandExecutor:
                         job["completed_at"] = datetime.now()
 
         except Exception as e:
+            if ready_read_fd is not None:
+                try:
+                    os.close(ready_read_fd)
+                except OSError:
+                    pass
             if gate_write_fd is not None:
                 try:
                     os.close(gate_write_fd)
