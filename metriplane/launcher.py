@@ -88,6 +88,28 @@ _METRIPLANE_SAFE_MODULES = {
     "metriplane.run_fusion",
     "metriplane._local_http",
 }
+_POSIX_EXEC_GATE = """\
+import os
+import signal
+import sys
+
+gate_fd = int(sys.argv[1])
+command = sys.argv[2:]
+try:
+    released = os.read(gate_fd, 2) == b"\\n"
+finally:
+    os.close(gate_fd)
+if not released:
+    raise SystemExit(125)
+for signal_name in ("SIGPIPE", "SIGXFZ", "SIGXFSZ"):
+    inherited_signal = getattr(signal, signal_name, None)
+    if inherited_signal is not None:
+        signal.signal(inherited_signal, signal.SIG_DFL)
+try:
+    os.execvp(command[0], command)
+except (OSError, IndexError):
+    raise SystemExit(126)
+"""
 _POSIX_LAUNCH_SUPERVISOR = """\
 import os
 import signal
@@ -96,7 +118,8 @@ import sys
 
 gate_fd = int(sys.argv[1])
 ready_fd = int(sys.argv[2])
-command = sys.argv[3:]
+exec_gate = sys.argv[3]
+command = sys.argv[4:]
 child = None
 pending_signal = None
 
@@ -106,23 +129,69 @@ def retain_supervisor(signum, _frame):
 
 signal.signal(signal.SIGINT, retain_supervisor)
 signal.signal(signal.SIGTERM, retain_supervisor)
-try:
-    os.write(ready_fd, b"\\n")
-except OSError:
-    raise SystemExit(125)
-finally:
-    os.close(ready_fd)
-if os.read(gate_fd, 1) != b"\\n":
-    raise SystemExit(125)
-os.close(gate_fd)
+
+def close_fd(descriptor):
+    if descriptor is not None:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+def reap_child():
+    if child is None:
+        return
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=5)
+
 if pending_signal is not None:
     raise SystemExit(128 + pending_signal)
-child = subprocess.Popen(command)
+child_gate_read, child_gate_write = os.pipe()
+if pending_signal is not None:
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    raise SystemExit(128 + pending_signal)
+try:
+    child = subprocess.Popen(
+        [sys.executable, "-c", exec_gate, str(child_gate_read), *command],
+        pass_fds=(child_gate_read,),
+    )
+except (OSError, ValueError):
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    raise SystemExit(125)
+close_fd(child_gate_read)
 if pending_signal is not None:
     try:
         child.send_signal(pending_signal)
     except ProcessLookupError:
         pass
+try:
+    os.write(ready_fd, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+finally:
+    os.close(ready_fd)
+if os.read(gate_fd, 2) != b"\\n":
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+os.close(gate_fd)
+if pending_signal is not None:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(128 + pending_signal)
+try:
+    os.write(child_gate_write, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+close_fd(child_gate_write)
 raise SystemExit(child.wait())
 """
 
@@ -1056,6 +1125,7 @@ def _launch(
                     _POSIX_LAUNCH_SUPERVISOR,
                     str(gate_read),
                     str(ready_write),
+                    _POSIX_EXEC_GATE,
                     *cmd,
                 ],
                 stdout=fh,

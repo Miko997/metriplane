@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import select
+import signal
 import struct
 import subprocess
 import sys
@@ -620,6 +621,43 @@ def test_executor_does_not_leak_internal_gate_descriptor(tmp_path: Path) -> None
     job = executor.get_job(job_id)
     assert job is not None and job["status"] == "succeeded"
     assert job["stdout"].strip() == "[]"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX exec signal inheritance")
+def test_exec_gate_restores_ignored_signal_dispositions(tmp_path: Path) -> None:
+    executor = CommandExecutor()
+    executor.repo_root = tmp_path
+    signal_names = [
+        name.removeprefix("SIG")
+        for name in ("SIGPIPE", "SIGXFZ", "SIGXFSZ")
+        if hasattr(signal, name)
+    ]
+    assert signal_names
+
+    for signal_name in signal_names:
+        signal_number = int(getattr(signal, f"SIG{signal_name}"))
+        command = ["/bin/sh", "-c", f"kill -s {signal_name} $$; printf survived"]
+        baseline = subprocess.run(command, capture_output=True, text=True, check=False)
+        assert baseline.returncode == -signal_number
+        assert baseline.stdout == ""
+        ignored = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            restore_signals=False,
+        )
+        assert ignored.returncode == 0
+        assert ignored.stdout == "survived"
+
+        job_id = executor.execute(
+            f"signal-disposition-{signal_name.lower()}", command, timeout_s=10
+        )
+        assert _wait_until(lambda: executor.get_job(job_id)["status"] != "running")  # type: ignore[index]
+        job = executor.get_job(job_id)
+        assert job is not None and job["status"] == "failed"
+        assert job["exit_code"] == 256 - signal_number
+        assert job["stdout"] == ""
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX resource limits")

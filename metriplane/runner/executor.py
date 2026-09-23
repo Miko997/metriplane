@@ -29,6 +29,28 @@ _MAX_CAPTURE_CHARS = 1_048_576
 _OUTPUT_TRUNCATED = "\n[OUTPUT TRUNCATED: retained the first 1048576 characters]\n"
 _MAX_CHILD_PROCESSES = 64
 _MAX_CHILD_OPEN_FILES = 512
+_POSIX_EXEC_GATE = """\
+import os
+import signal
+import sys
+
+gate_fd = int(sys.argv[1])
+command = sys.argv[2:]
+try:
+    released = os.read(gate_fd, 2) == b"\\n"
+finally:
+    os.close(gate_fd)
+if not released:
+    raise SystemExit(125)
+for signal_name in ("SIGPIPE", "SIGXFZ", "SIGXFSZ"):
+    inherited_signal = getattr(signal, signal_name, None)
+    if inherited_signal is not None:
+        signal.signal(inherited_signal, signal.SIG_DFL)
+try:
+    os.execvp(command[0], command)
+except (OSError, IndexError):
+    raise SystemExit(126)
+"""
 _POSIX_SUPERVISOR = """\
 import os
 import resource
@@ -41,7 +63,8 @@ cpu = int(sys.argv[3])
 gate_fd = int(sys.argv[4])
 ready_fd = int(sys.argv[5])
 inherited_fds = tuple(int(value) for value in sys.argv[6].split(",") if value)
-command = sys.argv[7:]
+exec_gate = sys.argv[7]
+command = sys.argv[8:]
 child = None
 pending_signal = None
 
@@ -51,6 +74,27 @@ def retain_supervisor(signum, _frame):
 
 signal.signal(signal.SIGINT, retain_supervisor)
 signal.signal(signal.SIGTERM, retain_supervisor)
+
+def close_fd(descriptor):
+    if descriptor is not None:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+def close_inherited_fds():
+    for inherited_fd in inherited_fds:
+        close_fd(inherited_fd)
+
+def reap_child():
+    if child is None:
+        return
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=5)
+
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 nofile_hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
 if nofile_hard != resource.RLIM_INFINITY:
@@ -60,30 +104,56 @@ cpu_hard = resource.getrlimit(resource.RLIMIT_CPU)[1]
 if cpu_hard != resource.RLIM_INFINITY:
     cpu = min(cpu, cpu_hard)
 resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
-try:
-    os.write(ready_fd, b"\\n")
-except OSError:
-    raise SystemExit(125)
-finally:
-    os.close(ready_fd)
-if os.read(gate_fd, 1) != b"\\n":
-    raise SystemExit(125)
-os.close(gate_fd)
 if pending_signal is not None:
+    close_inherited_fds()
+    raise SystemExit(128 + pending_signal)
+child_gate_read, child_gate_write = os.pipe()
+if pending_signal is not None:
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    close_inherited_fds()
     raise SystemExit(128 + pending_signal)
 try:
-    child = subprocess.Popen(command, pass_fds=inherited_fds)
-finally:
-    for inherited_fd in inherited_fds:
-        try:
-            os.close(inherited_fd)
-        except OSError:
-            pass
+    child = subprocess.Popen(
+        [sys.executable, "-c", exec_gate, str(child_gate_read), *command],
+        pass_fds=(*inherited_fds, child_gate_read),
+    )
+except (OSError, ValueError):
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    close_inherited_fds()
+    raise SystemExit(125)
+close_fd(child_gate_read)
+close_inherited_fds()
 if pending_signal is not None:
     try:
         child.send_signal(pending_signal)
     except ProcessLookupError:
         pass
+try:
+    os.write(ready_fd, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+finally:
+    os.close(ready_fd)
+if os.read(gate_fd, 2) != b"\\n":
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+os.close(gate_fd)
+if pending_signal is not None:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(128 + pending_signal)
+try:
+    os.write(child_gate_write, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+close_fd(child_gate_write)
 raise SystemExit(child.wait())
 """
 
@@ -463,6 +533,7 @@ def _limited_command(
         str(gate_fd),
         str(ready_fd),
         ",".join(str(value) for value in inherited_fds),
+        _POSIX_EXEC_GATE,
         *command,
     ]
 

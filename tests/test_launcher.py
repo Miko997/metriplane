@@ -1391,6 +1391,7 @@ class TestMakeProcEntry:
             while not marker.exists() and time.monotonic() < deadline:
                 time.sleep(0.01)
             assert marker.exists()
+            assert lm._capture_process_identity(entry["pid"]) == entry["identity"]
             assert lm._stop_pg(
                 entry["pgid"],
                 entry["pid"],
@@ -1423,6 +1424,19 @@ class TestMakeProcEntry:
         assert entry["identity"]["pid"] == proc.pid
         assert proc.wait(timeout=5) == 128 + signal.SIGTERM
         assert not marker.exists()
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX exec gate")
+    def test_exec_gate_failure_is_reaped_without_start_success(self, tmp_path):
+        import metriplane.launcher as lm
+
+        proc = lm._launch(
+            [str(tmp_path / "missing-command")],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        entry = lm._make_proc_entry(proc)
+        assert proc.wait(timeout=5) == 126
+        assert not lm._process_group_alive(entry["pgid"])
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
     def test_missing_supervisor_acknowledgement_never_releases_user_command(
