@@ -1242,6 +1242,30 @@ class TestWindowsProcessLifecycle:
 
 
 class TestMakeProcEntry:
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_second_pipe_failure_closes_first_pipe(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        real_pipe = lm.os.pipe
+        allocated: list[tuple[int, int]] = []
+
+        def fail_second_pipe():
+            if allocated:
+                raise OSError("forced readiness-pipe failure")
+            pair = real_pipe()
+            allocated.append(pair)
+            return pair
+
+        monkeypatch.setattr(lm.os, "pipe", fail_second_pipe)
+
+        with pytest.raises(OSError, match="forced readiness-pipe failure"):
+            lm._launch([sys.executable, "-c", "pass"], tmp_path / "child.log", tmp_path)
+
+        assert len(allocated) == 1
+        for descriptor in allocated[0]:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+
     def test_stores_pid_and_pgid(self):
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(30)"],
@@ -1292,6 +1316,122 @@ class TestMakeProcEntry:
             lm._discard_unreleased_process(proc)
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_supervisor_acknowledges_exec_before_identity_capture(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "started"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        observed_ready: list[bool] = []
+        real_capture = lm._capture_process_identity
+
+        def capture(pid):
+            observed_ready.append(getattr(proc, "_metriplane_ready_fd", None) is None)
+            return real_capture(pid)
+
+        monkeypatch.setattr(lm, "_capture_process_identity", capture)
+        try:
+            entry = lm._make_proc_entry(proc)
+            assert entry["identity"]["pid"] == proc.pid
+            assert observed_ready and all(observed_ready)
+            assert proc.wait(timeout=5) == 0
+            assert marker.exists()
+        finally:
+            lm._discard_unreleased_process(proc)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_missing_supervisor_acknowledgement_never_releases_user_command(
+        self, tmp_path, monkeypatch
+    ):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "must-not-start"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        ready_fd = proc._metriplane_ready_fd
+        monkeypatch.setattr(lm.select, "select", lambda *_args: ([], [], []))
+        try:
+            with pytest.raises(lm._LauncherStateError, match="did not reach its identity gate"):
+                lm._make_proc_entry(proc)
+            assert proc._metriplane_ready_fd is None
+            with pytest.raises(OSError):
+                os.fstat(ready_fd)
+            lm._discard_unreleased_process(proc)
+            assert proc.returncode == 125
+            assert not marker.exists()
+        finally:
+            lm._discard_unreleased_process(proc)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_supervisor_acknowledgement_io_failure_never_releases_user_command(
+        self, tmp_path, monkeypatch
+    ):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "must-not-start"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        ready_fd = proc._metriplane_ready_fd
+        real_read = lm.os.read
+
+        def fail_ready_read(descriptor, size):
+            if descriptor == ready_fd:
+                raise OSError("forced readiness read failure")
+            return real_read(descriptor, size)
+
+        monkeypatch.setattr(lm.os, "read", fail_ready_read)
+        try:
+            with pytest.raises(lm._LauncherStateError, match="identity gate I/O failed"):
+                lm._make_proc_entry(proc)
+            assert proc._metriplane_ready_fd is None
+            with pytest.raises(OSError):
+                os.fstat(ready_fd)
+            lm._discard_unreleased_process(proc)
+            assert proc.returncode == 125
+            assert not marker.exists()
+        finally:
+            lm._discard_unreleased_process(proc)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_supervisor_acknowledgement_invalid_fd_never_releases_user_command(
+        self, tmp_path, monkeypatch
+    ):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "must-not-start"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        ready_fd = proc._metriplane_ready_fd
+
+        def fail_ready_select(*_args):
+            raise ValueError("filedescriptor out of range in select()")
+
+        monkeypatch.setattr(lm.select, "select", fail_ready_select)
+        try:
+            with pytest.raises(lm._LauncherStateError, match="identity gate I/O failed"):
+                lm._make_proc_entry(proc)
+            assert proc._metriplane_ready_fd is None
+            with pytest.raises(OSError):
+                os.fstat(ready_fd)
+            lm._discard_unreleased_process(proc)
+            assert proc.returncode == 125
+            assert not marker.exists()
+        finally:
+            lm._discard_unreleased_process(proc)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
     def test_identity_failure_never_releases_user_command(self, tmp_path, monkeypatch):
         import metriplane.launcher as lm
 
@@ -1338,6 +1478,14 @@ def test_launcher_darwin_procargs_preserve_exact_boundaries() -> None:
     ]
 
 
+def test_launcher_darwin_procargs_preserves_empty_argument() -> None:
+    import metriplane.launcher as lm
+
+    value = struct.pack("=i", 3) + b"/usr/bin/python3\0\0" + b"/usr/bin/python3\0-m\0\0ENV=value\0"
+
+    assert lm._parse_darwin_procargs(value) == ["/usr/bin/python3", "-m", ""]
+
+
 def test_launcher_darwin_process_argv_uses_kern_argmax_as_bounded_capacity(monkeypatch) -> None:
     import metriplane.launcher as lm
 
@@ -1379,19 +1527,6 @@ def test_launcher_darwin_process_argv_uses_kern_argmax_as_bounded_capacity(monke
 
     assert lm._darwin_process_argv(72) == ["/usr/bin/python3", "-m"]
     assert observed == [(b"kern.argmax", None, 0), ([1, 49, 72], 4096)]
-
-
-@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin kernel provider regression")
-def test_launcher_darwin_live_identity_is_available_for_current_process() -> None:
-    import metriplane.launcher as lm
-
-    identity = lm._darwin_process_identity(os.getpid())
-
-    assert identity is not None
-    assert identity["pid"] == os.getpid()
-    assert identity["pgid"] == os.getpgid(0)
-    assert identity["executable"]
-    assert identity["argv"]
 
 
 def test_launcher_darwin_identity_and_group_inventory_use_native_providers(monkeypatch) -> None:

@@ -33,6 +33,7 @@ from metriplane.strict_parsing import load_json as strict_json_loads
 import os
 import re
 import secrets
+import select
 import shlex
 import signal
 import socket
@@ -93,7 +94,14 @@ import subprocess
 import sys
 
 gate_fd = int(sys.argv[1])
-command = sys.argv[2:]
+ready_fd = int(sys.argv[2])
+command = sys.argv[3:]
+try:
+    os.write(ready_fd, b"\\n")
+except OSError:
+    raise SystemExit(125)
+finally:
+    os.close(ready_fd)
 if os.read(gate_fd, 1) != b"\\n":
     raise SystemExit(125)
 os.close(gate_fd)
@@ -581,7 +589,9 @@ def _parse_darwin_procargs(value: bytes) -> list[str] | None:
             return None
         argv.append(value[cursor:end].decode("utf-8", errors="surrogateescape"))
         cursor = end + 1
-    return argv if all(argv) else None
+    # POSIX permits empty arguments after argv[0].  Preserve those exact
+    # boundaries; only argv[0] must name an executable for this identity.
+    return argv if argv and argv[0] else None
 
 
 def _darwin_process_argv(pid: int) -> list[str] | None:
@@ -982,22 +992,38 @@ def _launch(
         )
     gate_read, gate_write = os.pipe()
     try:
+        ready_read, ready_write = os.pipe()
+    except BaseException:
+        os.close(gate_read)
+        os.close(gate_write)
+        raise
+    try:
         with open(log_file, "w") as fh:
             process = subprocess.Popen(
-                [sys.executable, "-c", _POSIX_LAUNCH_SUPERVISOR, str(gate_read), *cmd],
+                [
+                    sys.executable,
+                    "-c",
+                    _POSIX_LAUNCH_SUPERVISOR,
+                    str(gate_read),
+                    str(ready_write),
+                    *cmd,
+                ],
                 stdout=fh,
                 stderr=fh,
                 cwd=str(cwd),
                 env=env,
                 start_new_session=True,
-                pass_fds=(gate_read,),
+                pass_fds=(gate_read, ready_write),
             )
     except BaseException:
         os.close(gate_write)
+        os.close(ready_read)
         raise
     finally:
         os.close(gate_read)
+        os.close(ready_write)
     process._metriplane_gate_fd = gate_write  # type: ignore[attr-defined]
+    process._metriplane_ready_fd = ready_read  # type: ignore[attr-defined]
     return process
 
 
@@ -1022,6 +1048,13 @@ def _discard_unreleased_process(proc: subprocess.Popen[bytes]) -> None:
         proc._metriplane_gate_fd = None  # type: ignore[attr-defined]
         try:
             os.close(int(gate_fd))
+        except OSError:
+            pass
+    ready_fd = getattr(proc, "_metriplane_ready_fd", None)
+    if ready_fd is not None:
+        proc._metriplane_ready_fd = None  # type: ignore[attr-defined]
+        try:
+            os.close(int(ready_fd))
         except OSError:
             pass
     try:
@@ -1262,6 +1295,29 @@ def _stop_pg(
 
 def _make_proc_entry(proc: subprocess.Popen[bytes]) -> dict[str, Any]:
     """Build state only after retaining a PID-reuse-resistant process identity."""
+    ready_fd = getattr(proc, "_metriplane_ready_fd", None)
+    if ready_fd is not None:
+        proc._metriplane_ready_fd = None  # type: ignore[attr-defined]
+        readiness_error: Exception | None = None
+        acknowledged = False
+        try:
+            try:
+                readable, _, _ = select.select([int(ready_fd)], [], [], 2.0)
+                acknowledged = bool(readable) and os.read(int(ready_fd), 2) == b"\n"
+            except (OSError, ValueError) as exc:
+                readiness_error = exc
+        finally:
+            try:
+                os.close(int(ready_fd))
+            except OSError as exc:
+                if readiness_error is None:
+                    readiness_error = exc
+        if readiness_error is not None:
+            raise _LauncherStateError(
+                "child supervisor identity gate I/O failed"
+            ) from readiness_error
+        if not acknowledged:
+            raise _LauncherStateError("child supervisor did not reach its identity gate")
     identity = getattr(proc, "_metriplane_test_identity", None)
     deadline = time.monotonic() + 0.25
     while identity is None and proc.poll() is None and time.monotonic() < deadline:

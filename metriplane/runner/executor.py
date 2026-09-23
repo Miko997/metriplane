@@ -164,7 +164,11 @@ def _parse_darwin_procargs(value: bytes) -> list[str] | None:
             return None
         argv.append(value[cursor:end].decode("utf-8", errors="surrogateescape"))
         cursor = end + 1
-    return argv if all(argv) else None
+    # POSIX permits empty arguments after argv[0].  The retained supervisor
+    # deliberately uses an empty argument to represent an empty inherited-FD
+    # set, so rejecting every empty element would discard an otherwise exact
+    # kernel identity.  Only argv[0] is required to identify an executable.
+    return argv if argv and argv[0] else None
 
 
 def _darwin_process_argv(pid: int) -> list[str] | None:

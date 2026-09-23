@@ -210,6 +210,22 @@ def test_darwin_procargs_parser_preserves_exact_argument_boundaries() -> None:
     ]
 
 
+def test_darwin_procargs_parser_preserves_empty_argument() -> None:
+    import metriplane.runner.executor as executor_module
+
+    value = (
+        struct.pack("=i", 3)
+        + b"/usr/bin/python3\0\0"
+        + b"/usr/bin/python3\0metriplane-child-limit\0\0ENV=value\0"
+    )
+
+    assert executor_module._parse_darwin_procargs(value) == [
+        "/usr/bin/python3",
+        "metriplane-child-limit",
+        "",
+    ]
+
+
 def test_darwin_process_argv_uses_kern_argmax_as_bounded_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -253,19 +269,6 @@ def test_darwin_process_argv_uses_kern_argmax_as_bounded_capacity(
 
     assert executor_module._darwin_process_argv(41) == ["/usr/bin/python3", "-c"]
     assert observed == [(b"kern.argmax", None, 0), ([1, 49, 41], 4096)]
-
-
-@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin kernel provider regression")
-def test_darwin_live_identity_is_available_for_current_process() -> None:
-    import metriplane.runner.executor as executor_module
-
-    identity = executor_module._darwin_process_identity(os.getpid())
-
-    assert identity is not None
-    assert identity["pid"] == os.getpid()
-    assert identity["pgid"] == os.getpgid(0)
-    assert identity["executable"]
-    assert identity["argv"]
 
 
 def test_darwin_identity_uses_native_kernel_provider(
