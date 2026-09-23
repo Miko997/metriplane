@@ -90,12 +90,22 @@ _METRIPLANE_SAFE_MODULES = {
 }
 _POSIX_LAUNCH_SUPERVISOR = """\
 import os
+import signal
 import subprocess
 import sys
 
 gate_fd = int(sys.argv[1])
 ready_fd = int(sys.argv[2])
 command = sys.argv[3:]
+child = None
+pending_signal = None
+
+def retain_supervisor(signum, _frame):
+    global pending_signal
+    pending_signal = signum
+
+signal.signal(signal.SIGINT, retain_supervisor)
+signal.signal(signal.SIGTERM, retain_supervisor)
 try:
     os.write(ready_fd, b"\\n")
 except OSError:
@@ -105,7 +115,14 @@ finally:
 if os.read(gate_fd, 1) != b"\\n":
     raise SystemExit(125)
 os.close(gate_fd)
+if pending_signal is not None:
+    raise SystemExit(128 + pending_signal)
 child = subprocess.Popen(command)
+if pending_signal is not None:
+    try:
+        child.send_signal(pending_signal)
+    except ProcessLookupError:
+        pass
 raise SystemExit(child.wait())
 """
 
@@ -1305,7 +1322,8 @@ def _stop_pg(
         return True
 
     sig1 = signal.SIGINT if use_sigint else signal.SIGTERM
-    _send(sig1)
+    if not _send(sig1):
+        return not _any_alive()
 
     # Wait up to 5s for clean exit
     deadline = time.monotonic() + 5.0
@@ -1315,7 +1333,8 @@ def _stop_pg(
         time.sleep(0.1)
 
     # Force kill
-    _send(signal.SIGKILL)
+    if not _send(signal.SIGKILL):
+        return not _any_alive()
     # Wait up to 2s for SIGKILL to take effect
     deadline2 = time.monotonic() + 2.0
     while time.monotonic() < deadline2:

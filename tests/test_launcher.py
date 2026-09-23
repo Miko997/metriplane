@@ -1370,6 +1370,60 @@ class TestMakeProcEntry:
         finally:
             lm._discard_unreleased_process(proc)
 
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group behavior")
+    def test_supervisor_retains_identity_until_stubborn_child_is_force_stopped(self, tmp_path):
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "child-ready"
+        child_code = (
+            "import signal,time; from pathlib import Path; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            f"Path({str(marker)!r}).touch(); time.sleep(30)"
+        )
+        proc = lm._launch(
+            [sys.executable, "-c", child_code],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        entry = lm._make_proc_entry(proc)
+        try:
+            deadline = time.monotonic() + 5
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert marker.exists()
+            assert lm._stop_pg(
+                entry["pgid"],
+                entry["pid"],
+                expected_identity=entry["identity"],
+                name="stubborn-test-child",
+            )
+            assert not lm._process_group_alive(entry["pgid"])
+        finally:
+            if lm._process_group_alive(entry["pgid"]):
+                os.killpg(entry["pgid"], signal.SIGKILL)
+            proc.wait(timeout=5)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
+    def test_signal_while_gate_blocked_never_starts_user_command(self, tmp_path):
+        import select
+
+        import metriplane.launcher as lm
+
+        marker = tmp_path / "must-not-start"
+        proc = lm._launch(
+            [sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+        ready_fd = proc._metriplane_ready_fd
+        readable, _, _ = select.select([ready_fd], [], [], 2)
+        assert readable == [ready_fd]
+        os.killpg(proc.pid, signal.SIGTERM)
+        entry = lm._make_proc_entry(proc)
+        assert entry["identity"]["pid"] == proc.pid
+        assert proc.wait(timeout=5) == 128 + signal.SIGTERM
+        assert not marker.exists()
+
     @pytest.mark.skipif(os.name != "posix", reason="POSIX launch gate")
     def test_missing_supervisor_acknowledgement_never_releases_user_command(
         self, tmp_path, monkeypatch
@@ -1709,6 +1763,20 @@ def test_stop_refuses_pid_reuse_without_sending_a_signal(monkeypatch, capsys):
     assert lm._stop_pg(901, 901, expected_identity=expected, name="reused") is False
     assert sent == []
     assert "refusing signal" in capsys.readouterr().out
+
+
+def test_stop_never_reports_unsent_signal(monkeypatch, capsys):
+    import metriplane.launcher as lm
+
+    expected = _process_double(902)._metriplane_test_identity
+    monkeypatch.setattr(lm, "_is_running", lambda _pid: True)
+    monkeypatch.setattr(lm, "_process_group_alive", lambda _pgid: True)
+    monkeypatch.setattr(lm, "_capture_process_identity", lambda _pid: expected)
+    monkeypatch.setattr(lm.os, "killpg", lambda *_args: (_ for _ in ()).throw(OSError("refused")))
+    monkeypatch.setattr(lm.os, "kill", lambda *_args: (_ for _ in ()).throw(OSError("refused")))
+
+    assert lm._stop_pg(902, 902, expected_identity=expected, name="refused") is False
+    assert "SIGKILL sent" not in capsys.readouterr().out
 
 
 def test_stop_accepts_reaped_group_with_zombie_supervisor(monkeypatch):

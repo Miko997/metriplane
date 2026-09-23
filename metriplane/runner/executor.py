@@ -32,6 +32,7 @@ _MAX_CHILD_OPEN_FILES = 512
 _POSIX_SUPERVISOR = """\
 import os
 import resource
+import signal
 import subprocess
 import sys
 
@@ -41,6 +42,15 @@ gate_fd = int(sys.argv[4])
 ready_fd = int(sys.argv[5])
 inherited_fds = tuple(int(value) for value in sys.argv[6].split(",") if value)
 command = sys.argv[7:]
+child = None
+pending_signal = None
+
+def retain_supervisor(signum, _frame):
+    global pending_signal
+    pending_signal = signum
+
+signal.signal(signal.SIGINT, retain_supervisor)
+signal.signal(signal.SIGTERM, retain_supervisor)
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 nofile_hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
 if nofile_hard != resource.RLIM_INFINITY:
@@ -59,6 +69,8 @@ finally:
 if os.read(gate_fd, 1) != b"\\n":
     raise SystemExit(125)
 os.close(gate_fd)
+if pending_signal is not None:
+    raise SystemExit(128 + pending_signal)
 try:
     child = subprocess.Popen(command, pass_fds=inherited_fds)
 finally:
@@ -67,6 +79,11 @@ finally:
             os.close(inherited_fd)
         except OSError:
             pass
+if pending_signal is not None:
+    try:
+        child.send_signal(pending_signal)
+    except ProcessLookupError:
+        pass
 raise SystemExit(child.wait())
 """
 
