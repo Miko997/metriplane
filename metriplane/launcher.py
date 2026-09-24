@@ -12,9 +12,10 @@ Manages the three local processes:
 State and logs use the injected platform state and data directories.
 
 Key design decisions (v2):
-- POSIX children run in their own session and process group (PGID = PID)
-- Windows children use CREATE_NEW_PROCESS_GROUP and taskkill /T lifecycle control
-- state stores both pid and pgid
+- Governed Linux/macOS children run in their own session and process group (PGID = PID)
+- exact birth/executable/argv identity is retained before lifecycle state is accepted
+- Windows helpers remain non-destructive, but start fails closed without an exact identity provider
+- state stores pid, pgid, and the retained process identity
 - stop: SIGTERM → wait 5s → SIGKILL → poll port-free before clearing state
 - status: shows port owners via ss -tlnp even when state file is absent
 - cleanup: kills only identifiable Metriplane orphans on known ports
@@ -23,6 +24,7 @@ Key design decisions (v2):
 from __future__ import annotations
 
 import csv
+import ctypes
 import errno
 import hashlib
 import json
@@ -31,9 +33,12 @@ from metriplane.strict_parsing import load_json as strict_json_loads
 import os
 import re
 import secrets
+import select
+import shlex
 import signal
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -77,17 +82,145 @@ _STATE_LOCKS_HELD: ContextVar[frozenset[str]] = ContextVar(
 # Ports known to be owned by Metriplane services (in priority order for cleanup)
 _METRIPLANE_KNOWN_PORTS = [8000, 8765, 9000, 8088]
 
-# Safe-to-kill cmdline patterns (partial match on any argument)
-# Note: cleanup only runs on _METRIPLANE_KNOWN_PORTS so http.server here means
-# our dashboard server on port 8088, not arbitrary http servers.
-_METRIPLANE_SAFE_PATTERNS = [
+_METRIPLANE_SAFE_MODULES = {
     "metriplane.runner.service",
     "metriplane.run",
     "metriplane.run_fusion",
-    "run_fusion",
-    "metriplane.cli",
-    "http.server",  # dashboard static server (scoped to known port 8088)
-]
+    "metriplane._local_http",
+}
+_POSIX_EXEC_GATE = """\
+import os
+import signal
+import sys
+
+gate_fd = int(sys.argv[1])
+command = sys.argv[2:]
+try:
+    released = os.read(gate_fd, 2) == b"\\n"
+finally:
+    os.close(gate_fd)
+if not released:
+    raise SystemExit(125)
+for signal_name in ("SIGPIPE", "SIGXFZ", "SIGXFSZ"):
+    inherited_signal = getattr(signal, signal_name, None)
+    if inherited_signal is not None:
+        signal.signal(inherited_signal, signal.SIG_DFL)
+try:
+    os.execvp(command[0], command)
+except (OSError, IndexError):
+    raise SystemExit(126)
+"""
+_POSIX_LAUNCH_SUPERVISOR = """\
+import os
+import signal
+import subprocess
+import sys
+
+gate_fd = int(sys.argv[1])
+ready_fd = int(sys.argv[2])
+exec_gate = sys.argv[3]
+command = sys.argv[4:]
+child = None
+pending_signal = None
+
+def retain_supervisor(signum, _frame):
+    global pending_signal
+    pending_signal = signum
+
+signal.signal(signal.SIGINT, retain_supervisor)
+signal.signal(signal.SIGTERM, retain_supervisor)
+
+def close_fd(descriptor):
+    if descriptor is not None:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+def reap_child():
+    if child is None:
+        return
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=5)
+
+if pending_signal is not None:
+    raise SystemExit(128 + pending_signal)
+child_gate_read, child_gate_write = os.pipe()
+if pending_signal is not None:
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    raise SystemExit(128 + pending_signal)
+try:
+    child = subprocess.Popen(
+        [sys.executable, "-c", exec_gate, str(child_gate_read), *command],
+        pass_fds=(child_gate_read,),
+    )
+except (OSError, ValueError):
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    raise SystemExit(125)
+close_fd(child_gate_read)
+if pending_signal is not None:
+    try:
+        child.send_signal(pending_signal)
+    except ProcessLookupError:
+        pass
+try:
+    os.write(ready_fd, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+finally:
+    os.close(ready_fd)
+if os.read(gate_fd, 2) != b"\\n":
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+os.close(gate_fd)
+if pending_signal is not None:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(128 + pending_signal)
+try:
+    os.write(child_gate_write, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+close_fd(child_gate_write)
+raise SystemExit(child.wait())
+"""
+
+
+class _DarwinProcBsdInfo(ctypes.Structure):
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +371,26 @@ def _validate_process_entry(name: str, value: object) -> None:
             raise _state_corruption(f"launcher state field {name}.port is invalid")
     if "host" in value and (not isinstance(value["host"], str) or not value["host"]):
         raise _state_corruption(f"launcher state field {name}.host is invalid")
+    if "identity" in value:
+        identity = value["identity"]
+        if not isinstance(identity, dict):
+            raise _state_corruption(f"launcher state field {name}.identity is invalid")
+        required = {"pid", "pgid", "birth", "executable", "argv"}
+        if set(identity) != required:
+            raise _state_corruption(f"launcher state field {name}.identity fields are invalid")
+        if identity["pid"] != value.get("pid") or identity["pgid"] != value.get("pgid"):
+            raise _state_corruption(f"launcher state field {name}.identity numeric binding differs")
+        if not isinstance(identity["birth"], str) or not identity["birth"]:
+            raise _state_corruption(f"launcher state field {name}.identity.birth is invalid")
+        if not isinstance(identity["executable"], str) or not identity["executable"]:
+            raise _state_corruption(f"launcher state field {name}.identity.executable is invalid")
+        argv = identity["argv"]
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(item, str) for item in argv)
+        ):
+            raise _state_corruption(f"launcher state field {name}.identity.argv is invalid")
 
 
 def _validate_state(state: object) -> dict[str, Any]:
@@ -413,7 +566,7 @@ def _windows_process_is_running(pid: int) -> bool:
 
 
 def _is_running(pid: int | None) -> bool:
-    """Return True if the process exists (any state)."""
+    """Return True if the process is live rather than a retained zombie."""
     if pid is None:
         return False
     try:
@@ -422,10 +575,27 @@ def _is_running(pid: int | None) -> bool:
             return False
         if _is_windows():
             return _windows_process_is_running(pid_value)
+        if sys.platform == "darwin":
+            darwin_status = _darwin_process_status(pid_value)
+            if darwin_status == 5:  # SZOMB in Darwin's proc.h
+                return False
+            if darwin_status is not None:
+                return True
+        if Path("/proc").is_dir():
+            try:
+                parsed = _parse_linux_proc_stat(Path(f"/proc/{pid_value}/stat").read_text())
+                if parsed is not None and parsed[0] == "Z":
+                    return False
+            except (FileNotFoundError, ProcessLookupError):
+                return False
+            except (PermissionError, OSError, ValueError):
+                pass
         os.kill(pid_value, 0)
         return True
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        return True
     except Exception:
         return False
 
@@ -468,13 +638,338 @@ def _read_cmdline(pid: int) -> str:
         return ""
 
 
+def _read_argv(pid: int) -> list[str]:
+    """Return the process argv without substring interpretation."""
+    try:
+        data = Path(f"/proc/{int(pid)}/cmdline").read_bytes()
+        return [
+            item.decode("utf-8", errors="surrogateescape") for item in data.split(b"\0") if item
+        ]
+    except Exception:
+        return []
+
+
+def _parse_linux_proc_stat(value: str) -> tuple[str, int, str] | None:
+    """Return state, process group and birth token from one procfs stat row."""
+    close = value.rfind(") ")
+    if close < 0:
+        return None
+    fields = value[close + 2 :].split()
+    if len(fields) <= 19:
+        return None
+    try:
+        return fields[0], int(fields[2]), fields[19]
+    except ValueError:
+        return None
+
+
+def _parse_darwin_procargs(value: bytes) -> list[str] | None:
+    """Decode exact KERN_PROCARGS2 argv boundaries without display-string parsing."""
+    if len(value) < 4:
+        return None
+    argc = struct.unpack("=i", value[:4])[0]
+    if argc <= 0 or argc > 1_000_000:
+        return None
+    cursor = value.find(b"\0", 4)
+    if cursor < 0:
+        return None
+    cursor += 1
+    while cursor < len(value) and value[cursor] == 0:
+        cursor += 1
+    argv: list[str] = []
+    for _ in range(argc):
+        end = value.find(b"\0", cursor)
+        if end < 0:
+            return None
+        argv.append(value[cursor:end].decode("utf-8", errors="surrogateescape"))
+        cursor = end + 1
+    # POSIX permits empty arguments after argv[0].  Preserve those exact
+    # boundaries; only argv[0] must name an executable for this identity.
+    return argv if argv and argv[0] else None
+
+
+def _darwin_process_argv(pid: int) -> list[str] | None:
+    """Read KERN_PROCARGS2 with the kernel's declared maximum argument size."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.sysctlbyname.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        libc.sysctlbyname.restype = ctypes.c_int
+        maximum = ctypes.c_int()
+        maximum_size = ctypes.c_size_t(ctypes.sizeof(maximum))
+        if (
+            libc.sysctlbyname(
+                b"kern.argmax",
+                ctypes.byref(maximum),
+                ctypes.byref(maximum_size),
+                None,
+                0,
+            )
+            != 0
+        ):
+            return None
+        if maximum_size.value != ctypes.sizeof(maximum):
+            return None
+        capacity = int(maximum.value)
+        if capacity <= 4 or capacity > 16 * 1024 * 1024:
+            return None
+
+        libc.sysctl.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        libc.sysctl.restype = ctypes.c_int
+        mib = (ctypes.c_int * 3)(1, 49, int(pid))
+        args_size = ctypes.c_size_t(capacity)
+        args_buffer = ctypes.create_string_buffer(capacity)
+        if libc.sysctl(mib, 3, args_buffer, ctypes.byref(args_size), None, 0) != 0:
+            return None
+        if args_size.value <= 4 or args_size.value > capacity:
+            return None
+        return _parse_darwin_procargs(args_buffer.raw[: args_size.value])
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _darwin_process_identity(pid: int) -> dict[str, Any] | None:
+    """Read exact Darwin birth/executable/argv identity through kernel APIs."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_pidinfo.restype = ctypes.c_int
+        libproc.proc_pidpath.argtypes = [
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        libproc.proc_pidpath.restype = ctypes.c_int
+        info = _DarwinProcBsdInfo()
+        size = ctypes.sizeof(info)
+        if libproc.proc_pidinfo(int(pid), 3, 0, ctypes.byref(info), size) != size:
+            return None
+        if int(info.pbi_pid) != int(pid):
+            return None
+        path_buffer = ctypes.create_string_buffer(4096)
+        if libproc.proc_pidpath(int(pid), path_buffer, len(path_buffer)) <= 0:
+            return None
+        argv = _darwin_process_argv(int(pid))
+        if argv is None:
+            return None
+        return {
+            "pid": int(pid),
+            "pgid": int(info.pbi_pgid),
+            "birth": f"{int(info.pbi_start_tvsec)}.{int(info.pbi_start_tvusec):06d}",
+            "executable": path_buffer.value.decode("utf-8", errors="surrogateescape"),
+            "argv": argv,
+        }
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _darwin_process_status(pid: int) -> int | None:
+    """Read Darwin's native process status, including a positive zombie state."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_pidinfo.restype = ctypes.c_int
+        info = _DarwinProcBsdInfo()
+        size = ctypes.sizeof(info)
+        # A non-zero PROC_PIDTBSDINFO argument asks XNU to search zombproc as
+        # well as allproc. Without it an unreaped zombie is indistinguishable
+        # from an unavailable provider result and kill(pid, 0) reports it as
+        # present.
+        if libproc.proc_pidinfo(int(pid), 3, 1, ctypes.byref(info), size) != size:
+            return None
+        if int(info.pbi_pid) != int(pid):
+            return None
+        return int(info.pbi_status)
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _darwin_process_group_size(pgid: int) -> int | None:
+    """Count live Darwin group members through libproc, never display text."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_listpgrppids.argtypes = [
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_listpgrppids.restype = ctypes.c_int
+        libproc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_pidinfo.restype = ctypes.c_int
+        capacity = libproc.proc_listpgrppids(int(pgid), None, 0)
+        if capacity < 0:
+            return None
+        if capacity == 0:
+            return 0
+        pids = (ctypes.c_int * (capacity + 16))()
+        count = libproc.proc_listpgrppids(int(pgid), pids, ctypes.sizeof(pids))
+        if count < 0 or count >= len(pids):
+            return None
+        members = 0
+        for listed_pid in pids[:count]:
+            if listed_pid <= 0:
+                continue
+            info = _DarwinProcBsdInfo()
+            size = ctypes.sizeof(info)
+            ctypes.set_errno(0)
+            read = libproc.proc_pidinfo(int(listed_pid), 3, 1, ctypes.byref(info), size)
+            if read == 0:
+                if ctypes.get_errno() == errno.ESRCH:
+                    continue
+                return None
+            if read != size:
+                return None
+            if int(info.pbi_pgid) != int(pgid):
+                return None
+            if int(info.pbi_status) != 5:
+                members += 1
+        return members
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _capture_process_identity(pid: int) -> dict[str, Any] | None:
+    """Capture birth, executable and argv before retaining a numeric process ID."""
+    pid_value = int(pid)
+    if sys.platform == "darwin":
+        return _darwin_process_identity(pid_value)
+    if _is_windows():
+        return None
+    argv = _read_argv(pid_value)
+    if not argv or not Path("/proc").is_dir():
+        return None
+    try:
+        parsed = _parse_linux_proc_stat(Path(f"/proc/{pid_value}/stat").read_text())
+        executable = os.readlink(f"/proc/{pid_value}/exe")
+    except (FileNotFoundError, ProcessLookupError, PermissionError, OSError, ValueError):
+        return None
+    if parsed is None:
+        return None
+    _, pgid, birth = parsed
+    return {
+        "pid": pid_value,
+        "pgid": int(pgid),
+        "birth": birth,
+        "executable": executable,
+        "argv": argv,
+    }
+
+
+def _process_identity_matches(expected: object) -> bool:
+    if not isinstance(expected, dict):
+        return False
+    try:
+        current = _capture_process_identity(int(expected["pid"]))
+    except (KeyError, TypeError, ValueError):
+        return False
+    return current == expected
+
+
+def _process_group_size(pgid: int | None) -> int | None:
+    if pgid is None or _is_windows():
+        return 0
+    if sys.platform == "darwin":
+        return _darwin_process_group_size(int(pgid))
+    if Path("/proc").is_dir():
+        members = 0
+        try:
+            entries = Path("/proc").iterdir()
+            for entry in entries:
+                if not entry.name.isdigit():
+                    continue
+                try:
+                    parsed = _parse_linux_proc_stat((entry / "stat").read_text())
+                    if parsed is not None and parsed[0] != "Z" and parsed[1] == int(pgid):
+                        members += 1
+                except (
+                    FileNotFoundError,
+                    ProcessLookupError,
+                    PermissionError,
+                    OSError,
+                    ValueError,
+                ):
+                    continue
+        except OSError:
+            return None
+        return members
+    return None
+
+
+def _process_group_alive(pgid: int | None) -> bool:
+    size = _process_group_size(pgid)
+    return size is None or size > 0
+
+
+def _is_metriplane_argv(argv: list[str]) -> bool:
+    if not argv:
+        return False
+    executable = Path(argv[0]).name.lower()
+    if re.fullmatch(r"(?:python|pypy)(?:\d+(?:\.\d+)*)?(?:\.exe)?", executable) is None:
+        return False
+    return len(argv) >= 3 and argv[1] == "-m" and argv[2] in _METRIPLANE_SAFE_MODULES
+
+
+def _is_metriplane_process_identity(identity: object) -> bool:
+    """Authorize cleanup only when kernel executable and exact argv agree."""
+    if not isinstance(identity, dict):
+        return False
+    executable = identity.get("executable")
+    argv = identity.get("argv")
+    if not isinstance(executable, str) or not isinstance(argv, list):
+        return False
+    if not argv or not all(isinstance(item, str) for item in argv):
+        return False
+    argv0 = Path(argv[0])
+    if not argv0.is_absolute() or not _is_metriplane_argv(argv):
+        return False
+    try:
+        return os.path.samefile(executable, argv0)
+    except OSError:
+        return False
+
+
 def _is_vt_safe_to_kill(cmdline: str) -> bool:
-    """Return True if cmdline matches a known safe-to-kill Metriplane pattern."""
-    cl = cmdline.lower()
-    for pat in _METRIPLANE_SAFE_PATTERNS:
-        if pat.lower() in cl:
-            return True
-    return False
+    """Compatibility wrapper using exact argv structure, never substring matches."""
+    try:
+        return _is_metriplane_argv(shlex.split(cmdline))
+    except ValueError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -576,11 +1071,14 @@ def _find_port_owner(port: int) -> dict[str, Any] | None:
             if not m:
                 continue
             pid = int(m.group(1))
-            cmdline = _read_cmdline(pid)
+            identity = _capture_process_identity(pid)
+            argv = identity["argv"] if identity is not None else []
+            cmdline = " ".join(shlex.quote(item) for item in argv)
             return {
                 "pid": pid,
                 "cmdline": cmdline,
-                "safe_to_kill": _is_vt_safe_to_kill(cmdline),
+                "identity": identity,
+                "safe_to_kill": _is_metriplane_process_identity(identity),
             }
     except Exception:
         pass
@@ -613,21 +1111,83 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
 def _launch(
     cmd: list[str], log_file: Path, cwd: Path, env: dict[str, str] | None = None
 ) -> subprocess.Popen[bytes]:
-    """Launch a subprocess in an isolated platform process group."""
-    group_options: dict[str, Any] = (
-        {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)}
-        if _is_windows()
-        else {"start_new_session": True}
-    )
-    with open(log_file, "w") as fh:
-        return subprocess.Popen(
-            cmd,
-            stdout=fh,
-            stderr=fh,
-            cwd=str(cwd),
-            env=env,
-            **group_options,
+    """Launch behind a gate so exact group identity exists before user code runs."""
+    if _is_windows():
+        raise _LauncherStateError(
+            "launcher start requires an exact Windows process-identity provider"
         )
+    gate_read, gate_write = os.pipe()
+    try:
+        ready_read, ready_write = os.pipe()
+    except BaseException:
+        os.close(gate_read)
+        os.close(gate_write)
+        raise
+    try:
+        with open(log_file, "w") as fh:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    _POSIX_LAUNCH_SUPERVISOR,
+                    str(gate_read),
+                    str(ready_write),
+                    _POSIX_EXEC_GATE,
+                    *cmd,
+                ],
+                stdout=fh,
+                stderr=fh,
+                cwd=str(cwd),
+                env=env,
+                start_new_session=True,
+                pass_fds=(gate_read, ready_write),
+            )
+    except BaseException:
+        os.close(gate_write)
+        os.close(ready_read)
+        raise
+    finally:
+        os.close(gate_read)
+        os.close(ready_write)
+    process._metriplane_gate_fd = gate_write  # type: ignore[attr-defined]
+    process._metriplane_ready_fd = ready_read  # type: ignore[attr-defined]
+    return process
+
+
+def _release_launch_gate(proc: subprocess.Popen[bytes]) -> None:
+    """Release a launcher child only after its supervisor identity is retained."""
+    gate_fd = getattr(proc, "_metriplane_gate_fd", None)
+    if gate_fd is None:
+        return
+    proc._metriplane_gate_fd = None  # type: ignore[attr-defined]
+    try:
+        os.write(int(gate_fd), b"\n")
+    except OSError as exc:
+        raise _LauncherStateError("could not release retained launcher child") from exc
+    finally:
+        os.close(int(gate_fd))
+
+
+def _discard_unreleased_process(proc: subprocess.Popen[bytes]) -> None:
+    """Close a failed child's gate; no user command or unverified signal is needed."""
+    gate_fd = getattr(proc, "_metriplane_gate_fd", None)
+    if gate_fd is not None:
+        proc._metriplane_gate_fd = None  # type: ignore[attr-defined]
+        try:
+            os.close(int(gate_fd))
+        except OSError:
+            pass
+    ready_fd = getattr(proc, "_metriplane_ready_fd", None)
+    if ready_fd is not None:
+        proc._metriplane_ready_fd = None  # type: ignore[attr-defined]
+        try:
+            os.close(int(ready_fd))
+        except OSError:
+            pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:
@@ -755,12 +1315,25 @@ def _start_fusion(
 
 
 def _stop_pg(
-    pgid: int | None, pid: int | None, *, use_sigint: bool = False, name: str = "process"
-) -> None:
+    pgid: int | None,
+    pid: int | None,
+    *,
+    expected_identity: dict[str, Any] | None = None,
+    use_sigint: bool = False,
+    name: str = "process",
+) -> bool:
     """Stop a process group. Sends SIGINT/SIGTERM, waits 5s, then SIGKILL."""
+    if pid is None:
+        return True
+    leader_running = _is_running(pid)
+    group_running = _process_group_alive(pgid)
+    if not leader_running and not group_running:
+        return True
+    identity = expected_identity or _capture_process_identity(pid)
     if _is_windows():
-        if pid is None or not _is_running(pid):
-            return
+        if identity is None or not _process_identity_matches(identity):
+            print(f"  [{name}] retained process identity unavailable or changed; refusing signal")
+            return False
         subprocess.run(
             ["taskkill", "/PID", str(int(pid)), "/T"],
             capture_output=True,
@@ -771,7 +1344,7 @@ def _stop_pg(
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline:
             if not _is_running(pid):
-                return
+                return True
             time.sleep(0.1)
         subprocess.run(
             ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
@@ -786,10 +1359,25 @@ def _stop_pg(
                 break
             time.sleep(0.05)
         print(f"  [{name}] forced process-tree termination after 5s")
-        return
+        return not _is_running(pid)
+
+    current_identity = _capture_process_identity(pid)
+    if (
+        identity is None
+        or (leader_running and current_identity != identity)
+        or (not leader_running and current_identity not in (None, identity))
+    ):
+        print(f"  [{name}] retained process identity unavailable or changed; refusing signal")
+        return False
 
     # Build a list of targets: try by pgid first, fall back to pid
     def _send(sig: signal.Signals) -> bool:
+        current_identity = _capture_process_identity(pid)
+        leader_is_running = _is_running(pid)
+        if (leader_is_running and current_identity != identity) or (
+            not leader_is_running and current_identity not in (None, identity)
+        ):
+            return False
         if pgid is not None:
             try:
                 os.killpg(int(pgid), sig)
@@ -805,32 +1393,25 @@ def _stop_pg(
         return False
 
     def _any_alive() -> bool:
-        if pgid is not None and pgid == pid:
-            return _is_running(pid)
-        # Check both
-        if pgid is not None:
-            if _is_running(pgid):
-                return True
-        if pid is not None:
-            if _is_running(pid):
-                return True
-        return False
+        return _process_group_alive(pgid) or _is_running(pid)
 
     if not _any_alive():
-        return
+        return True
 
     sig1 = signal.SIGINT if use_sigint else signal.SIGTERM
-    _send(sig1)
+    if not _send(sig1):
+        return not _any_alive()
 
     # Wait up to 5s for clean exit
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         if not _any_alive():
-            return
+            return True
         time.sleep(0.1)
 
     # Force kill
-    _send(signal.SIGKILL)
+    if not _send(signal.SIGKILL):
+        return not _any_alive()
     # Wait up to 2s for SIGKILL to take effect
     deadline2 = time.monotonic() + 2.0
     while time.monotonic() < deadline2:
@@ -838,12 +1419,45 @@ def _stop_pg(
             break
         time.sleep(0.05)
     print(f"  [{name}] SIGKILL sent (did not exit cleanly after 5s)")
+    return not _any_alive()
 
 
 def _make_proc_entry(proc: subprocess.Popen[bytes]) -> dict[str, Any]:
-    """Build the state entry for a started process (with pgid)."""
-    pgid = _get_pgid(proc.pid) or proc.pid
-    return {"pid": proc.pid, "pgid": pgid}
+    """Build state only after retaining a PID-reuse-resistant process identity."""
+    ready_fd = getattr(proc, "_metriplane_ready_fd", None)
+    if ready_fd is not None:
+        proc._metriplane_ready_fd = None  # type: ignore[attr-defined]
+        readiness_error: Exception | None = None
+        acknowledged = False
+        try:
+            try:
+                readable, _, _ = select.select([int(ready_fd)], [], [], 2.0)
+                acknowledged = bool(readable) and os.read(int(ready_fd), 2) == b"\n"
+            except (OSError, ValueError) as exc:
+                readiness_error = exc
+        finally:
+            try:
+                os.close(int(ready_fd))
+            except OSError as exc:
+                if readiness_error is None:
+                    readiness_error = exc
+        if readiness_error is not None:
+            raise _LauncherStateError(
+                "child supervisor identity gate I/O failed"
+            ) from readiness_error
+        if not acknowledged:
+            raise _LauncherStateError("child supervisor did not reach its identity gate")
+    identity = getattr(proc, "_metriplane_test_identity", None)
+    deadline = time.monotonic() + 0.25
+    while identity is None and proc.poll() is None and time.monotonic() < deadline:
+        identity = _capture_process_identity(proc.pid)
+        if identity is None:
+            time.sleep(0.005)
+    if identity is None:
+        raise _LauncherStateError("could not retain child birth/executable/argv identity")
+    entry = {"pid": proc.pid, "pgid": identity["pgid"], "identity": identity}
+    _release_launch_gate(proc)
+    return entry
 
 
 # ---------------------------------------------------------------------------
@@ -930,9 +1544,20 @@ def _cmd_start_locked(
 
     # Check for stale state with live processes
     if state:
-        runner_pid = state.get("runner", {}).get("pid")
-        dash_pid = state.get("dashboard", {}).get("pid")
-        if _is_running(runner_pid) or _is_running(dash_pid):
+        runner_info = state.get("runner", {})
+        dash_info = state.get("dashboard", {})
+        fusion_info = state.get("fusion", {})
+        runner_pid = runner_info.get("pid")
+        dash_pid = dash_info.get("pid")
+        fusion_pid = fusion_info.get("pid")
+        if (
+            _is_running(runner_pid)
+            or _process_group_alive(runner_info.get("pgid"))
+            or _is_running(dash_pid)
+            or _process_group_alive(dash_info.get("pgid"))
+            or _is_running(fusion_pid)
+            or _process_group_alive(fusion_info.get("pgid"))
+        ):
             print("⚠️  Metriplane launcher is already running.")
             print("   Use `metriplane stop` first, or `metriplane status` to inspect.")
             return 1
@@ -996,6 +1621,12 @@ def _cmd_start_locked(
         paths=resolved_paths,
         session_capability=session_capability,
     )
+    try:
+        runner_entry = _make_proc_entry(rp)
+    except _LauncherStateError as exc:
+        _discard_unreleased_process(rp)
+        print(f"  ❌ Runner identity capture failed: {exc}")
+        return 1
     if not _wait_for_port(runner_host, runner_port, timeout=8.0):
         print(f"  ❌ Runner did not start within 8s (pid={rp.pid})")
         runner_log = log_d / "runner.log"
@@ -1004,7 +1635,12 @@ def _cmd_start_locked(
         if returncode is not None:
             print(f"     Runner exited with status {returncode}")
         _print_log_tail(runner_log)
-        _stop_pg(rp.pid, rp.pid, name="runner")
+        _stop_pg(
+            runner_entry["pgid"],
+            runner_entry["pid"],
+            expected_identity=runner_entry["identity"],
+            name="runner",
+        )
         return 1
     print(f"  ✅ Runner OK  (pid={rp.pid})")
 
@@ -1016,10 +1652,32 @@ def _cmd_start_locked(
         log_file=log_d / "dashboard.log",
         repo_root=repo_root,
     )
+    try:
+        dashboard_entry = _make_proc_entry(dp)
+    except _LauncherStateError as exc:
+        _discard_unreleased_process(dp)
+        _stop_pg(
+            runner_entry["pgid"],
+            runner_entry["pid"],
+            expected_identity=runner_entry["identity"],
+            name="runner",
+        )
+        print(f"  ❌ Dashboard identity capture failed: {exc}")
+        return 1
     if not _wait_for_port(dashboard_host, dashboard_port, timeout=8.0):
         print(f"  ❌ Dashboard server did not start within 8s (pid={dp.pid})")
-        _stop_pg(dp.pid, dp.pid, name="dashboard")
-        _stop_pg(rp.pid, rp.pid, name="runner")
+        _stop_pg(
+            dashboard_entry["pgid"],
+            dashboard_entry["pid"],
+            expected_identity=dashboard_entry["identity"],
+            name="dashboard",
+        )
+        _stop_pg(
+            runner_entry["pgid"],
+            runner_entry["pid"],
+            expected_identity=runner_entry["identity"],
+            name="runner",
+        )
         return 1
     print(f"  ✅ Dashboard OK  (pid={dp.pid})")
 
@@ -1036,7 +1694,24 @@ def _cmd_start_locked(
             log_file=log_d / "fusion.log",
             repo_root=repo_root,
         )
-        fusion_entry = _make_proc_entry(fp)
+        try:
+            fusion_entry = _make_proc_entry(fp)
+        except _LauncherStateError as exc:
+            _discard_unreleased_process(fp)
+            _stop_pg(
+                dashboard_entry["pgid"],
+                dashboard_entry["pid"],
+                expected_identity=dashboard_entry["identity"],
+                name="dashboard",
+            )
+            _stop_pg(
+                runner_entry["pgid"],
+                runner_entry["pid"],
+                expected_identity=runner_entry["identity"],
+                name="runner",
+            )
+            print(f"  ❌ Runtime identity capture failed: {exc}")
+            return 1
         fusion_entry.update(
             {
                 "run_id": effective_run_id,
@@ -1054,9 +1729,25 @@ def _cmd_start_locked(
             print(f"     Health/Metrics ready: {metrics_ready}")
             print(f"     WebSocket ready     : {ws_ready}")
             print(f"     Log: {log_d / 'fusion.log'}")
-            _stop_pg(_get_pgid(fp.pid) or fp.pid, fp.pid, use_sigint=True, name="fusion")
-            _stop_pg(_get_pgid(dp.pid) or dp.pid, dp.pid, name="dashboard")
-            _stop_pg(_get_pgid(rp.pid) or rp.pid, rp.pid, name="runner")
+            _stop_pg(
+                fusion_entry["pgid"],
+                fusion_entry["pid"],
+                expected_identity=fusion_entry["identity"],
+                use_sigint=True,
+                name="fusion",
+            )
+            _stop_pg(
+                dashboard_entry["pgid"],
+                dashboard_entry["pid"],
+                expected_identity=dashboard_entry["identity"],
+                name="dashboard",
+            )
+            _stop_pg(
+                runner_entry["pgid"],
+                runner_entry["pid"],
+                expected_identity=runner_entry["identity"],
+                name="runner",
+            )
             _wait_for_port_free(8000, timeout=3.0)
             _wait_for_port_free(8765, timeout=3.0)
             _wait_for_port_free(dashboard_port, timeout=3.0)
@@ -1072,8 +1763,8 @@ def _cmd_start_locked(
         "log_dir": str(log_d),
         "runs_dir": effective_runs_dir,
         "timestamp": timestamp,
-        "runner": {**_make_proc_entry(rp), "host": runner_host, "port": runner_port},
-        "dashboard": {**_make_proc_entry(dp), "host": dashboard_host, "port": dashboard_port},
+        "runner": {**runner_entry, "host": runner_host, "port": runner_port},
+        "dashboard": {**dashboard_entry, "host": dashboard_host, "port": dashboard_port},
     }
     if fusion_entry is not None:
         new_state["fusion"] = fusion_entry
@@ -1082,10 +1773,24 @@ def _cmd_start_locked(
     except (OSError, _LauncherStateError) as exc:
         if fusion_entry is not None:
             _stop_pg(
-                fusion_entry.get("pgid"), fusion_entry.get("pid"), use_sigint=True, name="fusion"
+                fusion_entry.get("pgid"),
+                fusion_entry.get("pid"),
+                expected_identity=fusion_entry.get("identity"),
+                use_sigint=True,
+                name="fusion",
             )
-        _stop_pg(_get_pgid(dp.pid) or dp.pid, dp.pid, name="dashboard")
-        _stop_pg(_get_pgid(rp.pid) or rp.pid, rp.pid, name="runner")
+        _stop_pg(
+            dashboard_entry["pgid"],
+            dashboard_entry["pid"],
+            expected_identity=dashboard_entry["identity"],
+            name="dashboard",
+        )
+        _stop_pg(
+            runner_entry["pgid"],
+            runner_entry["pid"],
+            expected_identity=runner_entry["identity"],
+            name="runner",
+        )
         try:
             _clear_state(resolved_paths)
         except (OSError, _LauncherStateError) as cleanup_exc:
@@ -1164,31 +1869,65 @@ def _cmd_stop_locked(*, force: bool, resolved_paths: PlatformPaths) -> int:
 
     # Fusion first (SIGINT for clean recording flush)
     if fusion_pid:
-        if _is_running(fusion_pid):
+        if _is_running(fusion_pid) or _process_group_alive(fusion_pgid):
+            if not isinstance(fusion_info.get("identity"), dict):
+                print("  ❌ Fusion state has no retained process identity; refusing signal")
+                return 2
             print(f"  Stopping fusion    (pid={fusion_pid} pgid={fusion_pgid}) …")
-            _stop_pg(fusion_pgid, fusion_pid, use_sigint=True, name="fusion")
-            print("  ✅ Fusion stopped")
-            stopped_any = True
+            if _stop_pg(
+                fusion_pgid,
+                fusion_pid,
+                expected_identity=fusion_info.get("identity"),
+                use_sigint=True,
+                name="fusion",
+            ):
+                print("  ✅ Fusion stopped")
+                stopped_any = True
+            else:
+                print("  ❌ Fusion identity changed; state retained and no signal was sent")
+                return 2
         else:
             print(f"  ℹ️   Fusion pid={fusion_pid} already gone")
 
     # Runner
     if runner_pid:
-        if _is_running(runner_pid):
+        if _is_running(runner_pid) or _process_group_alive(runner_pgid):
+            if not isinstance(runner_info.get("identity"), dict):
+                print("  ❌ Runner state has no retained process identity; refusing signal")
+                return 2
             print(f"  Stopping runner    (pid={runner_pid} pgid={runner_pgid}) …")
-            _stop_pg(runner_pgid, runner_pid, name="runner")
-            print("  ✅ Runner stopped")
-            stopped_any = True
+            if _stop_pg(
+                runner_pgid,
+                runner_pid,
+                expected_identity=runner_info.get("identity"),
+                name="runner",
+            ):
+                print("  ✅ Runner stopped")
+                stopped_any = True
+            else:
+                print("  ❌ Runner identity changed; state retained and no signal was sent")
+                return 2
         else:
             print(f"  ℹ️   Runner pid={runner_pid} already gone")
 
     # Dashboard
     if dash_pid:
-        if _is_running(dash_pid):
+        if _is_running(dash_pid) or _process_group_alive(dash_pgid):
+            if not isinstance(dash_info.get("identity"), dict):
+                print("  ❌ Dashboard state has no retained process identity; refusing signal")
+                return 2
             print(f"  Stopping dashboard (pid={dash_pid} pgid={dash_pgid}) …")
-            _stop_pg(dash_pgid, dash_pid, name="dashboard")
-            print("  ✅ Dashboard stopped")
-            stopped_any = True
+            if _stop_pg(
+                dash_pgid,
+                dash_pid,
+                expected_identity=dash_info.get("identity"),
+                name="dashboard",
+            ):
+                print("  ✅ Dashboard stopped")
+                stopped_any = True
+            else:
+                print("  ❌ Dashboard identity changed; state retained and no signal was sent")
+                return 2
         else:
             print(f"  ℹ️   Dashboard pid={dash_pid} already gone")
 
@@ -1270,7 +2009,14 @@ def _cmd_cleanup_locked(*, resolved_paths: PlatformPaths) -> int:
         print(f"  Port {port}: Metriplane orphan detected")
         print(f"    pid={pid}  cmd={cmdline[:80]}")
         pgid = _get_pgid(pid) or pid
-        _stop_pg(pgid, pid, name=f"port-{port}")
+        if not _stop_pg(
+            pgid,
+            pid,
+            expected_identity=owner.get("identity"),
+            name=f"port-{port}",
+        ):
+            print(f"  ❌ Port {port}: process identity changed; signal refused")
+            continue
         freed = _wait_for_port_free(port, timeout=5.0)
         if freed:
             print(f"  ✅ Port {port} released")

@@ -335,6 +335,11 @@ def _expected_skips(system: str) -> dict[str, tuple[str, str]]:
             ),
         }
     )
+    if system == "linux":
+        result["tests/test_launcher.py::test_launcher_darwin_unreaped_zombie_is_not_live"] = (
+            "setup",
+            "Darwin zombie kernel semantics",
+        )
     if system == "macos":
         result.update(
             {

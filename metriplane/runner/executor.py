@@ -8,9 +8,15 @@ Executes allowlisted commands with timeout, output capture, and cancellation sup
 Uses subprocess without shell=True for security.
 """
 
+import ctypes
+import errno
+import select
 import subprocess
 import signal
+import struct
+import sys
 import threading
+import time
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from collections import deque
@@ -18,6 +24,595 @@ import os
 import pathlib
 
 from metriplane.paths import PlatformPaths
+
+
+_MAX_CAPTURE_CHARS = 1_048_576
+_OUTPUT_TRUNCATED = "\n[OUTPUT TRUNCATED: retained the first 1048576 characters]\n"
+_MAX_CHILD_PROCESSES = 64
+_MAX_CHILD_OPEN_FILES = 512
+_POSIX_EXEC_GATE = """\
+import os
+import signal
+import sys
+
+gate_fd = int(sys.argv[1])
+command = sys.argv[2:]
+try:
+    released = os.read(gate_fd, 2) == b"\\n"
+finally:
+    os.close(gate_fd)
+if not released:
+    raise SystemExit(125)
+for signal_name in ("SIGPIPE", "SIGXFZ", "SIGXFSZ"):
+    inherited_signal = getattr(signal, signal_name, None)
+    if inherited_signal is not None:
+        signal.signal(inherited_signal, signal.SIG_DFL)
+try:
+    os.execvp(command[0], command)
+except (OSError, IndexError):
+    raise SystemExit(126)
+"""
+_POSIX_SUPERVISOR = """\
+import os
+import resource
+import signal
+import subprocess
+import sys
+
+nofile = int(sys.argv[2])
+cpu = int(sys.argv[3])
+gate_fd = int(sys.argv[4])
+ready_fd = int(sys.argv[5])
+inherited_fds = tuple(int(value) for value in sys.argv[6].split(",") if value)
+exec_gate = sys.argv[7]
+command = sys.argv[8:]
+child = None
+pending_signal = None
+
+def retain_supervisor(signum, _frame):
+    global pending_signal
+    pending_signal = signum
+
+signal.signal(signal.SIGINT, retain_supervisor)
+signal.signal(signal.SIGTERM, retain_supervisor)
+
+def close_fd(descriptor):
+    if descriptor is not None:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+def close_inherited_fds():
+    for inherited_fd in inherited_fds:
+        close_fd(inherited_fd)
+
+def reap_child():
+    if child is None:
+        return
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=5)
+
+resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+nofile_hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+if nofile_hard != resource.RLIM_INFINITY:
+    nofile = min(nofile, nofile_hard)
+resource.setrlimit(resource.RLIMIT_NOFILE, (nofile, nofile))
+cpu_hard = resource.getrlimit(resource.RLIMIT_CPU)[1]
+if cpu_hard != resource.RLIM_INFINITY:
+    cpu = min(cpu, cpu_hard)
+resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+if pending_signal is not None:
+    close_inherited_fds()
+    raise SystemExit(128 + pending_signal)
+child_gate_read, child_gate_write = os.pipe()
+if pending_signal is not None:
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    close_inherited_fds()
+    raise SystemExit(128 + pending_signal)
+try:
+    child = subprocess.Popen(
+        [sys.executable, "-c", exec_gate, str(child_gate_read), *command],
+        pass_fds=(*inherited_fds, child_gate_read),
+    )
+except (OSError, ValueError):
+    close_fd(child_gate_read)
+    close_fd(child_gate_write)
+    close_inherited_fds()
+    raise SystemExit(125)
+close_fd(child_gate_read)
+close_inherited_fds()
+if pending_signal is not None:
+    try:
+        child.send_signal(pending_signal)
+    except ProcessLookupError:
+        pass
+try:
+    os.write(ready_fd, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+finally:
+    os.close(ready_fd)
+if os.read(gate_fd, 2) != b"\\n":
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+os.close(gate_fd)
+if pending_signal is not None:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(128 + pending_signal)
+try:
+    os.write(child_gate_write, b"\\n")
+except OSError:
+    close_fd(child_gate_write)
+    reap_child()
+    raise SystemExit(125)
+close_fd(child_gate_write)
+raise SystemExit(child.wait())
+"""
+
+
+class _DarwinProcBsdInfo(ctypes.Structure):
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+class _BoundedTextCapture:
+    """Drain a child stream without permitting unbounded retained output."""
+
+    def __init__(self, limit: int = _MAX_CAPTURE_CHARS) -> None:
+        self._limit = limit
+        self._parts: list[str] = []
+        self._size = 0
+        self._truncated = False
+
+    def append(self, value: str) -> None:
+        remaining = self._limit - self._size
+        if remaining > 0:
+            retained = value[:remaining]
+            self._parts.append(retained)
+            self._size += len(retained)
+        if len(value) > max(0, remaining):
+            self._truncated = True
+
+    def value(self) -> str:
+        text = "".join(self._parts)
+        return text + _OUTPUT_TRUNCATED if self._truncated else text
+
+
+def _drain_stream(
+    stream: Any,
+    capture: _BoundedTextCapture,
+    errors: list[str],
+) -> None:
+    try:
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                return
+            capture.append(chunk)
+    except Exception as exc:
+        errors.append(f"{type(exc).__name__}: {exc}")
+    finally:
+        stream.close()
+
+
+def _parse_linux_proc_stat(value: str) -> tuple[str, int, str] | None:
+    """Return state, process group and birth token from one procfs stat row."""
+    close = value.rfind(") ")
+    if close < 0:
+        return None
+    fields = value[close + 2 :].split()
+    if len(fields) <= 19:
+        return None
+    try:
+        return fields[0], int(fields[2]), fields[19]
+    except ValueError:
+        return None
+
+
+def _parse_darwin_procargs(value: bytes) -> list[str] | None:
+    """Decode exact KERN_PROCARGS2 argv boundaries without display-string parsing."""
+    if len(value) < 4:
+        return None
+    argc = struct.unpack("=i", value[:4])[0]
+    if argc <= 0 or argc > 1_000_000:
+        return None
+    cursor = value.find(b"\0", 4)
+    if cursor < 0:
+        return None
+    cursor += 1
+    while cursor < len(value) and value[cursor] == 0:
+        cursor += 1
+    argv: list[str] = []
+    for _ in range(argc):
+        end = value.find(b"\0", cursor)
+        if end < 0:
+            return None
+        argv.append(value[cursor:end].decode("utf-8", errors="surrogateescape"))
+        cursor = end + 1
+    # POSIX permits empty arguments after argv[0].  The retained supervisor
+    # deliberately uses an empty argument to represent an empty inherited-FD
+    # set, so rejecting every empty element would discard an otherwise exact
+    # kernel identity.  Only argv[0] is required to identify an executable.
+    return argv if argv and argv[0] else None
+
+
+def _darwin_process_argv(pid: int) -> list[str] | None:
+    """Read KERN_PROCARGS2 with the kernel's declared maximum argument size."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.sysctlbyname.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        libc.sysctlbyname.restype = ctypes.c_int
+        maximum = ctypes.c_int()
+        maximum_size = ctypes.c_size_t(ctypes.sizeof(maximum))
+        if (
+            libc.sysctlbyname(
+                b"kern.argmax",
+                ctypes.byref(maximum),
+                ctypes.byref(maximum_size),
+                None,
+                0,
+            )
+            != 0
+        ):
+            return None
+        if maximum_size.value != ctypes.sizeof(maximum):
+            return None
+        capacity = int(maximum.value)
+        if capacity <= 4 or capacity > 16 * 1024 * 1024:
+            return None
+
+        libc.sysctl.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        libc.sysctl.restype = ctypes.c_int
+        mib = (ctypes.c_int * 3)(1, 49, int(pid))
+        args_size = ctypes.c_size_t(capacity)
+        args_buffer = ctypes.create_string_buffer(capacity)
+        if libc.sysctl(mib, 3, args_buffer, ctypes.byref(args_size), None, 0) != 0:
+            return None
+        if args_size.value <= 4 or args_size.value > capacity:
+            return None
+        return _parse_darwin_procargs(args_buffer.raw[: args_size.value])
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _darwin_process_identity(pid: int) -> dict[str, Any] | None:
+    """Read exact Darwin birth/executable/argv identity through kernel APIs."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_pidinfo.restype = ctypes.c_int
+        libproc.proc_pidpath.argtypes = [
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        libproc.proc_pidpath.restype = ctypes.c_int
+        info = _DarwinProcBsdInfo()
+        size = ctypes.sizeof(info)
+        if libproc.proc_pidinfo(int(pid), 3, 0, ctypes.byref(info), size) != size:
+            return None
+        if int(info.pbi_pid) != int(pid):
+            return None
+
+        path_buffer = ctypes.create_string_buffer(4096)
+        path_size = libproc.proc_pidpath(int(pid), path_buffer, len(path_buffer))
+        if path_size <= 0:
+            return None
+
+        argv = _darwin_process_argv(int(pid))
+        if argv is None:
+            return None
+        return {
+            "pid": int(pid),
+            "pgid": int(info.pbi_pgid),
+            "birth": f"{int(info.pbi_start_tvsec)}.{int(info.pbi_start_tvusec):06d}",
+            "executable": path_buffer.value.decode("utf-8", errors="surrogateescape"),
+            "argv": argv,
+        }
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _darwin_process_group_size(pgid: int) -> int | None:
+    """Count live Darwin group members through libproc, never display text."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_listpgrppids.argtypes = [
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_listpgrppids.restype = ctypes.c_int
+        libproc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        libproc.proc_pidinfo.restype = ctypes.c_int
+        capacity = libproc.proc_listpgrppids(int(pgid), None, 0)
+        if capacity < 0:
+            return None
+        if capacity == 0:
+            return 0
+        pids = (ctypes.c_int * (capacity + 16))()
+        count = libproc.proc_listpgrppids(int(pgid), pids, ctypes.sizeof(pids))
+        if count < 0 or count >= len(pids):
+            return None
+        members = 0
+        for listed_pid in pids[:count]:
+            if listed_pid <= 0:
+                continue
+            info = _DarwinProcBsdInfo()
+            size = ctypes.sizeof(info)
+            ctypes.set_errno(0)
+            read = libproc.proc_pidinfo(int(listed_pid), 3, 1, ctypes.byref(info), size)
+            if read == 0:
+                if ctypes.get_errno() == errno.ESRCH:
+                    continue
+                return None
+            if read != size:
+                return None
+            if int(info.pbi_pgid) != int(pgid):
+                return None
+            if int(info.pbi_status) != 5:
+                members += 1
+        return members
+    except (AttributeError, OSError, OverflowError, ValueError):
+        return None
+
+
+def _process_identity(pid: int) -> dict[str, Any] | None:
+    """Read a PID-reuse-resistant POSIX identity for a live process."""
+    if os.name != "posix":
+        return None
+    if sys.platform == "darwin":
+        return _darwin_process_identity(pid)
+    if pathlib.Path("/proc").is_dir():
+        try:
+            stat_value = pathlib.Path(f"/proc/{pid}/stat").read_text()
+            raw_argv = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            executable = os.readlink(f"/proc/{pid}/exe")
+        except (FileNotFoundError, ProcessLookupError, PermissionError, OSError, ValueError):
+            return None
+        parsed = _parse_linux_proc_stat(stat_value)
+        if parsed is None:
+            return None
+        _, pgid, birth = parsed
+        argv = [item.decode("utf-8", errors="surrogateescape") for item in raw_argv if item]
+    else:
+        return None
+    if not birth or not executable or not argv:
+        return None
+    return {
+        "pid": int(pid),
+        "pgid": int(pgid),
+        "birth": birth,
+        "executable": executable,
+        "argv": argv,
+    }
+
+
+def _identity_matches(expected: dict[str, Any] | None) -> bool:
+    if expected is None:
+        return os.name != "posix"
+    current = _process_identity(int(expected["pid"]))
+    return current == expected
+
+
+class _ProcessLimitExceeded(RuntimeError):
+    pass
+
+
+class _ProcessInventoryUnavailable(RuntimeError):
+    pass
+
+
+def _process_group_size(pgid: int) -> int | None:
+    if os.name != "posix":
+        return None
+    if sys.platform == "darwin":
+        return _darwin_process_group_size(pgid)
+    if not pathlib.Path("/proc").is_dir():
+        return None
+    count = 0
+    try:
+        entries = pathlib.Path("/proc").iterdir()
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                parsed = _parse_linux_proc_stat((entry / "stat").read_text())
+                if parsed is not None and parsed[0] != "Z" and parsed[1] == pgid:
+                    count += 1
+            except (FileNotFoundError, ProcessLookupError, PermissionError, OSError, ValueError):
+                continue
+    except OSError:
+        return None
+    return count
+
+
+def _wait_with_limits(
+    process: subprocess.Popen[str],
+    identity: dict[str, Any] | None,
+    timeout_s: int,
+) -> None:
+    deadline = time.monotonic() + max(0, timeout_s)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout_s)
+        try:
+            process.wait(timeout=min(0.1, remaining))
+            return
+        except subprocess.TimeoutExpired:
+            if identity is not None:
+                size = _process_group_size(int(identity["pgid"]))
+                if size is None:
+                    raise _ProcessInventoryUnavailable(
+                        "child process-group inventory could not be verified"
+                    )
+                if size > _MAX_CHILD_PROCESSES:
+                    raise _ProcessLimitExceeded(
+                        f"child process group exceeded {_MAX_CHILD_PROCESSES} processes"
+                    )
+
+
+def _limited_command(
+    command: list[str],
+    timeout_s: int,
+    gate_fd: int | None,
+    ready_fd: int | None,
+    inherited_fds: tuple[int, ...],
+) -> list[str]:
+    """Apply limits in a retained supervisor gated before user code starts."""
+    if os.name != "posix":
+        return command
+    if gate_fd is None:
+        raise ValueError("POSIX child supervisor requires an identity gate")
+    if ready_fd is None:
+        raise ValueError("POSIX child supervisor requires a readiness channel")
+    return [
+        sys.executable,
+        "-c",
+        _POSIX_SUPERVISOR,
+        "metriplane-child-limit",
+        str(_MAX_CHILD_OPEN_FILES),
+        str(max(1, int(timeout_s) + 1)),
+        str(gate_fd),
+        str(ready_fd),
+        ",".join(str(value) for value in inherited_fds),
+        _POSIX_EXEC_GATE,
+        *command,
+    ]
+
+
+def _supervisor_pipes() -> tuple[int, int, int, int]:
+    """Allocate both supervisor channels without leaking a partial pair."""
+    gate_read, gate_write = os.pipe()
+    try:
+        ready_read, ready_write = os.pipe()
+    except BaseException:
+        os.close(gate_read)
+        os.close(gate_write)
+        raise
+    return gate_read, gate_write, ready_read, ready_write
+
+
+def _await_supervisor_ready(ready_fd: int, *, timeout: float = 2.0) -> None:
+    """Require a stable post-initialization supervisor before identity capture."""
+    readiness_error: Exception | None = None
+    acknowledged = False
+    try:
+        try:
+            readable, _, _ = select.select([int(ready_fd)], [], [], timeout)
+            acknowledged = bool(readable) and os.read(int(ready_fd), 2) == b"\n"
+        except (OSError, ValueError) as exc:
+            readiness_error = exc
+    finally:
+        try:
+            os.close(int(ready_fd))
+        except OSError as exc:
+            if readiness_error is None:
+                readiness_error = exc
+    if readiness_error is not None:
+        raise RuntimeError("child supervisor readiness channel failed") from readiness_error
+    if not acknowledged:
+        raise RuntimeError("child supervisor did not reach its identity gate")
+
+
+def _discard_gated_process(process: subprocess.Popen[str], gate_write_fd: int | None) -> None:
+    """Close an unreleased gate and synchronously reap the unused supervisor."""
+    if gate_write_fd is not None:
+        try:
+            os.close(gate_write_fd)
+        except OSError:
+            pass
+    try:
+        process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate(timeout=5)
+
+
+def _await_process_identity(
+    process: subprocess.Popen[str],
+    *,
+    timeout: float = 0.5,
+) -> dict[str, Any] | None:
+    """Retain the gated supervisor identity before any user code can execute."""
+    deadline = time.monotonic() + timeout
+    while process.poll() is None and time.monotonic() < deadline:
+        identity = _process_identity(process.pid)
+        if identity is not None:
+            return identity
+        time.sleep(0.005)
+    return None
+
+
+def _wait_for_group_exit(pgid: int, timeout: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        size = _process_group_size(pgid)
+        if size == 0:
+            return True
+        time.sleep(0.02)
+    return _process_group_size(pgid) == 0
 
 
 def _popen_group_options() -> dict[str, Any]:
@@ -28,14 +623,31 @@ def _popen_group_options() -> dict[str, Any]:
     return {}
 
 
-def _signal_process_group(process: subprocess.Popen[str], *, force: bool) -> None:
+def _signal_process_group(
+    process: subprocess.Popen[str],
+    identity: dict[str, Any] | None,
+    *,
+    force: bool,
+) -> None:
     """Stop a job and its children on POSIX, with portable fallbacks."""
-    if process.poll() is not None:
+    leader_exited = process.poll() is not None
+    group_size = _process_group_size(int(identity["pgid"])) if identity is not None else None
+    if leader_exited and group_size == 0:
         return
+    current_identity = _process_identity(process.pid) if identity is not None else None
+    if not leader_exited and current_identity != identity:
+        raise RuntimeError(
+            "child identity changed before signal; refusing numeric PID/PGID cleanup"
+        )
+    if leader_exited and current_identity not in (None, identity):
+        raise RuntimeError(
+            "child PID was reused before process-group cleanup; refusing numeric signal"
+        )
     if os.name == "posix":
         sig = signal.SIGKILL if force else signal.SIGTERM
         try:
-            os.killpg(os.getpgid(process.pid), sig)
+            pgid = int(identity["pgid"]) if identity is not None else os.getpgid(process.pid)
+            os.killpg(pgid, sig)
             return
         except (ProcessLookupError, PermissionError, OSError):
             pass
@@ -55,14 +667,26 @@ def _signal_process_group(process: subprocess.Popen[str], *, force: bool) -> Non
         pass
 
 
-def _terminate_process_group(process: subprocess.Popen[str], *, grace_s: float = 0.5) -> None:
-    _signal_process_group(process, force=False)
+def _terminate_process_group(
+    process: subprocess.Popen[str],
+    identity: dict[str, Any] | None,
+    *,
+    grace_s: float = 0.5,
+) -> None:
+    _signal_process_group(process, identity, force=False)
     try:
         process.wait(timeout=max(0.0, grace_s))
-        return
     except subprocess.TimeoutExpired:
         pass
-    _signal_process_group(process, force=True)
+    pgid = int(identity["pgid"]) if identity is not None else None
+    if pgid is None:
+        return
+    group_size = _process_group_size(pgid)
+    if group_size == 0:
+        return
+    _signal_process_group(process, identity, force=True)
+    if not _wait_for_group_exit(pgid):
+        raise RuntimeError("child process-group exit could not be verified")
 
 
 def find_repo_root() -> pathlib.Path:
@@ -108,11 +732,29 @@ class CommandExecutor:
             self._platform_paths = paths
 
     def _command_environment(self) -> dict[str, str]:
-        environment = os.environ.copy()
-        environment.pop("METRIPLANE_RUNNER_SESSION_TOKEN", None)
+        environment: dict[str, str] = {}
+        for name in ("PATH", "LANG", "LC_ALL", "TZ", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"):
+            value = os.environ.get(name)
+            if value:
+                environment[name] = value
         paths = self.platform_paths
         if paths is not None:
+            home = paths.state_dir / "runner-home"
+            home.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(home, 0o700)
+            environment.update(
+                {
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(paths.config_dir),
+                    "XDG_DATA_HOME": str(paths.data_dir),
+                    "XDG_CACHE_HOME": str(paths.cache_dir),
+                    "XDG_STATE_HOME": str(paths.state_dir),
+                }
+            )
             environment["RUNS"] = str(paths.runs_dir)
+        else:
+            environment["HOME"] = str(self.repo_root)
+        environment["PYTHONIOENCODING"] = "utf-8"
         return environment
 
     def is_running(self) -> bool:
@@ -250,47 +892,141 @@ class CommandExecutor:
                 os.close(file_fd)
             return
 
+        process: subprocess.Popen[str] | None = None
+        identity: dict[str, Any] | None = None
+        gate_write_fd: int | None = None
+        ready_read_fd: int | None = None
         try:
             print(f"[Executor] Subprocess starting: {' '.join(command)}")
             # Execute without shell=True (security: no shell injection)
             popen_options: dict[str, Any] = _popen_group_options()
-            if pass_fds:
-                popen_options["pass_fds"] = pass_fds
+            child_fds = list(pass_fds)
+            gate_read_fd: int | None = None
+            ready_write_fd: int | None = None
+            if os.name == "posix":
+                try:
+                    (
+                        gate_read_fd,
+                        gate_write_fd,
+                        ready_read_fd,
+                        ready_write_fd,
+                    ) = _supervisor_pipes()
+                except BaseException:
+                    for file_fd in child_fds:
+                        os.close(file_fd)
+                    raise
+                child_fds.extend((gate_read_fd, ready_write_fd))
+            if child_fds:
+                popen_options["pass_fds"] = tuple(child_fds)
             try:
                 process = subprocess.Popen(
-                    command,
+                    _limited_command(
+                        command,
+                        timeout_s,
+                        gate_read_fd,
+                        ready_write_fd,
+                        pass_fds,
+                    ),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="backslashreplace",
                     cwd=str(self.repo_root),
                     env=self._command_environment(),
                     **popen_options,
                 )
             finally:
-                for file_fd in pass_fds:
+                for file_fd in child_fds:
                     os.close(file_fd)
             print(f"[Executor] Subprocess spawned, PID: {process.pid}")
+            if ready_read_fd is not None:
+                try:
+                    _await_supervisor_ready(ready_read_fd)
+                except Exception:
+                    ready_read_fd = None
+                    _discard_gated_process(process, gate_write_fd)
+                    gate_write_fd = None
+                    raise
+                ready_read_fd = None
+            identity = _await_process_identity(process)
+            if os.name == "posix" and identity is None:
+                _discard_gated_process(process, gate_write_fd)
+                gate_write_fd = None
+                raise RuntimeError("could not retain child birth/executable/argv identity")
 
             # Store process for cancellation
             with self.lock:
                 if job["status"] == "running":
                     job["process"] = process
+                    job["process_identity"] = identity
                     cancelled_before_start = False
                 else:
                     cancelled_before_start = job["status"] == "cancelled"
 
             if cancelled_before_start:
-                _terminate_process_group(process)
-                stdout, stderr = process.communicate()
+                if gate_write_fd is not None:
+                    os.close(gate_write_fd)
+                    gate_write_fd = None
+                _terminate_process_group(process, identity)
+                stdout, stderr = process.communicate(timeout=5)
                 with self.lock:
                     job["stdout"] = stdout
                     job["stderr"] += stderr
                     job["exit_code"] = process.returncode
                 return
 
-            # Wait with timeout
+            stdout_capture = _BoundedTextCapture()
+            stderr_capture = _BoundedTextCapture()
+            reader_errors: list[str] = []
+            assert process.stdout is not None
+            assert process.stderr is not None
+            readers = [
+                threading.Thread(
+                    target=_drain_stream,
+                    args=(process.stdout, stdout_capture, reader_errors),
+                    daemon=True,
+                ),
+                threading.Thread(
+                    target=_drain_stream,
+                    args=(process.stderr, stderr_capture, reader_errors),
+                    daemon=True,
+                ),
+            ]
+            for reader in readers:
+                reader.start()
+            if gate_write_fd is not None:
+                os.write(gate_write_fd, b"\n")
+                os.close(gate_write_fd)
+                gate_write_fd = None
+
+            # Wait with a wall-clock timeout while reader threads continuously drain.
             try:
-                stdout, stderr = process.communicate(timeout=timeout_s)
+                _wait_with_limits(process, identity, timeout_s)
+                residual_group = (
+                    _process_group_size(int(identity["pgid"]))
+                    if identity is not None
+                    else (0 if os.name != "posix" else None)
+                )
+                if residual_group is None:
+                    raise _ProcessInventoryUnavailable(
+                        "child process-group inventory could not be verified after exit"
+                    )
+                if residual_group:
+                    assert identity is not None
+                    _signal_process_group(process, identity, force=True)
+                    if not _wait_for_group_exit(int(identity["pgid"])):
+                        raise _ProcessInventoryUnavailable(
+                            "residual child process-group exit could not be verified"
+                        )
+                for reader in readers:
+                    reader.join(timeout=5)
+                if any(reader.is_alive() for reader in readers):
+                    raise RuntimeError("child output reader did not reach EOF")
+                if reader_errors:
+                    raise RuntimeError("child output reader failed: " + "; ".join(reader_errors))
+                stdout = stdout_capture.value()
+                stderr = stderr_capture.value()
                 exit_code = process.returncode
                 print(f"[Executor] Subprocess completed: {job_id}, exit_code={exit_code}")
 
@@ -299,27 +1035,71 @@ class CommandExecutor:
                     job["stderr"] += stderr
                     job["exit_code"] = exit_code
                     if job["status"] != "cancelled":
-                        job["status"] = "succeeded" if exit_code == 0 else "failed"
+                        if residual_group:
+                            job["stderr"] += (
+                                "\n[PROCESS LEAK: descendants remained after group leader exit; "
+                                "the retained group was force-stopped]"
+                            )
+                            job["status"] = "failed"
+                        else:
+                            job["status"] = "succeeded" if exit_code == 0 else "failed"
                         job["completed_at"] = datetime.now()
 
-            except subprocess.TimeoutExpired:
+            except (
+                subprocess.TimeoutExpired,
+                _ProcessLimitExceeded,
+                _ProcessInventoryUnavailable,
+            ) as limit_error:
                 # Kill on timeout
-                _terminate_process_group(process)
+                cleanup_error: str | None = None
                 try:
-                    stdout, stderr = process.communicate(timeout=5)
+                    _terminate_process_group(process, identity)
+                except Exception as exc:
+                    cleanup_error = f"{type(exc).__name__}: {exc}"
+                try:
+                    process.wait(timeout=5)
                 except subprocess.SubprocessError:
-                    stdout, stderr = "", ""
+                    pass
+                for reader in readers:
+                    reader.join(timeout=5)
+                stdout, stderr = stdout_capture.value(), stderr_capture.value()
 
                 with self.lock:
                     job["stdout"] = stdout
                     job["stderr"] += stderr
                     job["exit_code"] = -1
                     if job["status"] != "cancelled":
-                        job["stderr"] += "\n[TIMEOUT: Command exceeded {}s limit]".format(timeout_s)
-                        job["status"] = "timed_out"
+                        if isinstance(limit_error, _ProcessLimitExceeded):
+                            job["stderr"] += f"\n[PROCESS LIMIT: {limit_error}]"
+                            job["status"] = "failed"
+                        elif isinstance(limit_error, _ProcessInventoryUnavailable):
+                            job["stderr"] += f"\n[PROCESS INVENTORY: {limit_error}]"
+                            job["status"] = "failed"
+                        else:
+                            job["stderr"] += "\n[TIMEOUT: Command exceeded {}s limit]".format(
+                                timeout_s
+                            )
+                            job["status"] = "timed_out"
+                        if cleanup_error is not None:
+                            job["stderr"] += f"\n[CLEANUP UNVERIFIED: {cleanup_error}]"
                         job["completed_at"] = datetime.now()
 
         except Exception as e:
+            if ready_read_fd is not None:
+                try:
+                    os.close(ready_read_fd)
+                except OSError:
+                    pass
+            if gate_write_fd is not None:
+                try:
+                    os.close(gate_write_fd)
+                except OSError:
+                    pass
+            if process is not None:
+                try:
+                    _terminate_process_group(process, identity)
+                except Exception:
+                    pass
             with self.lock:
                 if job["status"] != "cancelled":
                     job["status"] = "failed"
@@ -423,6 +1203,7 @@ class CommandExecutor:
         Returns True if cancelled, False if not found or not running.
         """
         process: subprocess.Popen[str] | None
+        identity: dict[str, Any] | None
         with self.lock:
             if not self.current_job or self.current_job["job_id"] != job_id:
                 return False
@@ -431,13 +1212,14 @@ class CommandExecutor:
                 return False
 
             process = self.current_job.get("process")
+            identity = self.current_job.get("process_identity")
             self.current_job["status"] = "cancelled"
             self.current_job["completed_at"] = datetime.now()
             self.current_job["stderr"] += "\n[CANCELLED by user]"
 
         if process is not None:
             try:
-                _terminate_process_group(process)
+                _terminate_process_group(process, identity)
             except Exception as exc:
                 with self.lock:
                     if self.current_job and self.current_job["job_id"] == job_id:
