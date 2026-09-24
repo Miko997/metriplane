@@ -891,6 +891,14 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert "validate-config" in completed.stdout
+    stdlib_import = subprocess.run(
+        [sys.executable, "-S", "-c", "import tools.main_health_broker"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert stdlib_import.returncode == 0, stdlib_import.stderr
 
 
 def test_run_once_quarantines_before_ruleset_witness_validation(

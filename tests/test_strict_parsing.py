@@ -102,6 +102,25 @@ def test_json_strict_lexical_contract() -> None:
         load_json(b"\xff")
     with pytest.raises(StrictJsonError, match="invalid"):
         load_json("1" * 5000)
+    root = Path(__file__).resolve().parents[1]
+    program = """\
+from metriplane.strict_parsing import StrictYamlError, load_json, load_yaml
+assert load_json(b'{"ok":true}') == {"ok": True}
+try:
+    load_yaml("ok: true")
+except StrictYamlError as exc:
+    assert str(exc) == "PyYAML is required to parse YAML"
+else:
+    raise AssertionError("YAML parsed without PyYAML")
+"""
+    completed = subprocess.run(
+        [sys.executable, "-S", "-c", program],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 @pytest.mark.parametrize(("size", "accepted"), [(15, True), (16, True), (17, False)])
