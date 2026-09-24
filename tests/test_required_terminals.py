@@ -344,9 +344,8 @@ def _suite_fixture(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
     root = tmp_path / "suite-reports"
     root.mkdir()
     source = _suite_source()
-    collection = [f"tests/test_sample.py::test_{i}" for i in range(8)] + sorted(
-        terminal._expected_skips("macos")
-    )
+    governed_skips = set(terminal._expected_skips("linux")) | set(terminal._expected_skips("macos"))
+    collection = [f"tests/test_sample.py::test_{i}" for i in range(8)] + sorted(governed_skips)
     for system, version, index, count in terminal._coordinates():
         directory = root / terminal._artifact_name("123", "1", system, version, index)
         directory.mkdir()
@@ -424,13 +423,13 @@ def test_complete_ten_report_suite_proves_each_platform_and_partition(tmp_path: 
     assert result["result"] == "success"
     assert result["sha"] == SHA
     assert len(result["reports"]) == 10
-    assert result["collection_count"] == 29
+    assert result["collection_count"] == 30
     assert result["source"] == source
     assert result["totals"] == {
-        "linux-py3.12": {"passed": 14, "skipped": 15, "failed": 0, "total": 29},
-        "linux-py3.13": {"passed": 14, "skipped": 15, "failed": 0, "total": 29},
-        "macos-py3.12": {"passed": 8, "skipped": 21, "failed": 0, "total": 29},
-        "macos-py3.13": {"passed": 8, "skipped": 21, "failed": 0, "total": 29},
+        "linux-py3.12": {"passed": 14, "skipped": 16, "failed": 0, "total": 30},
+        "linux-py3.13": {"passed": 14, "skipped": 16, "failed": 0, "total": 30},
+        "macos-py3.12": {"passed": 9, "skipped": 21, "failed": 0, "total": 30},
+        "macos-py3.13": {"passed": 9, "skipped": 21, "failed": 0, "total": 30},
     }
 
 
@@ -1127,7 +1126,7 @@ def test_suite_aggregate_cli_is_stdlib_only_and_binds_its_actual_source(tmp_path
     aggregate = json.loads(proc.stdout)
     assert len(aggregate["reports"]) == 10
     assert aggregate["source"] == source
-    assert aggregate["totals"]["linux-py3.12"]["skipped"] == 15
+    assert aggregate["totals"]["linux-py3.12"]["skipped"] == 16
     wrong = list(command)
     wrong[-1] = "2"
     proc = subprocess.run(wrong, cwd=repo, env=env, capture_output=True, text=True)
