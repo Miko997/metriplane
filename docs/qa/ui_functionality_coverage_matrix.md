@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `1837125221a45ba800aa778a39b9f519482e534de03442a27dfa5d2860695caf`
+Canonical projection SHA-256: `8719ca143e6815be5b530547bc7cebdb7fe1a4ee481f3fae4a797fbbb670ea9d`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -140,6 +140,7 @@ Canonical projection SHA-256: `1837125221a45ba800aa778a39b9f519482e534de03442a27
 | tool.check_repository_protection | Check Repository Protection | tools/check_repository_protection.py | python tools/check_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_required_terminal | Check Required Terminal | tools/check_required_terminal.py | python tools/check_required_terminal.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_ros2_adapters | Check Ros2 Adapters | tools/check_ros2_adapters.py | python tools/check_ros2_adapters.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_security_controls | Check Security Controls | tools/check_security_controls.py | python tools/check_security_controls.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_traceability | Check Traceability | tools/check_traceability.py | python tools/check_traceability.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_work_order_catalog | Check Work Order Catalog | tools/check_work_order_catalog.py | python tools/check_work_order_catalog.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.collect_publication_observations | Collect Publication Observations | tools/collect_publication_observations.py | python tools/collect_publication_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

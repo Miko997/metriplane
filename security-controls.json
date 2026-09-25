@@ -1,0 +1,53 @@
+{
+  "schema_version": "metriplane.security-controls.v1",
+  "owner": "MP2-028",
+  "criteria": ["MP2-028.A01", "MP2-028.A02"],
+  "boundaries": [
+    {"id": "BND-01", "name": "Operator to local process", "description": "CLI, dashboard and local-runner requests cross into Metriplane processes.", "owner": "MP2-021"},
+    {"id": "BND-02", "name": "Process to filesystem", "description": "Configuration, recordings, archives, state and evidence cross the filesystem boundary.", "owner": "MP2-024"},
+    {"id": "BND-03", "name": "Listener to network client", "description": "HTTP, metrics and WebSocket listeners accept network-originated input.", "owner": "MP2-022"},
+    {"id": "BND-04", "name": "Parent to child process", "description": "Allowlisted commands execute below the runner process.", "owner": "MP2-027"},
+    {"id": "BND-05", "name": "External source to adapter", "description": "Third-party robotics datasets and recordings enter adapter normalization.", "owner": "MP2-031"},
+    {"id": "BND-06", "name": "Repository to CI and release", "description": "Repository bytes become tested, attested and promoted artifacts.", "owner": "MP2-030"}
+  ],
+  "assets": [
+    {"id": "AST-01", "name": "Source recordings", "description": "Operator and adapter input data whose bytes and identity must remain attributable.", "owner": "MP2-031"},
+    {"id": "AST-02", "name": "Evidence bundles", "description": "Deterministic reports, manifests and provenance used for audit and comparison.", "owner": "MP2-025"},
+    {"id": "AST-03", "name": "Runtime state", "description": "Mutable process state, journals and current-generation pointers.", "owner": "MP2-001"},
+    {"id": "AST-04", "name": "Credentials and capabilities", "description": "Bearer tokens and per-session mutation capabilities.", "owner": "MP2-021"},
+    {"id": "AST-05", "name": "Host resources", "description": "CPU, memory, storage, descriptors and process slots.", "owner": "MP2-023"},
+    {"id": "AST-06", "name": "Published packages", "description": "Exact wheel, sdist and release artifact bytes.", "owner": "MP2-049"},
+    {"id": "AST-07", "name": "Security and audit records", "description": "Control registry, test evidence, attestations and retained incidents.", "owner": "MP2-028"}
+  ],
+  "actors": [
+    {"id": "ACT-01", "name": "Local operator", "description": "Authorized person invoking local interfaces.", "owner": "MP2-021", "trust": "trusted"},
+    {"id": "ACT-02", "name": "Local unprivileged process", "description": "Another process sharing the host or user session.", "owner": "MP2-021", "trust": "partially-trusted"},
+    {"id": "ACT-03", "name": "Remote network client", "description": "A client able to reach an explicitly exposed listener.", "owner": "MP2-022", "trust": "untrusted"},
+    {"id": "ACT-04", "name": "Untrusted data producer", "description": "Producer of archives, recordings or adapter inputs.", "owner": "MP2-031", "trust": "untrusted"},
+    {"id": "ACT-05", "name": "Child command", "description": "Allowlisted executable running with constrained inherited authority.", "owner": "MP2-027", "trust": "partially-trusted"},
+    {"id": "ACT-06", "name": "CI or provider identity", "description": "Hosted automation producing checks, attestations and artifacts.", "owner": "MP2-030", "trust": "partially-trusted"}
+  ],
+  "abuse_cases": [
+    {"id": "ABU-01", "title": "Unauthorized local mutation", "actor_ids": ["ACT-02"], "asset_ids": ["AST-03", "AST-04"], "boundary_ids": ["BND-01"], "scenario": "A same-host process attempts to reuse or discover a mutation capability.", "impact": "high", "control_ids": ["CTL-01", "CTL-02"]},
+    {"id": "ABU-02", "title": "Unauthenticated remote exposure", "actor_ids": ["ACT-03"], "asset_ids": ["AST-03", "AST-04"], "boundary_ids": ["BND-03"], "scenario": "A listener is bound beyond numeric loopback without an explicit authentication policy.", "impact": "critical", "control_ids": ["CTL-02", "CTL-03"]},
+    {"id": "ABU-03", "title": "Archive traversal or expansion denial", "actor_ids": ["ACT-04"], "asset_ids": ["AST-01", "AST-05"], "boundary_ids": ["BND-02", "BND-05"], "scenario": "A crafted archive escapes its destination or exceeds bounded extraction resources.", "impact": "high", "control_ids": ["CTL-04", "CTL-05"]},
+    {"id": "ABU-04", "title": "Symlink substitution", "actor_ids": ["ACT-02", "ACT-04"], "asset_ids": ["AST-01", "AST-02", "AST-03"], "boundary_ids": ["BND-02"], "scenario": "A path is replaced between validation, copying, hashing or publication.", "impact": "high", "control_ids": ["CTL-04", "CTL-06"]},
+    {"id": "ABU-05", "title": "Child process resource or identity abuse", "actor_ids": ["ACT-05"], "asset_ids": ["AST-05", "AST-07"], "boundary_ids": ["BND-04"], "scenario": "A command floods output, leaks descendants or causes a reused PID to receive a signal.", "impact": "high", "control_ids": ["CTL-07"]},
+    {"id": "ABU-06", "title": "Sensitive evidence disclosure", "actor_ids": ["ACT-01", "ACT-02"], "asset_ids": ["AST-02", "AST-04", "AST-07"], "boundary_ids": ["BND-01", "BND-02"], "scenario": "Public export includes secrets, host paths or protected identity fields.", "impact": "high", "control_ids": ["CTL-08"]},
+    {"id": "ABU-07", "title": "Untrusted adapter input", "actor_ids": ["ACT-04"], "asset_ids": ["AST-01", "AST-02", "AST-05"], "boundary_ids": ["BND-05"], "scenario": "An undeclared source, oversized dataset or non-canonical value enters normalization.", "impact": "high", "control_ids": ["CTL-05", "CTL-09"]},
+    {"id": "ABU-08", "title": "Artifact or provenance substitution", "actor_ids": ["ACT-06"], "asset_ids": ["AST-06", "AST-07"], "boundary_ids": ["BND-06"], "scenario": "A check or attestation for different source, workflow or bytes is reused for promotion.", "impact": "critical", "control_ids": ["CTL-06", "CTL-10"]}
+  ],
+  "controls": [
+    {"id": "CTL-01", "title": "Per-session mutation capability", "owner": "MP2-021", "mechanism": "Mutation routes require an unlogged, non-GET per-session capability.", "capability_ids": ["capability:MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP"], "test_paths": ["tests/ui_api/test_runner_service_api.py"]},
+    {"id": "CTL-02", "title": "No credential disclosure", "owner": "MP2-021", "mechanism": "Tokens are excluded from served assets, URLs, GET responses and logs.", "capability_ids": ["capability:MP2-012.UI.PAGE.RUNTIME_HTML"], "test_paths": ["tests/ui_api/test_runner_service_api.py", "tests/ui_coverage/test_dashboard_static_integrity.py"]},
+    {"id": "CTL-03", "title": "Loopback or explicit remote authentication", "owner": "MP2-022", "mechanism": "Listeners default to numeric loopback and non-loopback binding requires authentication.", "capability_ids": ["capability:MP2-012.UI.SERVICE.RUNTIME_FRAME_WEBSOCKET", "capability:MP2-012.UI.SERVICE.RUNTIME_HEALTH_METRICS_HTTP"], "test_paths": ["tests/test_metrics_cors.py", "tests/test_ws_thread.py"]},
+    {"id": "CTL-04", "title": "No-follow filesystem traversal", "owner": "MP2-024", "mechanism": "Archive and directory ingestion reject traversal, links and substitution during staged copy and hash.", "capability_ids": ["capability:MP2-013.PUBLIC.RESOURCE.METRIPLANE_ARCHIVE_SAFETY_PY.B015A5D20E0B"], "test_paths": ["tests/test_archive_safety.py"]},
+    {"id": "CTL-05", "title": "Calibrated resource budgets", "owner": "MP2-023", "mechanism": "Shared lexical and resource limits reject N+1 inputs while accepting calibrated N-1 and N cases.", "capability_ids": ["capability:MP2-010.BASELINE.RESOURCES"], "test_paths": ["tests/test_strict_parsing.py"]},
+    {"id": "CTL-06", "title": "Atomic exact-byte publication", "owner": "MP2-025", "mechanism": "Immutable generations, journals and last-written manifests bind the published byte set.", "capability_ids": ["capability:MP2-011.CLI.COMMAND.METRIPLANE_ATLAS_BUNDLE_VERIFY"], "test_paths": ["tests/test_evidence_bundles.py"]},
+    {"id": "CTL-07", "title": "Bounded child execution", "owner": "MP2-027", "mechanism": "Minimal environment, output caps, limits and birth/executable/argv identity protect process cleanup.", "capability_ids": ["capability:MP2-012.UI.ACTION.API_RUNNER_EXECUTE"], "test_paths": ["tests/test_runner_executor.py"]},
+    {"id": "CTL-08", "title": "Deterministic redacted public export", "owner": "MP2-026", "mechanism": "A minimal allowlist and protected diagnostics sidecar keep secrets and identities out of public evidence.", "capability_ids": ["capability:MP2-011.CLI.COMMAND.METRIPLANE_ATLAS_BUNDLE_EXPORT"], "test_paths": ["tests/test_evidence_bundles.py"]},
+    {"id": "CTL-09", "title": "Offline allowlisted acquisition", "owner": "MP2-031", "mechanism": "Acquisition admits only declared sources and normalization runs unprivileged, credential-empty and quota-bound.", "capability_ids": ["capability:MP2-011.CLI.COMMAND.MANISKILL_PICKCUBE_ACQUIRE"], "test_paths": ["tests/external_sources/test_maniskill_pickcube_proof.py"]},
+    {"id": "CTL-10", "title": "OIDC identity and digest verification", "owner": "MP2-030", "mechanism": "Promotion verifies subject, issuer, workflow, ref/event, commit and artifact digest and fails closed.", "capability_ids": ["capability:MP2-010.BASELINE.WORKFLOWS"], "test_paths": ["tests/test_release_engineering.py"]}
+  ],
+  "registry_digest": "f59a9b54046ed49bf608d9aaddc88ec8389b9336c0a24a01a5d74ef365eeabe1"
+}
