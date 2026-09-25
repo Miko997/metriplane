@@ -1,32 +1,30 @@
 {
   "allowed_paths": [
-    ".github/workflows/main-health.yml",
-    "docs/maintainers/main-health.md",
     "docs/requirements/requirements.json",
     "docs/status/capability-test-ledger.json",
     "docs/status/functional-inventory.json",
     "docs/status/main-health-owner-emergency.json",
     "docs/status/public-surface-inventory.md",
-    "tests/test_required_terminals.py"
+    "tests/external_sources/test_ros2_mcap_recorded_state_fixture.py"
   ],
   "authorization_mode": "single-maintainer-owner-emergency",
-  "base_sha": "07e390cadc0de4dab3988546a7cce269a7a30469",
+  "base_sha": "a60d0000a175343fcde3aec6e669cbf9a12864d3",
   "collaboration_digest": "97956f2c016d6323f4e7921877599536bc72d63f26a73a3ab9e2d91abaf909d4",
-  "expires_at": "2026-09-25T23:59:59Z",
+  "expires_at": "2026-09-27T23:59:59Z",
   "failing_obligations": [
-    "Main health deep / nightly"
+    "Metriplane / required"
   ],
-  "incident_digest": "51d62883a1306b4eff52ba856eac17b09c93d1996839610c075b1abd99e479d0",
+  "incident_digest": "f9d992b352b9c4ae6c4c854c2ffa4ea3a1374f6deef6760a41b086cbdd56b808",
   "issue": "MET-77",
   "policy_amendment": {
     "amended_rule": "repair_requires_non_author",
     "authorization_mode": "single-maintainer-owner-emergency",
-    "incident_digest": "51d62883a1306b4eff52ba856eac17b09c93d1996839610c075b1abd99e479d0",
+    "incident_digest": "f9d992b352b9c4ae6c4c854c2ffa4ea3a1374f6deef6760a41b086cbdd56b808",
     "reason": "single-maintainer-no-independent-collaborator",
     "schema_version": 1,
     "scope": "incident-only"
   },
-  "pull_request": "149",
+  "pull_request": "155",
   "repository": "Miko997/metriplane",
   "required_cadences": [
     "nightly",

@@ -497,7 +497,7 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if path.suffix.lower() == ".zip":
+        if zipfile.is_zipfile(path):
             with zipfile.ZipFile(path) as archive:
                 for info in archive.infolist():
                     assert not info.filename.startswith(("/", "\\"))
