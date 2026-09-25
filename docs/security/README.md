@@ -1,5 +1,6 @@
 # Security engineering notes
 
+- [Threat model and control trace](THREAT_MODEL.md)
 - [Dependency pinning boundary](pinned-dependencies.md)
 
 ## Streaming and observability listeners

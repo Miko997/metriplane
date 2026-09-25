@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.security-controls.v1.schema.json",
+  "title": "Metriplane security control registry v1",
+  "type": "object",
+  "required": ["schema_version", "owner", "criteria", "boundaries", "assets", "actors", "abuse_cases", "controls", "registry_digest"],
+  "properties": {
+    "schema_version": {"const": "metriplane.security-controls.v1"},
+    "owner": {"const": "MP2-028"},
+    "criteria": {"const": ["MP2-028.A01", "MP2-028.A02"]},
+    "boundaries": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/named"}},
+    "assets": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/named"}},
+    "actors": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/actor"}},
+    "abuse_cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/abuse"}},
+    "controls": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/control"}},
+    "registry_digest": {"$ref": "#/$defs/sha256"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Z]+-[0-9]{2}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonempty": {"type": "string", "minLength": 1, "maxLength": 500},
+    "owner": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+    "id_list": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "named": {
+      "type": "object",
+      "required": ["id", "name", "description", "owner"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/nonempty"},
+        "description": {"$ref": "#/$defs/nonempty"},
+        "owner": {"$ref": "#/$defs/owner"}
+      },
+      "additionalProperties": false
+    },
+    "actor": {
+      "type": "object",
+      "required": ["id", "name", "description", "owner", "trust"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/nonempty"},
+        "description": {"$ref": "#/$defs/nonempty"},
+        "owner": {"$ref": "#/$defs/owner"},
+        "trust": {"enum": ["trusted", "partially-trusted", "untrusted"]}
+      },
+      "additionalProperties": false
+    },
+    "abuse": {
+      "type": "object",
+      "required": ["id", "title", "actor_ids", "asset_ids", "boundary_ids", "scenario", "impact", "control_ids"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "title": {"$ref": "#/$defs/nonempty"},
+        "actor_ids": {"$ref": "#/$defs/id_list"},
+        "asset_ids": {"$ref": "#/$defs/id_list"},
+        "boundary_ids": {"$ref": "#/$defs/id_list"},
+        "scenario": {"$ref": "#/$defs/nonempty"},
+        "impact": {"enum": ["low", "medium", "high", "critical"]},
+        "control_ids": {"$ref": "#/$defs/id_list"}
+      },
+      "additionalProperties": false
+    },
+    "control": {
+      "type": "object",
+      "required": ["id", "title", "owner", "mechanism", "capability_ids", "test_paths"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "title": {"$ref": "#/$defs/nonempty"},
+        "owner": {"$ref": "#/$defs/owner"},
+        "mechanism": {"$ref": "#/$defs/nonempty"},
+        "capability_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^capability:"}},
+        "test_paths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^tests/.+\\.py$"}}
+      },
+      "additionalProperties": false
+    }
+  }
+}
