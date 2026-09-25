@@ -19,7 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol, TextIO
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - exercised in an isolated subprocess
+    yaml = None  # type: ignore[assignment]
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,8 +70,18 @@ class StrictJsonError(StrictParseError, json.JSONDecodeError):
         json.JSONDecodeError.__init__(self, message, "", 0)
 
 
-class StrictYamlError(StrictParseError, yaml.YAMLError):
-    """YAML rejection compatible with existing YAMLError handlers."""
+class _UnavailableYamlError(Exception):
+    """Stand-in exception base used only when PyYAML is absent."""
+
+
+_YamlErrorBase = _UnavailableYamlError if yaml is None else yaml.YAMLError
+
+
+class StrictYamlError(StrictParseError, _YamlErrorBase):  # type: ignore[misc, valid-type]
+    """YAML rejection compatible with PyYAML when that dependency is present."""
+
+
+_DEFAULT_YAML_LOADER: Any = yaml.SafeLoader if yaml is not None else None
 
 
 class PinnedReadable(Protocol):
@@ -460,6 +473,8 @@ def iter_jsonl_pinned(
 def _bounded_yaml_loader(
     base_loader: type[yaml.SafeLoader], *, label: str, limits: ParseLimits
 ) -> type[yaml.SafeLoader]:
+    if yaml is None:
+        raise StrictYamlError("PyYAML is required to parse YAML")
     if not issubclass(base_loader, yaml.SafeLoader):
         raise StrictYamlError("only yaml.SafeLoader subclasses are permitted")
 
@@ -507,10 +522,12 @@ def load_yaml(
     *,
     limits: ParseLimits = DEFAULT_LIMITS,
     label: str = "YAML input",
-    Loader: type[yaml.SafeLoader] = yaml.SafeLoader,
+    Loader: type[yaml.SafeLoader] = _DEFAULT_YAML_LOADER,
 ) -> Any:
     """Parse one safe YAML document with duplicate, alias, and resource checks."""
 
+    if yaml is None:
+        raise StrictYamlError("PyYAML is required to parse YAML")
     text = _bounded_text(data, label=label, limits=limits, error=StrictYamlError)
     loader = _bounded_yaml_loader(Loader, label=label, limits=limits)
     try:
@@ -528,7 +545,7 @@ def load_yaml_stream(
     *,
     limits: ParseLimits = DEFAULT_LIMITS,
     label: str = "YAML stream",
-    Loader: type[yaml.SafeLoader] = yaml.SafeLoader,
+    Loader: type[yaml.SafeLoader] = _DEFAULT_YAML_LOADER,
 ) -> Any:
     """Read and parse one bounded safe YAML stream."""
 
@@ -545,7 +562,7 @@ def load_yaml_path(
     *,
     limits: ParseLimits = DEFAULT_LIMITS,
     label: str | None = None,
-    Loader: type[yaml.SafeLoader] = yaml.SafeLoader,
+    Loader: type[yaml.SafeLoader] = _DEFAULT_YAML_LOADER,
 ) -> Any:
     """Descriptor-read and parse one bounded regular YAML file."""
 
@@ -563,7 +580,7 @@ def load_yaml_pinned(
     *,
     limits: ParseLimits = DEFAULT_LIMITS,
     label: str | None = None,
-    Loader: type[yaml.SafeLoader] = yaml.SafeLoader,
+    Loader: type[yaml.SafeLoader] = _DEFAULT_YAML_LOADER,
 ) -> Any:
     """Read pinned YAML with bounded allocation and post-read verification."""
 

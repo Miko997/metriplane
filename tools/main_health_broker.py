@@ -5708,6 +5708,7 @@ class HealthReconciler:
         )
 
     def _current_ci(self, main_sha: str) -> dict[str, Any] | None:
+        exact_sha_fallback = False
         runs = self.api.list_items(
             (
                 f"repos/{self.config.repository}/actions/workflows/ci.yml/runs"
@@ -5726,6 +5727,20 @@ class HealthReconciler:
             for run in runs
             if all(run.get(field) == expected for field, expected in expected_scope.items())
         ]
+        if not exact:
+            # GitHub's branch-filtered workflow inventory can transiently omit an
+            # older current-main run even while the exact-SHA inventory retains
+            # it. The fallback remains exact and fail-closed: it admits only the
+            # canonical CI workflow path/name with the same push/ref/SHA binding.
+            exact_sha_fallback = True
+            runs = self._workflow_runs(main_sha)
+            exact = [
+                run
+                for run in runs
+                if run.get("name") == "CI"
+                and run.get("path") == ".github/workflows/ci.yml"
+                and all(run.get(field) == expected for field, expected in expected_scope.items())
+            ]
         if not exact:
             return None
         governed_ids = {
@@ -5751,6 +5766,16 @@ class HealthReconciler:
                     raise BrokerError(
                         f"current CI provider run field {field!r} does not bind protected main"
                     )
+            if exact_sha_fallback:
+                for field, expected in (
+                    ("name", "CI"),
+                    ("path", ".github/workflows/ci.yml"),
+                ):
+                    if run.get(field) != expected:
+                        raise BrokerError(
+                            f"current CI provider run field {field!r} does not bind "
+                            "the canonical workflow"
+                        )
         try:
             return observe_main_health.select_latest_provider_run(governed, workflow="CI")
         except observe_main_health.ObservationError as exc:

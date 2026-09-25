@@ -192,6 +192,27 @@ def test_create_build_info_rejects_dirty_or_reused_output(tmp_path: Path) -> Non
         create_build_info(checkout, tmp_path / "other" / "build-info.json")
 
 
+def test_git_build_info_status_timeout_is_bounded_and_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path / "checkout"
+    _clean_git_checkout(checkout)
+    real_run = subprocess.run
+    observed: list[int | float | None] = []
+
+    def timeout_status(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[Any]:
+        if command[-3:] == ["status", "--porcelain", "--untracked-files=all"]:
+            observed.append(kwargs.get("timeout"))
+            raise subprocess.TimeoutExpired(command, kwargs.get("timeout"))
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(release_tool.subprocess, "run", timeout_status)
+
+    with pytest.raises(ReleaseArtifactError, match="Cannot derive build info from Git"):
+        release_tool._git_build_info(checkout)
+    assert observed == [30]
+
+
 def test_standard_build_embeds_exact_identity_in_installed_wheel_and_sdist(
     tmp_path: Path,
 ) -> None:

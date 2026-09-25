@@ -37,6 +37,8 @@ _VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z.!+_-]*")
 _GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _GIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _POSITIVE_INTEGER = re.compile(r"[1-9][0-9]*\Z")
+_GIT_COMMAND_TIMEOUT_SECONDS = 5
+_GIT_STATUS_TIMEOUT_SECONDS = 30
 _BUILD_INFO_SCHEMA = "metriplane.build-info.v1"
 _BUILD_INFO_KEYS = {
     "schema_version",
@@ -254,24 +256,32 @@ def _git_build_info(repository_root: Path) -> tuple[dict[str, object], bytes]:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=_GIT_COMMAND_TIMEOUT_SECONDS,
             ).stdout.strip()
         ).resolve(strict=True)
         if top_level != root:
             raise ReleaseArtifactError("Build-info root is not the exact Git checkout")
 
-        def git_output(*args: str) -> str:
+        def git_output(
+            *args: str,
+            timeout_seconds: int = _GIT_COMMAND_TIMEOUT_SECONDS,
+        ) -> str:
             return subprocess.run(
                 ["git", "-C", str(root), *args],
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=timeout_seconds,
             ).stdout.strip()
 
         commit = git_output("rev-parse", "HEAD")
         tree = git_output("rev-parse", "HEAD^{tree}")
-        dirty = git_output("status", "--porcelain", "--untracked-files=all")
+        dirty = git_output(
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            timeout_seconds=_GIT_STATUS_TIMEOUT_SECONDS,
+        )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise ReleaseArtifactError(f"Cannot derive build info from Git: {exc}") from exc
     if dirty:

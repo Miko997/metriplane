@@ -891,6 +891,14 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert "validate-config" in completed.stdout
+    stdlib_import = subprocess.run(
+        [sys.executable, "-S", "-c", "import tools.main_health_broker"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert stdlib_import.returncode == 0, stdlib_import.stderr
 
 
 def test_run_once_quarantines_before_ruleset_witness_validation(
@@ -5159,6 +5167,164 @@ def test_current_ci_selects_a_later_active_rerun_of_an_older_id(tmp_path: Path) 
     assert selected is not None
     assert (selected["id"], selected["run_attempt"]) == (20, 2)
     assert "status=" not in paths[0]
+
+
+def test_current_ci_falls_back_to_exact_sha_when_branch_inventory_omits_main(
+    tmp_path: Path,
+) -> None:
+    paths: list[str] = []
+
+    class CurrentCiApi(broker.GitHubApi):
+        def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+            assert key == "workflow_runs"
+            assert token == "token"
+            paths.append(path)
+            if "actions/workflows/ci.yml/runs" in path:
+                return []
+            assert path.endswith(f"/actions/runs?head_sha={BASE_SHA}")
+            return [
+                {
+                    "conclusion": "success",
+                    "event": "push",
+                    "head_branch": "main",
+                    "head_sha": BASE_SHA,
+                    "id": 21,
+                    "name": "Documentation",
+                    "path": ".github/workflows/docs.yml",
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "updated_at": "2026-08-26T12:00:00Z",
+                },
+                {
+                    "conclusion": "success",
+                    "event": "push",
+                    "head_branch": "main",
+                    "head_sha": BASE_SHA,
+                    "id": 20,
+                    "name": "CI",
+                    "path": ".github/workflows/ci.yml",
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "updated_at": "2026-08-26T12:01:00Z",
+                },
+            ]
+
+    reconciler = broker.HealthReconciler(
+        api=CurrentCiApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=FakeStateBranch(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    selected = reconciler._current_ci(BASE_SHA)
+
+    assert selected is not None
+    assert (selected["id"], selected["run_attempt"]) == (20, 1)
+    assert paths == [
+        f"repos/{REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push",
+        f"repos/{REPOSITORY}/actions/runs?head_sha={BASE_SHA}",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("name", "CI impostor"),
+        ("path", ".github/workflows/docs.yml"),
+        ("event", "pull_request"),
+        ("head_branch", "release"),
+        ("head_sha", "f" * 40),
+    ],
+)
+def test_current_ci_exact_sha_fallback_rejects_wrong_identity(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    class CurrentCiApi(broker.GitHubApi):
+        def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+            assert key == "workflow_runs"
+            assert token == "token"
+            if "actions/workflows/ci.yml/runs" in path:
+                return []
+            run = {
+                "conclusion": "success",
+                "event": "push",
+                "head_branch": "main",
+                "head_sha": BASE_SHA,
+                "id": 20,
+                "name": "CI",
+                "path": ".github/workflows/ci.yml",
+                "run_attempt": 1,
+                "status": "completed",
+                "updated_at": "2026-08-26T12:01:00Z",
+            }
+            run[field] = value
+            return [run]
+
+    reconciler = broker.HealthReconciler(
+        api=CurrentCiApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=FakeStateBranch(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert reconciler._current_ci(BASE_SHA) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("name", "CI impostor"),
+        ("path", ".github/workflows/docs.yml"),
+    ],
+)
+def test_current_ci_exact_sha_fallback_rejects_newer_same_id_wrong_workflow(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    class CurrentCiApi(broker.GitHubApi):
+        def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+            assert key == "workflow_runs"
+            assert token == "token"
+            if "actions/workflows/ci.yml/runs" in path:
+                return []
+            common = {
+                "event": "push",
+                "head_branch": "main",
+                "head_sha": BASE_SHA,
+                "id": 20,
+                "name": "CI",
+                "path": ".github/workflows/ci.yml",
+            }
+            newer = {
+                **common,
+                "conclusion": None,
+                "run_attempt": 2,
+                "status": "in_progress",
+                "updated_at": "2026-08-26T12:01:00Z",
+            }
+            newer[field] = value
+            return [
+                {
+                    **common,
+                    "conclusion": "success",
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "updated_at": "2026-08-26T12:00:00Z",
+                },
+                newer,
+            ]
+
+    reconciler = broker.HealthReconciler(
+        api=CurrentCiApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=FakeStateBranch(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    with pytest.raises(broker.BrokerError, match=rf"field '{field}'.*canonical workflow"):
+        reconciler._current_ci(BASE_SHA)
 
 
 def test_current_ci_rejects_malformed_provider_chronology(tmp_path: Path) -> None:
