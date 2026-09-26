@@ -41,6 +41,7 @@ SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
 SETUPTOOLS_PACKAGE_SHA256 = "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
 FROZEN_CANDIDATE_IDENTITY_PATHS = (
     "adapters/maniskill_pickcube",
+    ":(exclude)adapters/maniskill_pickcube/uv.lock",
     "examples/external_sources/maniskill_pickcube",
     "schemas/metriplane.external_source_contract.v1.schema.json",
     "proofs/maniskill-pickcube-v1/CITATION.cff",
@@ -978,6 +979,79 @@ def _candidate_identity_diff(
         capture_output=True,
         text=True,
     )
+
+
+def test_current_adapter_lock_is_the_only_candidate_identity_exception(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    adapter = repository / "adapters" / "maniskill_pickcube"
+    adapter.mkdir(parents=True)
+    (adapter / "runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (adapter / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Metriplane Test",
+            "-c",
+            "user.email=metriplane-test@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "candidate",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    candidate = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repository, text=True
+    ).strip()
+
+    (adapter / "uv.lock").write_text("version = 2\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "adapters/maniskill_pickcube/uv.lock"], cwd=repository, check=True
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Metriplane Test",
+            "-c",
+            "user.email=metriplane-test@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "lock maintenance",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    lock_only = _candidate_identity_diff(repository, candidate)
+    assert lock_only.returncode == 0, lock_only.stdout + lock_only.stderr
+
+    (adapter / "runtime.py").write_text("VALUE = 2\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "adapters/maniskill_pickcube/runtime.py"], cwd=repository, check=True
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Metriplane Test",
+            "-c",
+            "user.email=metriplane-test@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "runtime mutation",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    source_change = _candidate_identity_diff(repository, candidate)
+    assert source_change.returncode == 1
+    assert "adapters/maniskill_pickcube/runtime.py" in source_change.stdout
 
 
 def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
