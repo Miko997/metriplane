@@ -25,6 +25,68 @@ SOURCE_RUN = (
     'test "$source_sha" = "$GITHUB_SHA"\n'
     'echo "sha=$source_sha" >> "$GITHUB_OUTPUT"\n'
 )
+OSV_EXPORT_RUN = """set -euo pipefail
+output=.supply-chain-osv
+test ! -e "$output"
+mkdir "$output"
+projects=(
+  .
+  adapters/maniskill_pickcube
+  adapters/massrobotics_amr
+  adapters/robomimic_lowdim
+  adapters/ros2_mcap
+  adapters/source_adapter_sdk
+  tests/adapter_conformance
+)
+for index in "${!projects[@]}"; do
+  uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \\
+    --no-emit-project --no-emit-local --format requirements-txt \\
+    --output-file "$output/$index-requirements.txt"
+done
+"""
+LICENSE_EXPORT_RUN = """set -euo pipefail
+output=.supply-chain-license
+baseline_output=.supply-chain-license-base
+test ! -e "$output" && test ! -e "$baseline_output"
+mkdir "$output" "$baseline_output"
+base="${{ github.event.pull_request.base.sha || github.event.before || github.sha }}"
+head="$GITHUB_SHA"
+test "$(git rev-parse HEAD)" = "$head"
+projects=(
+  .
+  adapters/maniskill_pickcube
+  adapters/massrobotics_amr
+  adapters/robomimic_lowdim
+  adapters/ros2_mcap
+  adapters/source_adapter_sdk
+  tests/adapter_conformance
+)
+for index in "${!projects[@]}"; do
+  uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \\
+    --no-emit-project --no-emit-local --format requirements-txt \\
+    --output-file "$output/$index-requirements.txt"
+done
+if test "$base" = "0000000000000000000000000000000000000000"; then
+  test "$GITHUB_EVENT_NAME" = push
+  for index in "${!projects[@]}"; do
+    : > "$baseline_output/$index-requirements.txt"
+  done
+else
+  baseline_root="$RUNNER_TEMP/metriplane-license-base"
+  test ! -e "$baseline_root"
+  git merge-base --is-ancestor "$base" "$head"
+  git worktree add --detach "$baseline_root" "$base"
+  trap 'git worktree remove --force "$baseline_root"' EXIT
+  for index in "${!projects[@]}"; do
+    uv export --directory "$baseline_root/${projects[$index]}" --frozen \\
+      --all-extras --no-dev --no-emit-project --no-emit-local \\
+      --format requirements-txt \\
+      --output-file "$GITHUB_WORKSPACE/$baseline_output/$index-requirements.txt"
+  done
+  git worktree remove --force "$baseline_root"
+  trap - EXIT
+fi
+"""
 REQUIRED_CONTROLS = {
     "dependency-review",
     "osv",
@@ -183,7 +245,6 @@ def _validate_supply_chain_workflow(workflow: dict[str, Any], policy: dict[str, 
     _require(set(jobs) == controls | {"aggregate"}, "supply-chain job inventory drift")
     actions = policy["actions"]
     action_jobs = {
-        "dependency-review": "dependency-review",
         "osv": "osv",
         "pip-audit": "pip-audit",
         "image-scan": "image-scan",
@@ -199,7 +260,7 @@ def _validate_supply_chain_workflow(workflow: dict[str, Any], policy: dict[str, 
             label=name,
             checkout_inputs={
                 "persist-credentials": False,
-                **({"fetch-depth": 0} if name == "secret-scan" else {}),
+                **({"fetch-depth": 0} if name in {"dependency-review", "secret-scan"} else {}),
             },
             source_name="Record exact source",
         )
@@ -207,28 +268,83 @@ def _validate_supply_chain_workflow(workflow: dict[str, Any], policy: dict[str, 
             _require(step.get("continue-on-error") is not True, f"{name}: step allows failure")
     for control, job_name in action_jobs.items():
         step = _workflow_step(jobs[job_name], actions[control], control)
-        if control != "dependency-review":
-            _require("if" not in step, f"{control}: scanner is conditional")
+        _require("if" not in step, f"{control}: scanner is conditional")
 
-    dependency_step = _workflow_step(
-        jobs["dependency-review"], actions["dependency-review"], "dependency-review"
-    )
     _require(
-        dependency_step.get("if") == "github.event_name == 'pull_request'",
-        "dependency-review condition drift",
+        _named_run_argv(
+            jobs["dependency-review"], "Review exact dependency delta", "dependency review"
+        )
+        == [
+            "python",
+            "tools/check_dependency_delta.py",
+            "--event-name",
+            "$GITHUB_EVENT_NAME",
+            "--base",
+            "${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            "--head",
+            "$GITHUB_SHA",
+        ],
+        "dependency review command drift",
     )
+    license_exports = [
+        step
+        for step in jobs["dependency-review"].get("steps", [])
+        if step.get("name") == "Export exact runtime dependency graphs for license review"
+    ]
     _require(
-        dependency_step.get("with")
-        == {
-            "fail-on-severity": "moderate",
-            "license-check": True,
-            "deny-licenses": "GPL-3.0, AGPL-3.0",
-        },
-        "dependency review inputs",
+        len(license_exports) == 1 and license_exports[0].get("run") == LICENSE_EXPORT_RUN,
+        "dependency license export drift",
+    )
+    license_requirements = [
+        item
+        for index in range(len(policy["python_projects"]))
+        for item in ("--requirements", f".supply-chain-license/{index}-requirements.txt")
+    ]
+    baseline_license_requirements = [
+        item
+        for index in range(len(policy["python_projects"]))
+        for item in (
+            "--baseline-requirements",
+            f".supply-chain-license-base/{index}-requirements.txt",
+        )
+    ]
+    _require(
+        _named_run_argv(
+            jobs["dependency-review"], "Enforce dependency license policy", "dependency license"
+        )
+        == [
+            "python",
+            "tools/check_dependency_licenses.py",
+            *license_requirements,
+            *baseline_license_requirements,
+            "--deny-license",
+            "GPL-3.0",
+            "--deny-license",
+            "AGPL-3.0",
+            "--event-name",
+            "$GITHUB_EVENT_NAME",
+            "--base",
+            "${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            "--head",
+            "$GITHUB_SHA",
+        ],
+        "dependency license command drift",
     )
 
     osv_inputs = _workflow_step(jobs["osv"], actions["osv"], "osv").get("with", {})
-    _require(osv_inputs == {"scan-args": "--recursive\n./"}, "OSV scan target")
+    osv_export = [
+        step
+        for step in jobs["osv"].get("steps", [])
+        if step.get("name") == "Export exact runtime dependency graphs"
+    ]
+    _require(
+        len(osv_export) == 1 and osv_export[0].get("run") == OSV_EXPORT_RUN,
+        "OSV runtime export drift",
+    )
+    _require(
+        osv_inputs == {"scan-args": f"--recursive\n./{policy['osv_runtime_export_directory']}"},
+        "OSV scan target",
+    )
     _require(
         _named_run_argv(
             jobs["pip-audit"], "Export the exact locked dependency graph", "pip-audit export"
@@ -239,6 +355,7 @@ def _validate_supply_chain_workflow(workflow: dict[str, Any], policy: dict[str, 
             "--directory",
             "${{ matrix.project }}",
             "--frozen",
+            "--all-extras",
             "--no-dev",
             "--no-emit-project",
             "--no-emit-local",
@@ -353,7 +470,10 @@ def validate_policy(root: Path) -> dict[str, Any]:
     _require(set(policy.get("required_controls", [])) == REQUIRED_CONTROLS, "controls")
 
     actions = policy.get("actions")
-    _require(isinstance(actions, dict) and set(actions) == REQUIRED_CONTROLS, "actions")
+    _require(
+        isinstance(actions, dict) and set(actions) == REQUIRED_CONTROLS - {"dependency-review"},
+        "actions",
+    )
     for name, action in actions.items():
         _require(isinstance(action, str) and SHA_ACTION.fullmatch(action) is not None, name)
 
@@ -381,8 +501,26 @@ def validate_policy(root: Path) -> dict[str, Any]:
         "additional locks",
     )
     _require(all((root / path).is_file() for path in additional_locks), "missing additional lock")
-    all_locks = {path.relative_to(root).as_posix() for path in root.rglob("uv.lock")}
+    all_locks = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("uv.lock")
+        if ".venv" not in path.relative_to(root).parts
+    }
     _require(declared_locks | set(additional_locks) == all_locks, "lock inventory drift")
+    _require(
+        policy.get("osv_runtime_export_directory") == ".supply-chain-osv",
+        "OSV runtime export directory drift",
+    )
+    _require(
+        policy.get("license_review")
+        == {
+            "denied_licenses": ["GPL-3.0", "AGPL-3.0"],
+            "index_url": "https://pypi.org/pypi",
+            "runtime_baseline_export_directory": ".supply-chain-license-base",
+            "runtime_export_directory": ".supply-chain-license",
+        },
+        "dependency license policy drift",
+    )
 
     images = policy.get("images")
     _require(isinstance(images, dict) and set(images) == {"scanned", "excluded"}, "images")

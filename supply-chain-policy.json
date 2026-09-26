@@ -10,7 +10,6 @@
     "sbom"
   ],
   "actions": {
-    "dependency-review": "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294",
     "osv": "google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc",
     "pip-audit": "pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266",
     "image-scan": "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25",
@@ -41,6 +40,13 @@
     "examples/external_sources/ros2_mcap/control/source/uv.lock",
     "examples/external_sources/ros2_mcap/incident/source/uv.lock"
   ],
+  "license_review": {
+    "denied_licenses": ["GPL-3.0", "AGPL-3.0"],
+    "index_url": "https://pypi.org/pypi",
+    "runtime_baseline_export_directory": ".supply-chain-license-base",
+    "runtime_export_directory": ".supply-chain-license"
+  },
+  "osv_runtime_export_directory": ".supply-chain-osv",
   "images": {
     "scanned": ["docker/Dockerfile", "docker/jetson.Dockerfile"],
     "excluded": [

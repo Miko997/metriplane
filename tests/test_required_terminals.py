@@ -384,7 +384,7 @@ def _suite_fixture(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
                 "platform": system,
                 "python_version": version,
                 "python_full": version + ".1",
-                "pytest_version": "8.4.2",
+                "pytest_version": "9.0.3",
                 "runner_os": "Linux" if system == "linux" else "macOS",
                 "runner_arch": "X64",
                 "runner_image": system,

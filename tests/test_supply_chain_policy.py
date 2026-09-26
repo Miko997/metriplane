@@ -60,6 +60,14 @@ def test_unknown_project_lock_fails_closed(tmp_path: Path) -> None:
         validate_policy(root)
 
 
+def test_ignored_virtual_environment_lock_is_not_repository_policy(tmp_path: Path) -> None:
+    root = _copy_repository(tmp_path)
+    installed = root / "adapters/maniskill_pickcube/.venv/site-packages/package/data"
+    installed.mkdir(parents=True)
+    (installed / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    validate_policy(root)
+
+
 def test_unpinned_action_and_persisted_credentials_fail_closed(tmp_path: Path) -> None:
     root = _copy_repository(tmp_path)
     workflow = root / ".github/workflows/supply-chain-security.yml"
@@ -213,6 +221,56 @@ def test_aggregate_validator_argv_fails_closed(tmp_path: Path) -> None:
         validate_policy(root)
 
 
+def test_dependency_review_command_drift_fails_closed(tmp_path: Path) -> None:
+    root = _copy_repository(tmp_path)
+    workflow = root / ".github/workflows/supply-chain-security.yml"
+    text = workflow.read_text(encoding="utf-8")
+    workflow.write_text(
+        text.replace('--head "$GITHUB_SHA"', '--head "${{ github.sha }}"', 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(SupplyChainPolicyError, match="dependency review command drift"):
+        validate_policy(root)
+
+
+def test_dependency_license_command_and_export_drift_fail_closed(tmp_path: Path) -> None:
+    root = _copy_repository(tmp_path)
+    workflow = root / ".github/workflows/supply-chain-security.yml"
+    original = workflow.read_text(encoding="utf-8")
+    workflow.write_text(
+        original.replace("--deny-license AGPL-3.0", "--deny-license LGPL-3.0", 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(SupplyChainPolicyError, match="dependency license command drift"):
+        validate_policy(root)
+    workflow.write_text(
+        original.replace("output=.supply-chain-license", "output=.untrusted", 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(SupplyChainPolicyError, match="dependency license export drift"):
+        validate_policy(root)
+
+
+def test_osv_runtime_export_directory_drift_fails_closed(tmp_path: Path) -> None:
+    root = _copy_repository(tmp_path)
+    policy_path = root / "supply-chain-policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["osv_runtime_export_directory"] = ".untrusted"
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(SupplyChainPolicyError, match="OSV runtime export directory drift"):
+        validate_policy(root)
+
+
+def test_runtime_extra_coverage_cannot_be_removed(tmp_path: Path) -> None:
+    root = _copy_repository(tmp_path)
+    workflow = root / ".github/workflows/supply-chain-security.yml"
+    text = workflow.read_text(encoding="utf-8")
+    assert text.count("--all-extras") == 4
+    workflow.write_text(text.replace("--all-extras ", "", 1), encoding="utf-8")
+    with pytest.raises(SupplyChainPolicyError, match="dependency license export drift"):
+        validate_policy(root)
+
+
 @pytest.mark.parametrize(
     ("workflow_name", "old", "new", "message"),
     (
@@ -258,7 +316,7 @@ def test_source_identity_mutations_fail_closed(
     ("old", "new", "message"),
     (
         (
-            "            ./\n",
+            "            ./.supply-chain-osv\n",
             "            /tmp\n",
             "OSV scan target",
         ),

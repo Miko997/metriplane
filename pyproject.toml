@@ -54,7 +54,7 @@ dev = [
   "mkdocs==1.6.1",
   "mypy==1.20.2",
   "playwright==1.62.0",
-  "pytest==8.4.2",
+  "pytest==9.0.3",
   "ruff==0.16.2",
   "setuptools==82.0.1",
   "twine==6.2.0",
@@ -112,10 +112,12 @@ exclude = "^metriplane/atlas/"
 module = ["metriplane.atlas", "metriplane.atlas.*"]
 follow_imports = "skip"
 
-[tool.pytest.ini_options]
+[tool.pytest]
 testpaths = ["tests"]
-addopts = "--strict-config --strict-markers -p no:ament_pep257 -p no:ament_flake8 -p no:ament_copyright -p no:ament_xmllint -p no:ament_lint"
-xfail_strict = true
+addopts = ["-p", "no:ament_pep257", "-p", "no:ament_flake8", "-p", "no:ament_copyright", "-p", "no:ament_xmllint", "-p", "no:ament_lint"]
+strict_config = true
+strict_markers = true
+strict_xfail = true
 filterwarnings = ["error"]
 
 [tool.metriplane.testing]
