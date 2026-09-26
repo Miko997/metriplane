@@ -9,7 +9,8 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: robomimic-lowdim-${{ github.workflow }}-${{ github.ref }}

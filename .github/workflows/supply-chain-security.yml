@@ -1,0 +1,342 @@
+name: Supply-chain security
+
+on:
+  workflow_call:
+    outputs:
+      source_sha:
+        description: Exact source commit qualified by every supply-chain control
+        value: ${{ jobs.aggregate.outputs.source_sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Supply-chain policy
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: 0.12.0
+          enable-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - run: uv sync --frozen --group dev
+      - run: uv run --frozen python tools/check_supply_chain_policy.py
+      - run: uv run --frozen pytest -q tests/test_dependency_delta.py tests/test_supply_chain_policy.py tests/test_supply_chain_pinning.py tests/test_required_terminals.py
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Review exact dependency delta
+        run: >-
+          python tools/check_dependency_delta.py
+          --event-name "$GITHUB_EVENT_NAME"
+          --base "${{ github.event.pull_request.base.sha || github.event.before || github.sha }}"
+          --head "$GITHUB_SHA"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: 0.12.0
+          enable-cache: false
+      - name: Export exact runtime dependency graphs for license review
+        run: |
+          set -euo pipefail
+          output=.supply-chain-license
+          baseline_output=.supply-chain-license-base
+          test ! -e "$output" && test ! -e "$baseline_output"
+          mkdir "$output" "$baseline_output"
+          base="${{ github.event.pull_request.base.sha || github.event.before || github.sha }}"
+          head="$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$head"
+          projects=(
+            .
+            adapters/maniskill_pickcube
+            adapters/massrobotics_amr
+            adapters/robomimic_lowdim
+            adapters/ros2_mcap
+            adapters/source_adapter_sdk
+            tests/adapter_conformance
+          )
+          for index in "${!projects[@]}"; do
+            uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \
+              --no-emit-project --no-emit-local --format requirements-txt \
+              --output-file "$output/$index-requirements.txt"
+          done
+          if test "$base" = "0000000000000000000000000000000000000000"; then
+            test "$GITHUB_EVENT_NAME" = push
+            for index in "${!projects[@]}"; do
+              : > "$baseline_output/$index-requirements.txt"
+            done
+          else
+            baseline_root="$RUNNER_TEMP/metriplane-license-base"
+            test ! -e "$baseline_root"
+            git merge-base --is-ancestor "$base" "$head"
+            git worktree add --detach "$baseline_root" "$base"
+            trap 'git worktree remove --force "$baseline_root"' EXIT
+            for index in "${!projects[@]}"; do
+              uv export --directory "$baseline_root/${projects[$index]}" --frozen \
+                --all-extras --no-dev --no-emit-project --no-emit-local \
+                --format requirements-txt \
+                --output-file "$GITHUB_WORKSPACE/$baseline_output/$index-requirements.txt"
+            done
+            git worktree remove --force "$baseline_root"
+            trap - EXIT
+          fi
+      - name: Enforce dependency license policy
+        run: >-
+          python tools/check_dependency_licenses.py
+          --requirements .supply-chain-license/0-requirements.txt
+          --requirements .supply-chain-license/1-requirements.txt
+          --requirements .supply-chain-license/2-requirements.txt
+          --requirements .supply-chain-license/3-requirements.txt
+          --requirements .supply-chain-license/4-requirements.txt
+          --requirements .supply-chain-license/5-requirements.txt
+          --requirements .supply-chain-license/6-requirements.txt
+          --baseline-requirements .supply-chain-license-base/0-requirements.txt
+          --baseline-requirements .supply-chain-license-base/1-requirements.txt
+          --baseline-requirements .supply-chain-license-base/2-requirements.txt
+          --baseline-requirements .supply-chain-license-base/3-requirements.txt
+          --baseline-requirements .supply-chain-license-base/4-requirements.txt
+          --baseline-requirements .supply-chain-license-base/5-requirements.txt
+          --baseline-requirements .supply-chain-license-base/6-requirements.txt
+          --deny-license GPL-3.0
+          --deny-license AGPL-3.0
+          --event-name "$GITHUB_EVENT_NAME"
+          --base "${{ github.event.pull_request.base.sha || github.event.before || github.sha }}"
+          --head "$GITHUB_SHA"
+
+  osv:
+    name: OSV lock scan
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: 0.12.0
+          enable-cache: false
+      - name: Export exact runtime dependency graphs
+        run: |
+          set -euo pipefail
+          output=.supply-chain-osv
+          test ! -e "$output"
+          mkdir "$output"
+          projects=(
+            .
+            adapters/maniskill_pickcube
+            adapters/massrobotics_amr
+            adapters/robomimic_lowdim
+            adapters/ros2_mcap
+            adapters/source_adapter_sdk
+            tests/adapter_conformance
+          )
+          for index in "${!projects[@]}"; do
+            uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \
+              --no-emit-project --no-emit-local --format requirements-txt \
+              --output-file "$output/$index-requirements.txt"
+          done
+      - name: Scan repository lockfiles
+        uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --recursive
+            ./.supply-chain-osv
+
+  pip-audit:
+    name: pip audit (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - .
+          - adapters/maniskill_pickcube
+          - adapters/massrobotics_amr
+          - adapters/robomimic_lowdim
+          - adapters/ros2_mcap
+          - adapters/source_adapter_sdk
+          - tests/adapter_conformance
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: 0.12.0
+          enable-cache: false
+      - name: Export the exact locked dependency graph
+        run: >-
+          uv export --directory "${{ matrix.project }}" --frozen --all-extras --no-dev
+          --no-emit-project --no-emit-local --format requirements-txt
+          --output-file "$RUNNER_TEMP/requirements.txt"
+      - name: Audit the locked dependency graph
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: ${{ runner.temp }}/requirements.txt
+          no-deps: true
+          require-hashes: true
+          vulnerability-service: OSV
+
+  image-scan:
+    name: Runtime image scan (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: docker/Dockerfile
+            image: portable
+          - dockerfile: docker/jetson.Dockerfile
+            image: jetson-replay
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Build exact-source runtime image
+        run: >-
+          docker build --tag "metriplane-supply-chain-${{ matrix.image }}:$GITHUB_SHA"
+          --file "${{ matrix.dockerfile }}" .
+      - name: Scan runtime image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: metriplane-supply-chain-${{ matrix.image }}:${{ github.sha }}
+          version: v0.74.0
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Scan source and retained history
+        uses: trufflesecurity/trufflehog@6961f2bace57ab32b23b3ba40f8f420f6bc7e004 # v3.93.3
+        with:
+          path: ./
+          extra_args: --results=verified,unknown
+          version: 3.93.3
+
+  sbom:
+    name: SPDX SBOM
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Generate retained exact-source SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          output-file: metriplane-${{ github.sha }}.spdx.json
+          artifact-name: metriplane-${{ github.sha }}-sbom
+          syft-version: v1.52.0
+          upload-artifact: true
+          upload-artifact-retention: 30
+          upload-release-assets: false
+
+  aggregate:
+    name: Supply-chain aggregate
+    if: always()
+    needs: [policy, dependency-review, osv, pip-audit, image-scan, secret-scan, sbom]
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    env:
+      RESULTS_JSON: >-
+        {"policy":{"result":"${{ needs.policy.result }}","sha":"${{ needs.policy.outputs.source_sha }}"},"dependency-review":{"result":"${{ needs.dependency-review.result }}","sha":"${{ needs.dependency-review.outputs.source_sha }}"},"osv":{"result":"${{ needs.osv.result }}","sha":"${{ needs.osv.outputs.source_sha }}"},"pip-audit":{"result":"${{ needs.pip-audit.result }}","sha":"${{ needs.pip-audit.outputs.source_sha }}"},"image-scan":{"result":"${{ needs.image-scan.result }}","sha":"${{ needs.image-scan.outputs.source_sha }}"},"secret-scan":{"result":"${{ needs.secret-scan.result }}","sha":"${{ needs.secret-scan.outputs.source_sha }}"},"sbom":{"result":"${{ needs.sbom.result }}","sha":"${{ needs.sbom.outputs.source_sha }}"}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record exact source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Validate exact supply-chain aggregate
+        run: >-
+          python tools/check_required_terminal.py aggregate
+          --terminal "Supply-chain aggregate"
+          --expected-sha "$GITHUB_SHA"
+          --expected-dependency policy
+          --expected-dependency dependency-review
+          --expected-dependency osv
+          --expected-dependency pip-audit
+          --expected-dependency image-scan
+          --expected-dependency secret-scan
+          --expected-dependency sbom
+          --results-json "$RESULTS_JSON"

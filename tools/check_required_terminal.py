@@ -423,7 +423,7 @@ def _validate_suite_identity(
         and re.fullmatch(re.escape(version) + r"\.\d+", identity["python_full"]),
         "wrong full Python version",
     )
-    _require(identity["pytest_version"] == "8.4.2", "wrong pytest version")
+    _require(identity["pytest_version"] == "9.0.3", "wrong pytest version")
     for key in ("runner_arch", "runner_image", "runner_image_version"):
         _require(isinstance(identity[key], str) and bool(identity[key]), f"missing {key}")
 

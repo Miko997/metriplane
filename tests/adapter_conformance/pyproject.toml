@@ -12,7 +12,7 @@ dependencies = [
   "jsonschema>=4.25,<5",
   "metriplane",
   "packaging>=24,<27",
-  "pytest>=8.4,<9",
+  "pytest>=9.0.3,<10",
   "reuse>=5,<6",
 ]
 
