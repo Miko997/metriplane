@@ -862,24 +862,37 @@ def test_ci_shards_and_fast_validation_preserve_required_closure() -> None:
     assert "PYTEST_ADDOPTS" not in text and "PYTEST_PLUGINS" not in text
 
 
-def test_codeql_requires_both_language_jobs_with_observed_source() -> None:
+def test_codeql_requires_languages_and_supply_chain_with_observed_source() -> None:
     workflow = yaml.safe_load((WORKFLOWS / "codeql.yml").read_text())
     jobs = workflow["jobs"]
-    assert set(jobs) == {"analyze-python", "analyze-javascript", "security-required"}
+    assert set(jobs) == {
+        "analyze-python",
+        "analyze-javascript",
+        "supply-chain",
+        "security-required",
+    }
     assert jobs["analyze-python"]["name"] == "CodeQL (python)"
     assert jobs["analyze-javascript"]["name"] == "CodeQL (javascript-typescript)"
-    assert jobs["security-required"]["needs"] == ["analyze-python", "analyze-javascript"]
+    assert jobs["supply-chain"]["uses"] == "./.github/workflows/supply-chain-security.yml"
+    assert jobs["security-required"]["needs"] == [
+        "analyze-python",
+        "analyze-javascript",
+        "supply-chain",
+    ]
     for name in ("analyze-python", "analyze-javascript"):
         assert "strategy" not in jobs[name]
         assert jobs[name]["outputs"]["source_sha"] == "${{ steps.source.outputs.sha }}"
+        assert f"needs.{name}.result" in str(jobs["security-required"])
         assert f"needs.{name}.outputs.source_sha" in str(jobs["security-required"])
+    assert "needs.supply-chain.result" in str(jobs["security-required"])
+    assert "needs.supply-chain.outputs.source_sha" in str(jobs["security-required"])
 
 
 def test_ci_owned_shell_steps_are_valid_bash() -> None:
     for filename in ("ci.yml", "codeql.yml", "pr-contract.yml"):
         workflow = yaml.safe_load((WORKFLOWS / filename).read_text())
         for job in workflow["jobs"].values():
-            for step in job["steps"]:
+            for step in job.get("steps", []):
                 if "run" in step:
                     proc = subprocess.run(
                         ["bash", "-n"], input=step["run"], capture_output=True, text=True

@@ -9,7 +9,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
@@ -29,6 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Record checked-out source
         id: source
@@ -103,6 +105,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Record checked-out source
         id: source
@@ -254,6 +257,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Record checked-out source
         id: source
         run: |
@@ -299,6 +303,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Record checked-out source
         id: source
         run: |

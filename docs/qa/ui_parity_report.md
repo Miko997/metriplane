@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `8719ca143e6815be5b530547bc7cebdb7fe1a4ee481f3fae4a797fbbb670ea9d`
+Canonical projection SHA-256: `b2b88f098a3155ab209fc249801c9e04d94ea8fd45de3e79d8af6b6deaa08710`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 239 |
+| total_discovered_features | 240 |
 | ui_full | 59 |
 | ui_partial | 2 |
 | ui_copy_command_only | 10 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 154 |
+| cli_only_documented | 155 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -193,6 +193,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.check_required_terminal | Check Required Terminal | tools/check_required_terminal.py | python tools/check_required_terminal.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_ros2_adapters | Check Ros2 Adapters | tools/check_ros2_adapters.py | python tools/check_ros2_adapters.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_security_controls | Check Security Controls | tools/check_security_controls.py | python tools/check_security_controls.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_supply_chain_policy | Check Supply Chain Policy | tools/check_supply_chain_policy.py | python tools/check_supply_chain_policy.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_traceability | Check Traceability | tools/check_traceability.py | python tools/check_traceability.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_work_order_catalog | Check Work Order Catalog | tools/check_work_order_catalog.py | python tools/check_work_order_catalog.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.collect_publication_observations | Collect Publication Observations | tools/collect_publication_observations.py | python tools/collect_publication_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
