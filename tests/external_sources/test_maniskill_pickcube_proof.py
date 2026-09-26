@@ -39,6 +39,12 @@ EVIDENCE_LAKE_REPAIRED_SHA256 = "90f8dcf04e8d9ada011fd8eb0c3512e03faa9eb29d77d2e
 SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
 SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
 SETUPTOOLS_PACKAGE_SHA256 = "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
+PYTEST_DEV_EDGE = {"name": "pytest"}
+PYTEST_DEV_PROFILES = {
+    ("8.4.2", ">=8.4,<9"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
+    ("8.4.2", "==8.4.2"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
+    ("9.0.3", "==9.0.3"): "602bc34219f907aea9bc741611fe248d10ae10ad662c20022781bb707bfcc8f6",
+}
 FROZEN_CANDIDATE_IDENTITY_PATHS = (
     "adapters/maniskill_pickcube",
     ":(exclude)adapters/maniskill_pickcube/uv.lock",
@@ -1122,6 +1128,11 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
             for row in requires_dev["dev"]
             if isinstance(row, dict) and row.get("name") == "setuptools"
         ]
+        pytest_metadata_edges = [
+            row
+            for row in requires_dev["dev"]
+            if isinstance(row, dict) and row.get("name") == "pytest"
+        ]
 
         dev_dependencies = root_package.get("dev-dependencies")
         assert isinstance(dev_dependencies, dict)
@@ -1132,7 +1143,15 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
             for row in dev_dependencies["dev"]
             if isinstance(row, dict) and row.get("name") == "setuptools"
         ]
+        pytest_graph_edges = [
+            row
+            for row in dev_dependencies["dev"]
+            if isinstance(row, dict) and row.get("name") == "pytest"
+        ]
         packages = [package for package in lock["package"] if package.get("name") == "setuptools"]
+        pytest_packages = [
+            package for package in lock["package"] if package.get("name") == "pytest"
+        ]
         non_dev_edges = [
             (package.get("name"), row)
             for package in lock["package"]
@@ -1140,6 +1159,13 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
             if isinstance(row, dict) and row.get("name") == "setuptools"
         ]
         assert not non_dev_edges
+        pytest_non_dev_edges = [
+            (package.get("name"), row)
+            for package in lock["package"]
+            for row in package.get("dependencies", [])
+            if isinstance(row, dict) and row.get("name") == "pytest"
+        ]
+        assert not pytest_non_dev_edges
 
         if expect_release_setuptools:
             assert metadata_edges == [SETUPTOOLS_METADATA_EDGE]
@@ -1153,6 +1179,20 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
             assert not metadata_edges
             assert not graph_edges
             assert not packages
+
+        assert len(pytest_packages) == 1
+        pytest_package = pytest_packages[0]
+        assert len(pytest_metadata_edges) == 1
+        pytest_metadata = pytest_metadata_edges[0]
+        assert set(pytest_metadata) == {"name", "specifier"}
+        pytest_profile = (pytest_package.get("version"), pytest_metadata.get("specifier"))
+        expected_pytest_sha256 = PYTEST_DEV_PROFILES.get(pytest_profile)
+        assert expected_pytest_sha256 is not None
+        assert pytest_metadata == {"name": "pytest", "specifier": pytest_profile[1]}
+        assert pytest_graph_edges == [PYTEST_DEV_EDGE]
+        encoded = json.dumps(pytest_package, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        assert hashlib.sha256(encoded).hexdigest() == expected_pytest_sha256
+        lock["package"].remove(pytest_package)
 
         metadata.pop("requires-dev")
         return lock
@@ -1266,6 +1306,63 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     checkout_root["dependencies"].append({"name": "setuptools"})
     invalid_locks.append(runtime_edge)
 
+    wrong_pytest_metadata = copy.deepcopy(checkout_lock)
+    checkout_root = next(
+        package
+        for package in wrong_pytest_metadata["package"]
+        if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+    )
+    pytest_requirement = next(
+        row
+        for row in checkout_root["metadata"]["requires-dev"]["dev"]
+        if row.get("name") == "pytest"
+    )
+    pytest_requirement["specifier"] = "==9.0.4"
+    invalid_locks.append(wrong_pytest_metadata)
+
+    wrong_pytest_graph = copy.deepcopy(checkout_lock)
+    checkout_root = next(
+        package
+        for package in wrong_pytest_graph["package"]
+        if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+    )
+    pytest_edge = next(
+        row for row in checkout_root["dev-dependencies"]["dev"] if row.get("name") == "pytest"
+    )
+    pytest_edge["marker"] = "python_version >= '3.12'"
+    invalid_locks.append(wrong_pytest_graph)
+
+    wrong_pytest_package = copy.deepcopy(checkout_lock)
+    pytest_package = next(
+        package for package in wrong_pytest_package["package"] if package.get("name") == "pytest"
+    )
+    pytest_package["wheels"][0]["hash"] = "sha256:" + ("0" * 64)
+    invalid_locks.append(wrong_pytest_package)
+
+    missing_pytest_package = copy.deepcopy(checkout_lock)
+    missing_pytest_package["package"] = [
+        package for package in missing_pytest_package["package"] if package.get("name") != "pytest"
+    ]
+    invalid_locks.append(missing_pytest_package)
+
+    duplicate_pytest_package = copy.deepcopy(checkout_lock)
+    pytest_package = next(
+        package
+        for package in duplicate_pytest_package["package"]
+        if package.get("name") == "pytest"
+    )
+    duplicate_pytest_package["package"].append(copy.deepcopy(pytest_package))
+    invalid_locks.append(duplicate_pytest_package)
+
+    pytest_runtime_edge = copy.deepcopy(checkout_lock)
+    checkout_root = next(
+        package
+        for package in pytest_runtime_edge["package"]
+        if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+    )
+    checkout_root["dependencies"].append({"name": "pytest"})
+    invalid_locks.append(pytest_runtime_edge)
+
     for invalid_lock in invalid_locks:
         with pytest.raises(AssertionError):
             normalize_lock(invalid_lock, expect_release_setuptools=True)
@@ -1359,6 +1456,14 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert text.count('package_data.pop("metriplane", None)') == 2
     assert text.count('metadata.pop("requires-dev")') == 2
     assert text.count(f'"{SETUPTOOLS_PACKAGE_SHA256}"') == 2
+    for package_sha256 in set(PYTEST_DEV_PROFILES.values()):
+        profile_count = sum(1 for value in PYTEST_DEV_PROFILES.values() if value == package_sha256)
+        assert text.count(f'"{package_sha256}"') == 2 * profile_count
+    assert text.count("PYTEST_DEV_PROFILES = {") == 2
+    assert text.count('raise SystemExit("root lock pytest version is not approved")') == 2
+    assert text.count('raise SystemExit("root lock pytest metadata edge differs")') == 2
+    assert text.count('raise SystemExit("root lock pytest dev edge differs")') == 2
+    assert text.count('raise SystemExit("root lock pytest package identity differs")') == 2
     assert text.count("expect_release_setuptools=False") == 2
     assert text.count('normalized_lock("HEAD", expect_release_setuptools=True)') == 2
     normalizer_blocks = re.findall(
