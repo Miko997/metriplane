@@ -266,7 +266,10 @@ def test_runtime_extra_coverage_cannot_be_removed(tmp_path: Path) -> None:
     workflow = root / ".github/workflows/supply-chain-security.yml"
     text = workflow.read_text(encoding="utf-8")
     assert text.count("--all-extras") == 4
-    workflow.write_text(text.replace("--all-extras ", "", 1), encoding="utf-8")
+    workflow.write_text(
+        text.replace("extra_args=(--all-extras)", "extra_args=()", 1),
+        encoding="utf-8",
+    )
     with pytest.raises(SupplyChainPolicyError, match="dependency license export drift"):
         validate_policy(root)
 
@@ -368,4 +371,45 @@ def test_runtime_image_inventory_is_exact_and_classified(tmp_path: Path) -> None
     root = _copy_repository(tmp_path)
     (root / "unclassified.Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
     with pytest.raises(SupplyChainPolicyError, match="image inventory drift"):
+        validate_policy(root)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new", "message"),
+    (
+        (
+            "docker/Dockerfile",
+            "      libpcre2-8-0 \\\n",
+            "",
+            "runtime image OS hardening",
+        ),
+        (
+            "docker/jetson.Dockerfile",
+            "    && apt-get upgrade -y --no-install-recommends \\\n",
+            "",
+            "runtime image OS hardening",
+        ),
+        (
+            "docker/jetson.Dockerfile",
+            "pip uninstall --yes pip setuptools wheel",
+            "python -m pip --version",
+            "runtime image build-tool removal",
+        ),
+        (
+            "docker/jetson.Dockerfile",
+            "COPY tools ./tools",
+            "",
+            "jetson build-backend inputs",
+        ),
+    ),
+)
+def test_runtime_image_hardening_mutations_fail_closed(
+    tmp_path: Path, path: str, old: str, new: str, message: str
+) -> None:
+    root = _copy_repository(tmp_path)
+    dockerfile = root / path
+    text = dockerfile.read_text(encoding="utf-8")
+    assert old in text
+    dockerfile.write_text(text.replace(old, new, 1), encoding="utf-8")
+    with pytest.raises(SupplyChainPolicyError, match=message):
         validate_policy(root)

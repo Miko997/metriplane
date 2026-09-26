@@ -22,13 +22,13 @@
     "trufflehog": "3.93.3"
   },
   "python_projects": [
-    {"directory": ".", "lock": "uv.lock"},
-    {"directory": "adapters/maniskill_pickcube", "lock": "adapters/maniskill_pickcube/uv.lock"},
-    {"directory": "adapters/massrobotics_amr", "lock": "adapters/massrobotics_amr/uv.lock"},
-    {"directory": "adapters/robomimic_lowdim", "lock": "adapters/robomimic_lowdim/uv.lock"},
-    {"directory": "adapters/ros2_mcap", "lock": "adapters/ros2_mcap/uv.lock"},
-    {"directory": "adapters/source_adapter_sdk", "lock": "adapters/source_adapter_sdk/uv.lock"},
-    {"directory": "tests/adapter_conformance", "lock": "tests/adapter_conformance/uv.lock"}
+    {"directory": ".", "lock": "uv.lock", "runtime_extras": "all"},
+    {"directory": "adapters/maniskill_pickcube", "lock": "adapters/maniskill_pickcube/uv.lock", "runtime_extras": "none"},
+    {"directory": "adapters/massrobotics_amr", "lock": "adapters/massrobotics_amr/uv.lock", "runtime_extras": "none"},
+    {"directory": "adapters/robomimic_lowdim", "lock": "adapters/robomimic_lowdim/uv.lock", "runtime_extras": "none"},
+    {"directory": "adapters/ros2_mcap", "lock": "adapters/ros2_mcap/uv.lock", "runtime_extras": "none"},
+    {"directory": "adapters/source_adapter_sdk", "lock": "adapters/source_adapter_sdk/uv.lock", "runtime_extras": "none"},
+    {"directory": "tests/adapter_conformance", "lock": "tests/adapter_conformance/uv.lock", "runtime_extras": "none"}
   ],
   "additional_locks": [
     "examples/external_sources/maniskill_pickcube/control/source/uv.lock",

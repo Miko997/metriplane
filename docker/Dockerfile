@@ -11,12 +11,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     METRIPLANE_DATA_DIR=/data
 
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       git \
       libgl1 \
       libglib2.0-0 \
+      libpcre2-8-0 \
       libsm6 \
       libxext6 \
       libxrender1 \
@@ -33,6 +35,12 @@ COPY . /app
 # The Docker build context intentionally excludes .git. Install the copied runtime
 # source in editable mode so the release-wheel backend never invents a Git identity.
 RUN pip install -e .
+
+# Build/install tooling is not part of the runtime attack surface. Removing pip
+# also removes its vendored dependency SBOM; ensurepip would otherwise retain an
+# older bundled pip wheel alongside the upgraded installation.
+RUN pip uninstall --yes pip setuptools wheel \
+ && rm -rf /usr/local/lib/python3.12/ensurepip
 
 # IMPORTANT:
 # Create /data in the IMAGE and chown it.

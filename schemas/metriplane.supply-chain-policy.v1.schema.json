@@ -36,10 +36,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["directory", "lock"],
+        "required": ["directory", "lock", "runtime_extras"],
         "properties": {
           "directory": {"type": "string", "minLength": 1},
-          "lock": {"type": "string", "pattern": "(^|/)uv\\.lock$"}
+          "lock": {"type": "string", "pattern": "(^|/)uv\\.lock$"},
+          "runtime_extras": {"enum": ["all", "none"]}
         }
       }
     },

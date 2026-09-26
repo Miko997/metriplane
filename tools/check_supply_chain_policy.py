@@ -39,9 +39,13 @@ projects=(
   tests/adapter_conformance
 )
 for index in "${!projects[@]}"; do
-  uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \\
+  extra_args=()
+  if test "$index" = 0; then
+    extra_args=(--all-extras)
+  fi
+  uv export --directory "${projects[$index]}" --frozen "${extra_args[@]}" --no-dev \\
     --no-emit-project --no-emit-local --format requirements-txt \\
-    --output-file "$output/$index-requirements.txt"
+    --output-file "$GITHUB_WORKSPACE/$output/$index-requirements.txt"
 done
 """
 LICENSE_EXPORT_RUN = """set -euo pipefail
@@ -62,9 +66,13 @@ projects=(
   tests/adapter_conformance
 )
 for index in "${!projects[@]}"; do
-  uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \\
+  extra_args=()
+  if test "$index" = 0; then
+    extra_args=(--all-extras)
+  fi
+  uv export --directory "${projects[$index]}" --frozen "${extra_args[@]}" --no-dev \\
     --no-emit-project --no-emit-local --format requirements-txt \\
-    --output-file "$output/$index-requirements.txt"
+    --output-file "$GITHUB_WORKSPACE/$output/$index-requirements.txt"
 done
 if test "$base" = "0000000000000000000000000000000000000000"; then
   test "$GITHUB_EVENT_NAME" = push
@@ -78,14 +86,29 @@ else
   git worktree add --detach "$baseline_root" "$base"
   trap 'git worktree remove --force "$baseline_root"' EXIT
   for index in "${!projects[@]}"; do
+    extra_args=()
+    if test "$index" = 0; then
+      extra_args=(--all-extras)
+    fi
     uv export --directory "$baseline_root/${projects[$index]}" --frozen \\
-      --all-extras --no-dev --no-emit-project --no-emit-local \\
+      "${extra_args[@]}" --no-dev --no-emit-project --no-emit-local \\
       --format requirements-txt \\
       --output-file "$GITHUB_WORKSPACE/$baseline_output/$index-requirements.txt"
   done
   git worktree remove --force "$baseline_root"
   trap - EXIT
 fi
+"""
+PIP_AUDIT_EXPORT_RUN = """set -euo pipefail
+extra_args=()
+case "${{ matrix.runtime_extras }}" in
+  all) extra_args=(--all-extras) ;;
+  none) ;;
+  *) exit 1 ;;
+esac
+uv export --directory "${{ matrix.project }}" --frozen "${extra_args[@]}" --no-dev \\
+  --no-emit-project --no-emit-local --format requirements-txt \\
+  --output-file "$RUNNER_TEMP/requirements.txt"
 """
 REQUIRED_CONTROLS = {
     "dependency-review",
@@ -345,25 +368,13 @@ def _validate_supply_chain_workflow(workflow: dict[str, Any], policy: dict[str, 
         osv_inputs == {"scan-args": f"--recursive\n./{policy['osv_runtime_export_directory']}"},
         "OSV scan target",
     )
+    pip_export = [
+        step
+        for step in jobs["pip-audit"].get("steps", [])
+        if step.get("name") == "Export the exact locked dependency graph"
+    ]
     _require(
-        _named_run_argv(
-            jobs["pip-audit"], "Export the exact locked dependency graph", "pip-audit export"
-        )
-        == [
-            "uv",
-            "export",
-            "--directory",
-            "${{ matrix.project }}",
-            "--frozen",
-            "--all-extras",
-            "--no-dev",
-            "--no-emit-project",
-            "--no-emit-local",
-            "--format",
-            "requirements-txt",
-            "--output-file",
-            "$RUNNER_TEMP/requirements.txt",
-        ],
+        len(pip_export) == 1 and pip_export[0].get("run") == PIP_AUDIT_EXPORT_RUN,
         "pip-audit export command drift",
     )
     pip_inputs = _workflow_step(jobs["pip-audit"], actions["pip-audit"], "pip-audit").get(
@@ -379,9 +390,15 @@ def _validate_supply_chain_workflow(workflow: dict[str, Any], policy: dict[str, 
         },
         "pip-audit fail-closed inputs",
     )
-    expected_projects = [project["directory"] for project in policy["python_projects"]]
+    expected_projects = [
+        {
+            "project": project["directory"],
+            "runtime_extras": project["runtime_extras"],
+        }
+        for project in policy["python_projects"]
+    ]
     _require(
-        jobs["pip-audit"]["strategy"]["matrix"]["project"] == expected_projects,
+        jobs["pip-audit"]["strategy"]["matrix"]["include"] == expected_projects,
         "pip-audit project matrix drift",
     )
 
@@ -487,7 +504,12 @@ def validate_policy(root: Path) -> dict[str, Any]:
     _require(isinstance(projects, list) and projects, "python projects")
     declared_locks: set[str] = set()
     for project in projects:
-        _require(isinstance(project, dict) and set(project) == {"directory", "lock"}, "project")
+        _require(
+            isinstance(project, dict)
+            and set(project) == {"directory", "lock", "runtime_extras"}
+            and project["runtime_extras"] in {"all", "none"},
+            "project",
+        )
         directory = root / project["directory"]
         lock = root / project["lock"]
         _require((directory / "pyproject.toml").is_file(), f"missing pyproject: {directory}")
@@ -540,6 +562,22 @@ def validate_policy(root: Path) -> dict[str, Any]:
         path.relative_to(root).as_posix() for path in root.rglob("*Dockerfile") if path.is_file()
     }
     _require(set(scanned_images) | set(excluded_paths) == all_images, "image inventory drift")
+    for image_path in scanned_images:
+        image_text = (root / image_path).read_text(encoding="utf-8")
+        _require(
+            "apt-get upgrade -y --no-install-recommends" in image_text
+            and "libpcre2-8-0" in image_text,
+            f"runtime image OS hardening: {image_path}",
+        )
+        _require(
+            "pip uninstall --yes pip setuptools wheel" in image_text
+            and "rm -rf /usr/local/lib/python3.12/ensurepip" in image_text,
+            f"runtime image build-tool removal: {image_path}",
+        )
+    _require(
+        "COPY tools ./tools" in (root / "docker/jetson.Dockerfile").read_text(encoding="utf-8"),
+        "jetson build-backend inputs",
+    )
 
     license_files = policy.get("license_files")
     _require(

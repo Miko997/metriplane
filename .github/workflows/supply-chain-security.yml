@@ -83,9 +83,13 @@ jobs:
             tests/adapter_conformance
           )
           for index in "${!projects[@]}"; do
-            uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \
+            extra_args=()
+            if test "$index" = 0; then
+              extra_args=(--all-extras)
+            fi
+            uv export --directory "${projects[$index]}" --frozen "${extra_args[@]}" --no-dev \
               --no-emit-project --no-emit-local --format requirements-txt \
-              --output-file "$output/$index-requirements.txt"
+              --output-file "$GITHUB_WORKSPACE/$output/$index-requirements.txt"
           done
           if test "$base" = "0000000000000000000000000000000000000000"; then
             test "$GITHUB_EVENT_NAME" = push
@@ -99,8 +103,12 @@ jobs:
             git worktree add --detach "$baseline_root" "$base"
             trap 'git worktree remove --force "$baseline_root"' EXIT
             for index in "${!projects[@]}"; do
+              extra_args=()
+              if test "$index" = 0; then
+                extra_args=(--all-extras)
+              fi
               uv export --directory "$baseline_root/${projects[$index]}" --frozen \
-                --all-extras --no-dev --no-emit-project --no-emit-local \
+                "${extra_args[@]}" --no-dev --no-emit-project --no-emit-local \
                 --format requirements-txt \
                 --output-file "$GITHUB_WORKSPACE/$baseline_output/$index-requirements.txt"
             done
@@ -165,9 +173,13 @@ jobs:
             tests/adapter_conformance
           )
           for index in "${!projects[@]}"; do
-            uv export --directory "${projects[$index]}" --frozen --all-extras --no-dev \
+            extra_args=()
+            if test "$index" = 0; then
+              extra_args=(--all-extras)
+            fi
+            uv export --directory "${projects[$index]}" --frozen "${extra_args[@]}" --no-dev \
               --no-emit-project --no-emit-local --format requirements-txt \
-              --output-file "$output/$index-requirements.txt"
+              --output-file "$GITHUB_WORKSPACE/$output/$index-requirements.txt"
           done
       - name: Scan repository lockfiles
         uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
@@ -182,14 +194,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project:
-          - .
-          - adapters/maniskill_pickcube
-          - adapters/massrobotics_amr
-          - adapters/robomimic_lowdim
-          - adapters/ros2_mcap
-          - adapters/source_adapter_sdk
-          - tests/adapter_conformance
+        include:
+          - project: .
+            runtime_extras: all
+          - project: adapters/maniskill_pickcube
+            runtime_extras: none
+          - project: adapters/massrobotics_amr
+            runtime_extras: none
+          - project: adapters/robomimic_lowdim
+            runtime_extras: none
+          - project: adapters/ros2_mcap
+            runtime_extras: none
+          - project: adapters/source_adapter_sdk
+            runtime_extras: none
+          - project: tests/adapter_conformance
+            runtime_extras: none
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
@@ -207,10 +226,17 @@ jobs:
           version: 0.12.0
           enable-cache: false
       - name: Export the exact locked dependency graph
-        run: >-
-          uv export --directory "${{ matrix.project }}" --frozen --all-extras --no-dev
-          --no-emit-project --no-emit-local --format requirements-txt
-          --output-file "$RUNNER_TEMP/requirements.txt"
+        run: |
+          set -euo pipefail
+          extra_args=()
+          case "${{ matrix.runtime_extras }}" in
+            all) extra_args=(--all-extras) ;;
+            none) ;;
+            *) exit 1 ;;
+          esac
+          uv export --directory "${{ matrix.project }}" --frozen "${extra_args[@]}" --no-dev \
+            --no-emit-project --no-emit-local --format requirements-txt \
+            --output-file "$RUNNER_TEMP/requirements.txt"
       - name: Audit the locked dependency graph
         uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
         with:

@@ -18,10 +18,12 @@ Every Python project with a `pyproject.toml` must have a declared `uv.lock`; une
 missing project locks fail policy validation. All workflow checkouts disable persisted GitHub
 credentials and workflow-level `read-all` permissions are forbidden.
 
-OSV scans a deterministic `uv export --frozen --all-extras --no-dev` runtime graph for every
-current Python project; `pip-audit` independently scans the same seven runtime graphs. Runtime
-extras, including the CUDA and plotting profiles, remain inside both scanner boundaries while
-optional test tooling remains outside them. Lockfiles under
+OSV scans deterministic `uv export --frozen --no-dev` runtime graphs for every current Python
+project; `pip-audit` independently scans the same seven runtime graphs. The root project adds
+`--all-extras`, keeping the CUDA and plotting profiles inside both scanner boundaries. Adapter
+`test` extras remain outside the runtime graph, while the adapter's base dependencies remain
+inside it. Every export is written to one absolute workspace-bound directory before scanning;
+project-relative output drift fails validation. Lockfiles under
 `examples/external_sources/**/source` are immutable provenance bytes retained from earlier
 qualified conversions, are checksum-validated as evidence, and are never installed or executed
 by the product. Their original bytes and vulnerability history remain unchanged while every
@@ -36,6 +38,12 @@ dev-to-runtime and cross-project introductions. Missing, unknown, malformed, mis
 or unavailable metadata fails closed. This local exact-version
 path does not require GitHub Dependency Graph or a repository-setting change. Automated results
 do not replace legal review and make no new third-party license claim.
+
+Both governed runtime images upgrade the base operating-system packages, install current
+runtime packages, and then remove pip,
+setuptools, wheel, and the bundled ensurepip wheel after installing Metriplane. Build tooling and
+its vendored dependency metadata therefore do not remain in the runtime image. Image build or
+HIGH/CRITICAL scan findings fail the same aggregate gate.
 
 Run the repository policy check locally with:
 

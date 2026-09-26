@@ -18,15 +18,21 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # System deps kept minimal; add OpenCV/v4l libs only for the live-camera profile.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git curl ca-certificates \
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
+        git curl ca-certificates libpcre2-8-0 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 --shell /bin/bash metriplane
 
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY metriplane ./metriplane
-RUN pip install -U pip setuptools wheel && pip install -e .
+COPY tools ./tools
+RUN pip install -U pip setuptools wheel \
+ && pip install -e . \
+ && pip uninstall --yes pip setuptools wheel \
+ && rm -rf /usr/local/lib/python3.12/ensurepip
 
 USER metriplane
 
