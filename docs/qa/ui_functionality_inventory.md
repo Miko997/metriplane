@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `b2b88f098a3155ab209fc249801c9e04d94ea8fd45de3e79d8af6b6deaa08710`
+Canonical projection SHA-256: `5eb348f7e8be3a8a196f0d88912ae50e7c8b229c5e3787e887f79e8957ea5445`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 240 |
+| actions | 242 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -273,6 +273,8 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
 | tool.characterize_supported_surface | tool | Characterize Supported Surface | python tools/characterize_supported_surface.py |
 | tool.check_blockers | tool | Check Blockers | python tools/check_blockers.py |
+| tool.check_dependency_delta | tool | Check Dependency Delta | python tools/check_dependency_delta.py |
+| tool.check_dependency_licenses | tool | Check Dependency Licenses | python tools/check_dependency_licenses.py |
 | tool.check_functional_inventory | tool | Check Functional Inventory | python tools/check_functional_inventory.py |
 | tool.check_met77_transition | tool | Check Met77 Transition | python tools/check_met77_transition.py |
 | tool.check_pr_contract | tool | Check Pr Contract | python tools/check_pr_contract.py |

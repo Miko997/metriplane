@@ -11,7 +11,7 @@ Metriplane supports Python 3.12 and 3.13. Runtime dependency ranges remain in
 | MkDocs | `mkdocs==1.6.1` |
 | mypy | `mypy==1.20.2` |
 | Playwright | `playwright==1.62.0` |
-| pytest | `pytest==8.4.2` |
+| pytest | `pytest==9.0.3` |
 | Ruff | `ruff==0.16.2` |
 | Twine | `twine==6.2.0` |
 | PyYAML stubs | `types-PyYAML==6.0.12.20260724` |
@@ -100,7 +100,7 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 6,158 items. In the exact core
+The ordered node-id stream must contain exactly 6,191 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
 cache, the integrated source profile requires 6,115 passed and 16 expected skips.
 Fourteen result-schema cases run in the separate locked

@@ -56,13 +56,13 @@ TOOLCHAIN = {
     "mkdocs": "1.6.1",
     "mypy": "1.20.2",
     "playwright": "1.62.0",
-    "pytest": "8.4.2",
+    "pytest": "9.0.3",
     "ruff": "0.16.2",
     "setuptools": "82.0.1",
     "twine": "6.2.0",
     "types-PyYAML": "6.0.12.20260724",
 }
-EXPECTED_COLLECTION = 6158
+EXPECTED_COLLECTION = 6191
 EXPECTED_MYPY_SOURCES = 150
 POLICY_NOW = dt.datetime(2026, 8, 25, tzinfo=dt.UTC)
 
@@ -256,30 +256,30 @@ def test_locked_and_installed_toolchain_identities_match() -> None:
 
 
 def test_pytest_strictness_is_exact(tmp_path: Path) -> None:
-    config = _pyproject()["tool"]["pytest"]["ini_options"]
-    addopts = config["addopts"].split()
-    assert "--strict-config" in addopts
-    assert "--strict-markers" in addopts
-    assert config["xfail_strict"] is True
+    config = _pyproject()["tool"]["pytest"]
+    assert config["strict_config"] is True
+    assert config["strict_markers"] is True
+    assert config["strict_xfail"] is True
+    assert "strict" not in config
     assert config["filterwarnings"] == ["error"]
 
     test_file = tmp_path / "test_strict_policy.py"
     pyproject = tmp_path / "pyproject.toml"
     cases = (
         (
-            "[tool.pytest.ini_options]\nunknown_policy_key = true\n",
+            "[tool.pytest]\nstrict_config = true\nunknown_policy_key = true\n",
             "def test_ok():\n    pass\n",
-            ["--strict-config"],
+            [],
             "Unknown config option",
         ),
         (
-            '[tool.pytest.ini_options]\naddopts = "--strict-markers"\n',
+            "[tool.pytest]\nstrict_markers = true\n",
             "import pytest\n@pytest.mark.unregistered\ndef test_marked():\n    pass\n",
             [],
             "not found in `markers` configuration option",
         ),
         (
-            "[tool.pytest.ini_options]\nxfail_strict = true\n",
+            "[tool.pytest]\nstrict_xfail = true\n",
             "import pytest\n@pytest.mark.xfail\ndef test_xpass():\n    pass\n",
             [],
             "XPASS(strict)",
@@ -301,7 +301,7 @@ def test_pytest_strictness_is_exact(tmp_path: Path) -> None:
 
 
 def test_source_path_is_not_configured() -> None:
-    config = _pyproject()["tool"]["pytest"]["ini_options"]
+    config = _pyproject()["tool"]["pytest"]
     assert "pythonpath" not in config
 
 

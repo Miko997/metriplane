@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `b2b88f098a3155ab209fc249801c9e04d94ea8fd45de3e79d8af6b6deaa08710`
+Canonical projection SHA-256: `5eb348f7e8be3a8a196f0d88912ae50e7c8b229c5e3787e887f79e8957ea5445`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -132,6 +132,8 @@ Canonical projection SHA-256: `b2b88f098a3155ab209fc249801c9e04d94ea8fd45de3e79d
 | tool.capture_repository_protection | Capture Repository Protection | tools/capture_repository_protection.py | python tools/capture_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.characterize_supported_surface | Characterize Supported Surface | tools/characterize_supported_surface.py | python tools/characterize_supported_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_blockers | Check Blockers | tools/check_blockers.py | python tools/check_blockers.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_dependency_delta | Check Dependency Delta | tools/check_dependency_delta.py | python tools/check_dependency_delta.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_dependency_licenses | Check Dependency Licenses | tools/check_dependency_licenses.py | python tools/check_dependency_licenses.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_functional_inventory | Check Functional Inventory | tools/check_functional_inventory.py | python tools/check_functional_inventory.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_met77_transition | Check Met77 Transition | tools/check_met77_transition.py | python tools/check_met77_transition.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_pr_contract | Check Pr Contract | tools/check_pr_contract.py | python tools/check_pr_contract.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

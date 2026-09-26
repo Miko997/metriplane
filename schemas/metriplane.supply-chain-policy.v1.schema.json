@@ -4,7 +4,7 @@
   "title": "Metriplane supply-chain policy",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "owner", "required_controls", "actions", "tool_versions", "python_projects", "additional_locks", "images", "license_files"],
+  "required": ["schema_version", "owner", "required_controls", "actions", "tool_versions", "python_projects", "additional_locks", "license_review", "osv_runtime_export_directory", "images", "license_files"],
   "properties": {
     "schema_version": {"const": "metriplane.supply-chain-policy.v1"},
     "owner": {"const": "MP2-029"},
@@ -17,7 +17,7 @@
     "actions": {
       "type": "object",
       "additionalProperties": {"type": "string", "pattern": "^[^@\\s]+@[0-9a-f]{40}$"},
-      "required": ["dependency-review", "osv", "pip-audit", "image-scan", "secret-scan", "sbom"]
+      "required": ["osv", "pip-audit", "image-scan", "secret-scan", "sbom"]
     },
     "tool_versions": {
       "type": "object",
@@ -49,6 +49,18 @@
       "uniqueItems": true,
       "items": {"type": "string", "pattern": "(^|/)uv\\.lock$"}
     },
+    "license_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["denied_licenses", "index_url", "runtime_baseline_export_directory", "runtime_export_directory"],
+      "properties": {
+        "denied_licenses": {"const": ["GPL-3.0", "AGPL-3.0"]},
+        "index_url": {"const": "https://pypi.org/pypi"},
+        "runtime_baseline_export_directory": {"const": ".supply-chain-license-base"},
+        "runtime_export_directory": {"const": ".supply-chain-license"}
+      }
+    },
+    "osv_runtime_export_directory": {"const": ".supply-chain-osv"},
     "images": {
       "type": "object",
       "additionalProperties": false,
