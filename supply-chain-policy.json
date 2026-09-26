@@ -1,0 +1,54 @@
+{
+  "schema_version": "metriplane.supply-chain-policy.v1",
+  "owner": "MP2-029",
+  "required_controls": [
+    "dependency-review",
+    "osv",
+    "pip-audit",
+    "image-scan",
+    "secret-scan",
+    "sbom"
+  ],
+  "actions": {
+    "dependency-review": "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294",
+    "osv": "google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc",
+    "pip-audit": "pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266",
+    "image-scan": "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25",
+    "secret-scan": "trufflesecurity/trufflehog@6961f2bace57ab32b23b3ba40f8f420f6bc7e004",
+    "sbom": "anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26"
+  },
+  "tool_versions": {
+    "syft": "v1.52.0",
+    "trivy": "v0.74.0",
+    "trufflehog": "3.93.3"
+  },
+  "python_projects": [
+    {"directory": ".", "lock": "uv.lock"},
+    {"directory": "adapters/maniskill_pickcube", "lock": "adapters/maniskill_pickcube/uv.lock"},
+    {"directory": "adapters/massrobotics_amr", "lock": "adapters/massrobotics_amr/uv.lock"},
+    {"directory": "adapters/robomimic_lowdim", "lock": "adapters/robomimic_lowdim/uv.lock"},
+    {"directory": "adapters/ros2_mcap", "lock": "adapters/ros2_mcap/uv.lock"},
+    {"directory": "adapters/source_adapter_sdk", "lock": "adapters/source_adapter_sdk/uv.lock"},
+    {"directory": "tests/adapter_conformance", "lock": "tests/adapter_conformance/uv.lock"}
+  ],
+  "additional_locks": [
+    "examples/external_sources/maniskill_pickcube/control/source/uv.lock",
+    "examples/external_sources/maniskill_pickcube/incident/source/uv.lock",
+    "examples/external_sources/massrobotics_amr/control/source/uv.lock",
+    "examples/external_sources/massrobotics_amr/incident/source/uv.lock",
+    "examples/external_sources/robomimic_lowdim/control/source/uv.lock",
+    "examples/external_sources/robomimic_lowdim/incident/source/uv.lock",
+    "examples/external_sources/ros2_mcap/control/source/uv.lock",
+    "examples/external_sources/ros2_mcap/incident/source/uv.lock"
+  ],
+  "images": {
+    "scanned": ["docker/Dockerfile", "docker/jetson.Dockerfile"],
+    "excluded": [
+      {
+        "path": ".clusterfuzzlite/Dockerfile",
+        "reason": "CI-only OSS-Fuzz builder; it is not a shipped or deployable Metriplane runtime image and its immutable base remains governed by the ClusterFuzz workflow."
+      }
+    ]
+  },
+  "license_files": ["LICENSE", "NOTICE", "LICENSES/MIT.txt"]
+}

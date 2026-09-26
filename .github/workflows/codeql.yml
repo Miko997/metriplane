@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Record checked-out source
         id: source
@@ -53,6 +55,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Record checked-out source
         id: source
@@ -70,16 +74,24 @@ jobs:
       - name: Analyze
         uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
 
+  supply-chain:
+    name: Supply-chain controls
+    uses: ./.github/workflows/supply-chain-security.yml
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+
   security-required:
     name: Security / required
     if: always()
-    needs: [analyze-python, analyze-javascript]
+    needs: [analyze-python, analyze-javascript, supply-chain]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
       RESULTS_JSON: >-
-        {"analyze-python":{"result":"${{ needs.analyze-python.result }}","sha":"${{ needs.analyze-python.outputs.source_sha }}"},"analyze-javascript":{"result":"${{ needs.analyze-javascript.result }}","sha":"${{ needs.analyze-javascript.outputs.source_sha }}"}}
+        {"analyze-python":{"result":"${{ needs.analyze-python.result }}","sha":"${{ needs.analyze-python.outputs.source_sha }}"},"analyze-javascript":{"result":"${{ needs.analyze-javascript.result }}","sha":"${{ needs.analyze-javascript.outputs.source_sha }}"},"supply-chain":{"result":"${{ needs.supply-chain.result }}","sha":"${{ needs.supply-chain.outputs.source_sha }}"}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -91,4 +103,5 @@ jobs:
           --expected-sha "$GITHUB_SHA"
           --expected-dependency analyze-python
           --expected-dependency analyze-javascript
+          --expected-dependency supply-chain
           --results-json "$RESULTS_JSON"
