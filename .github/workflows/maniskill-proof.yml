@@ -198,6 +198,12 @@ jobs:
           SETUPTOOLS_PACKAGE_SHA256 = (
               "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
           )
+          PYTEST_DEV_EDGE = {"name": "pytest"}
+          PYTEST_DEV_PROFILES = {
+              ("8.4.2", ">=8.4,<9"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
+              ("8.4.2", "==8.4.2"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
+              ("9.0.3", "==9.0.3"): "602bc34219f907aea9bc741611fe248d10ae10ad662c20022781bb707bfcc8f6",
+          }
 
 
           def read_bytes(revision, path):
@@ -235,6 +241,11 @@ jobs:
                   for row in requires_dev["dev"]
                   if isinstance(row, dict) and row.get("name") == "setuptools"
               ]
+              pytest_metadata_edges = [
+                  row
+                  for row in requires_dev["dev"]
+                  if isinstance(row, dict) and row.get("name") == "pytest"
+              ]
 
               dev_dependencies = root_package.get("dev-dependencies")
               if (
@@ -248,9 +259,18 @@ jobs:
                   for row in dev_dependencies["dev"]
                   if isinstance(row, dict) and row.get("name") == "setuptools"
               ]
+              pytest_graph_edges = [
+                  row
+                  for row in dev_dependencies["dev"]
+                  if isinstance(row, dict) and row.get("name") == "pytest"
+              ]
               packages = [
                   package for package in lock["package"]
                   if package.get("name") == "setuptools"
+              ]
+              pytest_packages = [
+                  package for package in lock["package"]
+                  if package.get("name") == "pytest"
               ]
               non_dev_edges = [
                   (package.get("name"), row)
@@ -260,6 +280,16 @@ jobs:
               ]
               if non_dev_edges:
                   raise SystemExit(f"setuptools has non-dev lock edges: {non_dev_edges!r}")
+              pytest_non_dev_edges = [
+                  (package.get("name"), row)
+                  for package in lock["package"]
+                  for row in package.get("dependencies", [])
+                  if isinstance(row, dict) and row.get("name") == "pytest"
+              ]
+              if pytest_non_dev_edges:
+                  raise SystemExit(
+                      f"pytest has non-dev lock edges: {pytest_non_dev_edges!r}"
+                  )
 
               if expect_release_setuptools:
                   if metadata_edges != [SETUPTOOLS_METADATA_EDGE]:
@@ -277,6 +307,31 @@ jobs:
                   lock["package"].remove(packages[0])
               elif metadata_edges or graph_edges or packages:
                   raise SystemExit("recorded candidate unexpectedly contains setuptools")
+
+              if len(pytest_packages) != 1:
+                  raise SystemExit("root lock must contain exactly one pytest package")
+              pytest_package = pytest_packages[0]
+              if len(pytest_metadata_edges) != 1:
+                  raise SystemExit("root lock must contain exactly one pytest metadata edge")
+              pytest_metadata = pytest_metadata_edges[0]
+              if set(pytest_metadata) != {"name", "specifier"}:
+                  raise SystemExit("root lock pytest metadata edge shape differs")
+              pytest_profile = (
+                  pytest_package.get("version"), pytest_metadata.get("specifier")
+              )
+              expected_pytest_sha256 = PYTEST_DEV_PROFILES.get(pytest_profile)
+              if expected_pytest_sha256 is None:
+                  raise SystemExit("root lock pytest version is not approved")
+              if pytest_metadata != {"name": "pytest", "specifier": pytest_profile[1]}:
+                  raise SystemExit("root lock pytest metadata edge differs")
+              if pytest_graph_edges != [PYTEST_DEV_EDGE]:
+                  raise SystemExit("root lock pytest dev edge differs")
+              encoded = json.dumps(
+                  pytest_package, sort_keys=True, separators=(",", ":")
+              ).encode("utf-8")
+              if hashlib.sha256(encoded).hexdigest() != expected_pytest_sha256:
+                  raise SystemExit("root lock pytest package identity differs")
+              lock["package"].remove(pytest_package)
 
               metadata.pop("requires-dev")
               return lock
@@ -465,6 +520,12 @@ jobs:
           SETUPTOOLS_PACKAGE_SHA256 = (
               "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
           )
+          PYTEST_DEV_EDGE = {"name": "pytest"}
+          PYTEST_DEV_PROFILES = {
+              ("8.4.2", ">=8.4,<9"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
+              ("8.4.2", "==8.4.2"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
+              ("9.0.3", "==9.0.3"): "602bc34219f907aea9bc741611fe248d10ae10ad662c20022781bb707bfcc8f6",
+          }
 
 
           def read_bytes(revision, path):
@@ -502,6 +563,11 @@ jobs:
                   for row in requires_dev["dev"]
                   if isinstance(row, dict) and row.get("name") == "setuptools"
               ]
+              pytest_metadata_edges = [
+                  row
+                  for row in requires_dev["dev"]
+                  if isinstance(row, dict) and row.get("name") == "pytest"
+              ]
 
               dev_dependencies = root_package.get("dev-dependencies")
               if (
@@ -515,9 +581,18 @@ jobs:
                   for row in dev_dependencies["dev"]
                   if isinstance(row, dict) and row.get("name") == "setuptools"
               ]
+              pytest_graph_edges = [
+                  row
+                  for row in dev_dependencies["dev"]
+                  if isinstance(row, dict) and row.get("name") == "pytest"
+              ]
               packages = [
                   package for package in lock["package"]
                   if package.get("name") == "setuptools"
+              ]
+              pytest_packages = [
+                  package for package in lock["package"]
+                  if package.get("name") == "pytest"
               ]
               non_dev_edges = [
                   (package.get("name"), row)
@@ -527,6 +602,16 @@ jobs:
               ]
               if non_dev_edges:
                   raise SystemExit(f"setuptools has non-dev lock edges: {non_dev_edges!r}")
+              pytest_non_dev_edges = [
+                  (package.get("name"), row)
+                  for package in lock["package"]
+                  for row in package.get("dependencies", [])
+                  if isinstance(row, dict) and row.get("name") == "pytest"
+              ]
+              if pytest_non_dev_edges:
+                  raise SystemExit(
+                      f"pytest has non-dev lock edges: {pytest_non_dev_edges!r}"
+                  )
 
               if expect_release_setuptools:
                   if metadata_edges != [SETUPTOOLS_METADATA_EDGE]:
@@ -544,6 +629,31 @@ jobs:
                   lock["package"].remove(packages[0])
               elif metadata_edges or graph_edges or packages:
                   raise SystemExit("recorded candidate unexpectedly contains setuptools")
+
+              if len(pytest_packages) != 1:
+                  raise SystemExit("root lock must contain exactly one pytest package")
+              pytest_package = pytest_packages[0]
+              if len(pytest_metadata_edges) != 1:
+                  raise SystemExit("root lock must contain exactly one pytest metadata edge")
+              pytest_metadata = pytest_metadata_edges[0]
+              if set(pytest_metadata) != {"name", "specifier"}:
+                  raise SystemExit("root lock pytest metadata edge shape differs")
+              pytest_profile = (
+                  pytest_package.get("version"), pytest_metadata.get("specifier")
+              )
+              expected_pytest_sha256 = PYTEST_DEV_PROFILES.get(pytest_profile)
+              if expected_pytest_sha256 is None:
+                  raise SystemExit("root lock pytest version is not approved")
+              if pytest_metadata != {"name": "pytest", "specifier": pytest_profile[1]}:
+                  raise SystemExit("root lock pytest metadata edge differs")
+              if pytest_graph_edges != [PYTEST_DEV_EDGE]:
+                  raise SystemExit("root lock pytest dev edge differs")
+              encoded = json.dumps(
+                  pytest_package, sort_keys=True, separators=(",", ":")
+              ).encode("utf-8")
+              if hashlib.sha256(encoded).hexdigest() != expected_pytest_sha256:
+                  raise SystemExit("root lock pytest package identity differs")
+              lock["package"].remove(pytest_package)
 
               metadata.pop("requires-dev")
               return lock
