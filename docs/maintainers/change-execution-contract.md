@@ -156,11 +156,13 @@ Editing the pull-request body invalidates an approval whose digest no longer
 names the exact body bytes. The lightweight `PR contract` workflow validates
 metadata independently of the source qualification result. The trusted deployed
 broker also revalidates the current body and complete reviews at admission seals.
-During staged deployment, heavy CI retains its `edited` trigger; removal requires
-actual protected-main broker deployment and first-cycle readback proof. The
-previous eight-obligation checklist remains accepted for existing open PRs;
-the current template describes focused local checks and mandatory complete
-qualification for the exact candidate before merge.
+The protected-main broker deployment and subsequent merge cycles supplied the
+required first-cycle readback proof, so heavy source CI no longer handles the
+metadata-only `edited` event. The lightweight workflow and both broker admission
+seals remain mandatory for current metadata. The previous eight-obligation
+checklist remains accepted for existing open PRs; the current template describes
+focused local checks and mandatory complete qualification for the exact candidate
+before merge.
 
 ## Qualification boundaries
 

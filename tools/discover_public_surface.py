@@ -106,7 +106,7 @@ EXPECTED_FAMILY_COUNTS = {
     "configs": 167,
     "current_claims": 392,
     "examples": 172,
-    "jobs": 62,
+    "jobs": 61,
     "manifest_keys": 3938,
     "model_fields": 1564,
     "models": 258,

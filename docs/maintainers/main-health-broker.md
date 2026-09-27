@@ -327,22 +327,18 @@ read is not an atomic body-digest lock: GitHub's merge operation conditions only
 on the exact source SHA.
 
 The separate `PR contract` workflow provides lightweight metadata feedback and
-emits none of the four required terminals. Stage A deliberately retains the
-heavy CI `edited` trigger until this broker capability is actually deployed.
-For an already-running seven-rule broker, first qualify and merge the capability
-through the normal protected process. Preserve the deployed executable,
-configuration and spool, stop the service under the normal controlled freeze,
-install the exact independently reviewed protected-main revision, and read back
-its control modules including `tools/check_pr_contract.py`. Validate the unchanged
-configuration and all seven rulesets, then require actual first-cycle readiness.
-A failure leaves stage B inactive and requires the preserved normal recovery
-procedure. No setting, credential, scheduler, lease or state reset is involved.
-
-Only after that deployment proof may a subsequent coherent source change remove
-heavy `edited` triggering. Existing open PR bodies may retain the former eight
-checklist obligations during trusted-base transition; new bodies describe
-focused local checks and mandatory exact-candidate complete qualification before
-merge. A body-only check never erases or impersonates a source test result.
+emits none of the four required terminals. Stage A retained the heavy CI
+`edited` trigger until the protected-main broker capability was qualified,
+deployed and read back. The deployed tree at `a916afd60a325e498d9a8411598c1e086c30d3f4`
+matched both `tools/main_health_broker.py` and `tools/check_pr_contract.py`, and
+later protected broker merge cycles exercised the initial and final metadata
+seals without changing configuration, spool or the seven rulesets. That proof
+activated stage B: a subsequent coherent source change removes heavy `edited`
+triggering while the lightweight metadata workflow and broker readbacks remain.
+Existing open PR bodies may retain the former eight checklist obligations during
+trusted-base transition; new bodies describe focused local checks and mandatory
+exact-candidate complete qualification before merge. A body-only check never
+erases or impersonates a source test result.
 
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an

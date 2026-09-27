@@ -129,20 +129,21 @@ complete platform requirement. This change does not substitute sentinels for
 that requirement. PR concurrency cancels a superseded generation for the same PR;
 main generations remain separate and are not cancelled by a PR update.
 
-Each macOS Python version uses four fresh runners. The runner collects every
-node, rejects duplicate or filtered collection, and partitions the final normal
-pytest order by zero-based index modulo four. It records both the selected nodes
-and their actual execution order. Selection lives in a plugin object in the
-outer invocation, so nested pytest fixture processes retain their own normal
-collection. No xdist or in-process parallel execution is enabled.
+Each supported Linux and macOS Python version uses four fresh runners. The
+runner collects every node, rejects duplicate or filtered collection, and
+partitions the final normal pytest order by zero-based index modulo four. It
+records both the selected nodes and their actual execution order. Selection
+lives in a plugin object in the outer invocation, so nested pytest fixture
+processes retain their own normal collection. No xdist or in-process parallel
+execution is enabled.
 
 Each suite uploads its original stdout, stderr, JUnit XML and strict JSON report.
 The report binds the exact checkout commit and tree, SHA-256 of the exact
 `git ls-tree -r -z HEAD` inventory bytes, workflow, run and attempt,
 Python and runner image, canonical collection, selected nodes, every phase
 outcome and duration, governed skip reason, and before/after source identity.
-The aggregate accepts exactly ten artifact directories for that run and attempt:
-two complete Linux reports and eight macOS shards. It verifies their original
+The aggregate accepts exactly sixteen artifact directories for that run and
+attempt: eight Linux shards and eight macOS shards. It verifies their original
 bytes, identical full collection, disjoint complete coverage in each environment,
 actual execution order, per-environment pass/skip/fail totals derived from the
 original outcomes, and all required successful jobs. Missing reports,
@@ -164,9 +165,12 @@ cannot silently remove them. Collection-only checks prove inventory identity;
 they are never reported as full-suite passes.
 
 The lightweight `PR contract` workflow validates fresh metadata using the trusted
-base validator. The heavy workflow temporarily retains its `edited` event until
-the reviewed broker metadata checks are merged, normally deployed, and read back.
-Only that later activation removes the heavy body-edit trigger. Neither the
+base validator and continues to run for pull-request body edits. The deployed
+broker independently validates the current body and complete review inventory at
+initial admission and again immediately before merge. Protected-main deployment
+and later broker merge cycles proved that readback path before the heavy CI body-
+edit trigger was removed. Source changes still trigger the complete matrix;
+metadata-only edits do not create or replace source evidence. Neither the
 lightweight metadata check nor provider readback can impersonate a source test
 result or make evidence for an old SHA qualify a new one.
 
@@ -180,6 +184,19 @@ full-matrix generations, cumulative runner time, implementation-to-merge wall
 clock and every rerun reason. Historical evidence lacking a node collection must
 say that it is unavailable. Benchmark the first four-shard hosted run against
 retained original timings before claiming a macOS speedup.
+
+The retained successful CI run `36266663852` is the Linux-sharding baseline. Its
+initial provider queue was 31 seconds; Linux setup took 40 seconds on Python 3.12
+and 41 seconds on Python 3.13; complete suite execution took 3,543 and 3,519
+seconds; and the report validator itself completed in one second after a
+38-second aggregate-runner queue. The retained canonical collection contained
+6,137 nodes in both environments. Applying the existing modulo-four partition to
+the retained phase outcomes projects a slowest shard of 984 seconds on Python
+3.12 and 986 seconds on Python 3.13 while preserving all 6,137 nodes. The first
+hosted sixteen-report run must confirm the projected reduction before it is
+claimed as adopted performance; duplicated setup adds only bounded runner time,
+uses the existing public-repository GitHub-hosted runners, and introduces no paid
+runner or new execution framework.
 
 ## Bounded child-process lifecycle
 

@@ -18647,14 +18647,13 @@ def _release_current_environment_floor(configuration: Mapping[str, bytes]) -> li
         jobs = workflow["jobs"]
         result = []
         for job_id, family, minors, label in (
-            ("test", "linux", ["3.12"], "ubuntu-latest"),
-            ("linux-python313", "linux", ["3.13"], "ubuntu-latest"),
+            ("linux-regressions", "linux", ["3.12", "3.13"], "ubuntu-latest"),
             ("macos-regressions", "macos", ["3.12", "3.13"], "macos-latest"),
         ):
             job = jobs[job_id]
             if job["runs-on"] != label:
                 raise ReleaseControlError("current environment runner differs from governed job")
-            version = "${{ matrix.python-version }}" if family == "macos" else minors[0]
+            version = "${{ matrix.python-version }}"
             setup = [
                 step
                 for step in job["steps"]
@@ -18662,20 +18661,20 @@ def _release_current_environment_floor(configuration: Mapping[str, bytes]) -> li
             ]
             if len(setup) != 1 or setup[0]["with"]["python-version"] != version:
                 raise ReleaseControlError("current environment Python differs from governed job")
-            if family == "macos" and job["strategy"]["matrix"] != {
+            if job["strategy"]["matrix"] != {
                 "python-version": minors,
                 "shard-index": ["0", "1", "2", "3"],
             }:
                 raise ReleaseControlError(
-                    "current macOS matrix differs from the complete eight-shard floor"
+                    f"current {family} matrix differs from the complete eight-shard floor"
                 )
             commands = [" ".join(step["run"].split()) for step in job["steps"] if "run" in step]
-            suffix = "" if job_id == "test" else " --python " + version
+            suffix = " --python " + version
             if "uv sync --locked --group dev" + suffix not in commands:
                 raise ReleaseControlError(
                     "current environment locked installation differs from governed job"
                 )
-            index, count = ("${{ matrix.shard-index }}", "4") if family == "macos" else ("0", "1")
+            index, count = "${{ matrix.shard-index }}", "4"
             command = (
                 "uv run --frozen"
                 + suffix

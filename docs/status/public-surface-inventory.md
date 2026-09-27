@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `5cfb9add3aaf238d69a4d667cad338697aca339a6ac59e04f467e06da2088993`
-- Owned rows: `11251`
-- Owned rows SHA-256: `0401bd3fe80f0f8580608e0a5f1ddc00cc638c31fd542d8d67ea1448bf513eaa`
+- Materialization SHA-256: `08b2ca7614cdb60cddce7324bedb8c6cdd8a2a5801749d966f6edfa8c5f4ae5f`
+- Owned rows: `11250`
+- Owned rows SHA-256: `bee7544a54dcd6a7f673173a9a915b59e418180b058152e9885d68a156a1bf73`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
@@ -17,12 +17,12 @@
 | `configs` | `maintained_config` | 167 | `2b25beeb81935378779bac4ef23e1de8c8346d60a595852e30b34bfeae75d91c` |
 | `current_claims` | `current_claim` | 392 | `a668387a27778b7bbaac01670f0e601c61b1832af606a9a3115f1928a4871e00` |
 | `examples` | `maintained_example` | 172 | `3fb4bcd7b25bee665e567d1d787bec3bf165e917d848fa09d797ba55315b9df6` |
-| `jobs` | `workflow_job_declaration` | 62 | `eb52e433a59f51ada293f8845ced9e89c7a9051d3f5edbc4678aa1863393e104` |
+| `jobs` | `workflow_job_declaration` | 61 | `9bc88fcc197483a26e3e3ec06c4d7e5eace2e25ced62d300aba7fb39134a8804` |
 | `manifest_keys` | `artifact_manifest_key` | 3938 | `bec46908e0463dd5615581910818438637027b28df20881dea2f4e142b270285` |
-| `model_fields` | `python_model_field` | 1564 | `86080f26280d42325d4bcb4455d2c977ce8e9cbaa74889ed29c3cd1c99ea5d2b` |
-| `models` | `python_model` | 258 | `dc40e15334b0abe2c56ee55e9ce5829b245a5d51ebec76a7130dab90ed32371d` |
+| `model_fields` | `python_model_field` | 1564 | `fbea7d37bc275f746404f059e7a1600b5cb4dbdc028a69d9c07131e7ab829faf` |
+| `models` | `python_model` | 258 | `25e3731d0e474635e3f46107191ca054e9b6ee259ce98b1dbd47b0871e50a90f` |
 | `proofs` | `maintained_proof` | 322 | `cd6dcae29622d9e73dea66a214b0d52f3498bee529af968da4d8af69981fc4de` |
-| `public_api` | `python_public_api` | 2601 | `ac0b031df470acdfec3348fbd4e269acbfcca1b67fb8a6f71b94239855c42a72` |
+| `public_api` | `python_public_api` | 2601 | `90a84fcea49531e0ac50405679efade70d0be3b583fe9a2bd33a82b16dbcbdb5` |
 | `resources` | `repository_resource` | 1757 | `099571b72af1a9d9d903ea8fae34d226178ebe9b50c6e0403594ffe456631332` |
 | `workflows` | `workflow_declaration` | 18 | `52ff10d385e396751e0a5160f053f75d8d549d122169c10fe39586212d7a17ef` |
 

@@ -8057,10 +8057,9 @@ def test_current_environment_floor_replays_all_four_original_ci_cells() -> None:
         (b"runs-on: macos-latest", b"runs-on: macos-15"),
         (b'python-version: ["3.12", "3.13"]', b'python-version: ["3.12"]'),
         (b"shard-index: [0, 1, 2, 3]", b"shard-index: [0, 1, 2]"),
-        (b"  linux-python313:", b"  other-job:"),
+        (b"  linux-regressions:", b"  other-job:"),
         (b"--group dev", b"--group unknown"),
         (b"--shard-count 4", b"--shard-count 3"),
-        (b'python-version: "3.13"', b'python-version: "3.14"'),
     ],
 )
 def test_current_environment_floor_rejects_altered_job_minor_runner_or_recipe(
