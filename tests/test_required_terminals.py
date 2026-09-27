@@ -417,12 +417,14 @@ def _check_suite(root: Path, source: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def test_complete_ten_report_suite_proves_each_platform_and_partition(tmp_path: Path) -> None:
+def test_complete_report_suite_proves_each_platform_and_partition(
+    tmp_path: Path,
+) -> None:
     root, source = _suite_fixture(tmp_path)
     result = _check_suite(root, source)
     assert result["result"] == "success"
     assert result["sha"] == SHA
-    assert len(result["reports"]) == 10
+    assert len(result["reports"]) == 16
     assert result["collection_count"] == 30
     assert result["source"] == source
     assert result["totals"] == {
@@ -565,7 +567,7 @@ def test_suite_rejects_partial_stale_or_relabelled_results(tmp_path: Path, mutat
         report["partition"]["count" if mutation == "count" else "index"] = {
             "index": 1,
             "boolean-index": False,
-            "count": 4,
+            "count": 1,
         }[mutation]
     elif mutation == "collection-duplicate":
         report["collection"].append(node)
@@ -795,14 +797,16 @@ def test_ci_shards_and_fast_validation_preserve_required_closure() -> None:
         "synchronize",
         "reopened",
         "ready_for_review",
-        "edited",
     ]
+    metadata = yaml.safe_load((WORKFLOWS / "pr-contract.yml").read_text())
+    metadata_trigger = metadata.get("on", metadata.get(True))
+    assert "edited" in metadata_trigger["pull_request_target"]["types"]
     assert ci["concurrency"] == {
         "group": "ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}",
         "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
     }
     jobs = ci["jobs"]
-    for name in ("test", "linux-python313", "macos-regressions"):
+    for name in ("linux-regressions", "macos-regressions"):
         assert jobs[name]["needs"] == "fast-validation"
         assert "PLAYWRIGHT_BROWSERS_PATH" not in jobs[name]["env"]
         assert all("runner." not in str(value) for value in jobs[name]["env"].values())
@@ -829,12 +833,18 @@ def test_ci_shards_and_fast_validation_preserve_required_closure() -> None:
         assert len(uploads) == 1 and uploads[0]["if"] == "always()"
         assert uploads[0]["with"]["if-no-files-found"] == "error"
         assert "github.run_attempt" in uploads[0]["with"]["name"]
-    assert jobs["macos-regressions"]["strategy"] == {
+    expected_strategy = {
         "fail-fast": False,
         "matrix": {"python-version": ["3.12", "3.13"], "shard-index": [0, 1, 2, 3]},
     }
+    assert jobs["linux-regressions"]["strategy"] == expected_strategy
+    assert jobs["macos-regressions"]["strategy"] == expected_strategy
+    assert "outputs" not in jobs["linux-regressions"]
     assert "outputs" not in jobs["macos-regressions"]
-    assert set(jobs["suite-evidence"]["needs"]) == {"test", "linux-python313", "macos-regressions"}
+    assert set(jobs["suite-evidence"]["needs"]) == {
+        "linux-regressions",
+        "macos-regressions",
+    }
     assert jobs["suite-evidence"]["if"] == "always()"
     assert "suite-evidence" in jobs["metriplane-required"]["needs"]
     assert "fast-validation" in jobs["metriplane-required"]["needs"]
@@ -848,6 +858,8 @@ def test_ci_shards_and_fast_validation_preserve_required_closure() -> None:
     ):
         assert command in fast
     text = (WORKFLOWS / "ci.yml").read_text()
+    assert "--shard-count 1" not in text
+    assert text.count("--shard-count 4") == 2
     for preserved in (
         "Check required release fixtures",
         "Run doctor",
@@ -939,7 +951,7 @@ def test_hosted_shard_start_and_readback_guards(
     actual_source = terminal._source_identity(source_root)
     system = "macos" if sys.platform == "darwin" else "linux"
     version = f"{sys.version_info.major}.{sys.version_info.minor}"
-    count = 4 if system == "macos" else 1
+    count = 4
     root, _ = _suite_fixture(tmp_path)
     template_dir = root / terminal._artifact_name("123", "1", system, version, 0)
     template = json.loads((template_dir / "report.json").read_text())
@@ -1124,7 +1136,7 @@ def test_suite_aggregate_cli_is_stdlib_only_and_binds_its_actual_source(tmp_path
     proc = subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     aggregate = json.loads(proc.stdout)
-    assert len(aggregate["reports"]) == 10
+    assert len(aggregate["reports"]) == 16
     assert aggregate["source"] == source
     assert aggregate["totals"]["linux-py3.12"]["skipped"] == 16
     wrong = list(command)

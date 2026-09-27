@@ -276,17 +276,13 @@ def _validate_source_identity(source: Any) -> None:
 
 
 def _job_name(system: str, version: str) -> str:
-    return (
-        "macos-regressions"
-        if system == "macos"
-        else ("test" if version == "3.12" else "linux-python313")
-    )
+    return "macos-regressions" if system == "macos" else "linux-regressions"
 
 
 def _coordinates() -> list[tuple[str, str, int, int]]:
     return [
         (system, version, index, count)
-        for system, count in (("linux", 1), ("macos", 4))
+        for system, count in (("linux", 4), ("macos", 4))
         for version in ("3.12", "3.13")
         for index in range(count)
     ]
