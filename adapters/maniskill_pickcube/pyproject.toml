@@ -16,7 +16,7 @@ dependencies = [
   "h5py==3.16.0",
   "huggingface-hub==1.27.0",
   "mani-skill==3.0.1",
-  "numpy==2.5.2",
+  "numpy==2.5.3",
   "PyYAML==6.0.3",
 ]
 
