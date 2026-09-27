@@ -23,6 +23,7 @@ from tools.build_external_source_family_matrix import (
     _verify_git_identities,
     validate,
 )
+from tests.external_sources.version_projection import assert_portable_output_tree
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPOSITORY_ROOT / PACKAGE_RELATIVE
@@ -259,6 +260,53 @@ def test_focused_workflow_keeps_four_portable_rows() -> None:
     assert matrix["os"] == ["ubuntu-latest", "macos-latest"]
     assert matrix["python-version"] == ["3.12", "3.13"]
     assert portable["strategy"]["fail-fast"] is False
+
+
+PRIVATE_RUNNER_PATH = b"/home/runner/work/_temp/"
+
+
+def test_portable_guard_content_detects_suffixless_zip(tmp_path: Path) -> None:
+    blob = tmp_path / "00000000.blob"
+    with zipfile.ZipFile(blob, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("portable.txt", b"portable\n")
+    (tmp_path / "public.txt").write_text("portable\n", encoding="utf-8")
+
+    assert_portable_output_tree(tmp_path, forbidden=(PRIVATE_RUNNER_PATH, b"/checkout/"))
+
+
+def test_portable_guard_scans_suffixless_zip_body(tmp_path: Path) -> None:
+    blob = tmp_path / "00000000.blob"
+    with zipfile.ZipFile(blob, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("portable.txt", PRIVATE_RUNNER_PATH)
+
+    with pytest.raises(AssertionError):
+        assert_portable_output_tree(tmp_path, forbidden=(PRIVATE_RUNNER_PATH,))
+
+
+def test_portable_guard_scans_non_zip_opaque_blob(tmp_path: Path) -> None:
+    blob = tmp_path / "00000000.blob"
+    blob.write_bytes(PRIVATE_RUNNER_PATH)
+
+    with pytest.raises(AssertionError, match="00000000.blob"):
+        assert_portable_output_tree(tmp_path, forbidden=(PRIVATE_RUNNER_PATH,))
+
+
+def test_portable_guard_scans_zip_decompressed_body(tmp_path: Path) -> None:
+    archive_path = tmp_path / "artifact.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("portable.txt", PRIVATE_RUNNER_PATH)
+
+    with pytest.raises(AssertionError):
+        assert_portable_output_tree(tmp_path, forbidden=(PRIVATE_RUNNER_PATH,))
+
+
+def test_portable_guard_rejects_symlinks(tmp_path: Path) -> None:
+    target = tmp_path / "target.txt"
+    target.write_text("portable\n", encoding="utf-8")
+    (tmp_path / "alias.txt").symlink_to(target)
+
+    with pytest.raises(AssertionError):
+        assert_portable_output_tree(tmp_path, forbidden=(PRIVATE_RUNNER_PATH,))
 
 
 @requires_full_git_history

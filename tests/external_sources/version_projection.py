@@ -12,10 +12,63 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
+import zipfile
+from collections.abc import Iterable
 from pathlib import Path
 
 from metriplane import __version__
+
+
+_PRIVATE_PATH = re.compile(
+    rb"(?:/(?:home|Users)/[^/\s\"'<>]+(?:/|(?=[\s\"'<>]|$))|"
+    rb"(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/])"
+)
+
+
+def _assert_path_free(raw: bytes, *, forbidden: tuple[bytes, ...], where: object) -> None:
+    assert not any(value in raw for value in forbidden), where
+    assert _PRIVATE_PATH.search(raw) is None, where
+
+
+def assert_portable_output_tree(root: Path, *, forbidden: Iterable[bytes]) -> None:
+    """Require user-visible output bytes to contain no machine-private paths.
+
+    Publication generations retain exact public bytes under opaque blob names.
+    Detect ZIP content independently of its suffix and inspect member names and
+    decompressed bodies, so random compressed bytes are never treated as text.
+    Every non-ZIP file remains subject to the raw-byte checks.
+    """
+    root = Path(root)
+    assert root.is_dir() and not root.is_symlink(), root
+    forbidden_values = tuple(forbidden)
+    assert forbidden_values and all(
+        isinstance(value, bytes) and value for value in forbidden_values
+    )
+
+    for path in sorted(root.rglob("*")):
+        assert not path.is_symlink(), path
+        if path.is_dir():
+            continue
+        assert path.is_file(), path
+        if path.suffix == ".zip" or zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path) as archive:
+                assert archive.testzip() is None, path
+                for member in archive.infolist():
+                    _assert_path_free(
+                        member.filename.encode(),
+                        forbidden=forbidden_values,
+                        where=(path, member.filename),
+                    )
+                    if not member.is_dir():
+                        _assert_path_free(
+                            archive.read(member),
+                            forbidden=forbidden_values,
+                            where=(path, member.filename),
+                        )
+            continue
+        _assert_path_free(path.read_bytes(), forbidden=forbidden_values, where=path)
 
 
 def materialize_current_version_fixture(source: Path, destination: Path) -> Path:
