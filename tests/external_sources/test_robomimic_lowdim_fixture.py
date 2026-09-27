@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import shutil
@@ -277,13 +278,37 @@ _PRIVATE_PATH = re.compile(
 )
 
 
+def _zip_metadata_chunks(raw: bytes, archive: zipfile.ZipFile) -> list[bytes]:
+    chunks: list[bytes] = []
+    cursor = 0
+    for info in sorted(archive.infolist(), key=lambda item: item.header_offset):
+        header_start = info.header_offset
+        header_end = header_start + 30
+        assert header_start >= cursor
+        assert raw[header_start : header_start + 4] == b"PK\x03\x04"
+        assert header_end <= len(raw)
+        name_length = int.from_bytes(raw[header_start + 26 : header_start + 28], "little")
+        extra_length = int.from_bytes(raw[header_start + 28 : header_start + 30], "little")
+        payload_start = header_end + name_length + extra_length
+        payload_end = payload_start + info.compress_size
+        assert payload_end <= len(raw)
+        chunks.append(raw[cursor:payload_start])
+        cursor = payload_end
+    chunks.append(raw[cursor:])
+    return chunks
+
+
 def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
     values = [item.encode() for item in forbidden]
-    for path in root.rglob("*"):
+    for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        if path.suffix.lower() == ".zip":
-            with zipfile.ZipFile(path) as archive:
+        raw = path.read_bytes()
+        if zipfile.is_zipfile(io.BytesIO(raw)):
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                for metadata in _zip_metadata_chunks(raw, archive):
+                    assert all(item not in metadata for item in values), path
+                    assert _PRIVATE_PATH.search(metadata) is None, path
                 for info in archive.infolist():
                     member = info.filename.encode()
                     assert all(item not in member for item in values), (path, info.filename)
@@ -295,9 +320,29 @@ def _assert_no_path_leak(root: Path, forbidden: list[str]) -> None:
                         assert all(item not in body for item in values)
                         assert _PRIVATE_PATH.search(body) is None
             continue
-        raw = path.read_bytes()
         assert all(item not in raw for item in values), path
         assert _PRIVATE_PATH.search(raw) is None, path
+
+
+def test_path_leak_check_inspects_zip_content_without_zip_suffix(tmp_path: Path) -> None:
+    private_path = b"/home/private-user/input.json"
+    for location in ("body", "archive-comment", "member-comment", "member-extra"):
+        case_root = tmp_path / location
+        case_root.mkdir()
+        archive_path = case_root / "renamed-archive.blob"
+        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            info = zipfile.ZipInfo("payload.txt")
+            body = private_path if location == "body" else b"clean"
+            if location == "archive-comment":
+                archive.comment = private_path
+            elif location == "member-comment":
+                info.comment = private_path
+            elif location == "member-extra":
+                info.extra = b"\xff\xff" + len(private_path).to_bytes(2, "little") + private_path
+            archive.writestr(info, body)
+
+        with pytest.raises(AssertionError):
+            _assert_no_path_leak(case_root, [])
 
 
 @pytest.mark.parametrize("variant", ["incident", "control"])
