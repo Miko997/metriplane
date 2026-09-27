@@ -63,7 +63,8 @@ the registry. No row may remain disconnected.
 - `CTL-06` atomic exact-byte publication protects evidence generations and manifests.
 - `CTL-07` bounded, identity-checked child execution protects runner cleanup.
 - `CTL-08` deterministic redacted export separates public evidence from protected diagnostics.
-- `CTL-09` allowlisted, offline, unprivileged normalization protects adapter acquisition.
+- `CTL-09` exact-source allowlisting plus networkless, credential-empty, unprivileged,
+  quota-bound normalization and staged canonical publication protects adapter acquisition.
 - `CTL-10` OIDC identity and digest verification protects promotion.
 
 Every control has an accountable MP2 owner, at least one capability from the current

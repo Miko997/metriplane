@@ -12,9 +12,15 @@ import sys
 from metriplane.external_sources.execution import (
     ExternalRunSummary,
     ExternalValidationSummary,
+    normalize_external_fixture,
     run_external_fixture,
     summary_json,
     validate_external_fixture,
+)
+from metriplane.external_sources.sandbox import (
+    AcquisitionIdentity,
+    AdapterSandboxError,
+    load_acquisition_allowlist,
 )
 
 
@@ -93,6 +99,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Print only the versioned machine-readable summary",
     )
 
+    normalize_parser = subparsers.add_parser(
+        "normalize",
+        help="Run an allowlisted source adapter in the offline normalization sandbox",
+    )
+    normalize_parser.add_argument("source", help="Source directory containing the pinned artifact")
+    normalize_parser.add_argument("--out", required=True, help="New canonical fixture directory")
+    normalize_parser.add_argument(
+        "--adapter-script",
+        required=True,
+        help="Relative Python adapter script within the read-only source directory",
+    )
+    normalize_parser.add_argument(
+        "--allowlist", required=True, help="Reviewed acquisition allowlist JSON"
+    )
+    normalize_parser.add_argument("--repository", required=True)
+    normalize_parser.add_argument("--revision", required=True)
+    normalize_parser.add_argument("--artifact", required=True)
+    normalize_parser.add_argument("--artifact-size", required=True, type=int)
+    normalize_parser.add_argument("--artifact-sha256", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "validate":
         validation_summary = validate_external_fixture(args.fixture)
@@ -101,6 +127,30 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_validation_human(validation_summary)
         return 0 if validation_summary.passed else 2
+
+    if args.command == "normalize":
+        try:
+            result = normalize_external_fixture(
+                args.source,
+                args.out,
+                adapter_script=args.adapter_script,
+                acquisition=AcquisitionIdentity(
+                    repository=args.repository,
+                    revision=args.revision,
+                    artifact=args.artifact,
+                    size=args.artifact_size,
+                    sha256=args.artifact_sha256,
+                ),
+                acquisition_allowlist=load_acquisition_allowlist(args.allowlist),
+            )
+        except (AdapterSandboxError, ValueError) as exc:
+            print(f"FAIL external fixture normalization: {_terminal_text(exc)}", file=sys.stderr)
+            return 2
+        print(
+            "PASS external fixture normalization "
+            f"output={_terminal_text(args.out)} elapsed_seconds={result.elapsed_seconds:.3f}"
+        )
+        return 0
 
     run_summary = run_external_fixture(
         args.fixture,

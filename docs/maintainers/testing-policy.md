@@ -100,14 +100,21 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 6,206 items. In the exact core
+The ordered node-id stream must contain exactly 6,232 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the integrated source profile requires 6,121 passed and 16 expected skips.
+cache, the integrated source profile requires 6,147 passed and 16 expected skips.
 Fourteen result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and
 two functional-inventory cases require their governed retained-evidence and
 non-editable installed-package profiles.
+Hosted Linux and macOS runners without `/usr/bin/bwrap` record seven additional
+governed setup skips for the real adapter-sandbox host tests. Those tests are not
+replaced: the MP2-031 qualification also requires them to pass on the separately
+governed Linux bubblewrap/seccomp host profile. macOS also records one governed
+setup skip for the Linux seccomp-filter architecture test; the remaining sandbox
+unit tests use platform-neutral anonymous test files without weakening production's
+Linux-only in-memory spool.
 The frozen MP2-000 1,194-item snapshot is a historical artifact and is not
 updated by this policy.
 
