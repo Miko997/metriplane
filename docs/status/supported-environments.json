@@ -23,20 +23,20 @@
       "authority": [
         {
           "binding": "candidate_source_blob",
-          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
           "git_mode": "100644",
           "path": ".github/workflows/ci.yml",
           "repository": "Miko997/metriplane",
           "source_bytes": {
-            "bytes": 15782,
+            "bytes": 14711,
             "path": "authority/configuration/.github/workflows/ci.yml",
-            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
           }
         }
       ],
       "declaration": "REQUIRED",
       "execution": {
-        "reason": "Existing governed test job requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
+        "reason": "Existing governed linux-regressions matrix requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
         "state": "UNRESOLVED"
       },
       "first_required_release": "v0.4",
@@ -86,14 +86,14 @@
           },
           {
             "binding": "candidate_source_blob",
-            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
             "git_mode": "100644",
             "path": ".github/workflows/ci.yml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 15782,
+              "bytes": 14711,
               "path": "authority/configuration/.github/workflows/ci.yml",
-              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+              "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
             }
           }
         ]
@@ -111,20 +111,20 @@
       "authority": [
         {
           "binding": "candidate_source_blob",
-          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
           "git_mode": "100644",
           "path": ".github/workflows/ci.yml",
           "repository": "Miko997/metriplane",
           "source_bytes": {
-            "bytes": 15782,
+            "bytes": 14711,
             "path": "authority/configuration/.github/workflows/ci.yml",
-            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
           }
         }
       ],
       "declaration": "REQUIRED",
       "execution": {
-        "reason": "Existing governed linux-python313 job requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
+        "reason": "Existing governed linux-regressions matrix requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
         "state": "UNRESOLVED"
       },
       "first_required_release": "v0.4",
@@ -174,14 +174,14 @@
           },
           {
             "binding": "candidate_source_blob",
-            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
             "git_mode": "100644",
             "path": ".github/workflows/ci.yml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 15782,
+              "bytes": 14711,
               "path": "authority/configuration/.github/workflows/ci.yml",
-              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+              "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
             }
           }
         ]
@@ -199,14 +199,14 @@
       "authority": [
         {
           "binding": "candidate_source_blob",
-          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
           "git_mode": "100644",
           "path": ".github/workflows/ci.yml",
           "repository": "Miko997/metriplane",
           "source_bytes": {
-            "bytes": 15782,
+            "bytes": 14711,
             "path": "authority/configuration/.github/workflows/ci.yml",
-            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
           }
         }
       ],
@@ -262,14 +262,14 @@
           },
           {
             "binding": "candidate_source_blob",
-            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
             "git_mode": "100644",
             "path": ".github/workflows/ci.yml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 15782,
+              "bytes": 14711,
               "path": "authority/configuration/.github/workflows/ci.yml",
-              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+              "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
             }
           }
         ]
@@ -287,14 +287,14 @@
       "authority": [
         {
           "binding": "candidate_source_blob",
-          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
           "git_mode": "100644",
           "path": ".github/workflows/ci.yml",
           "repository": "Miko997/metriplane",
           "source_bytes": {
-            "bytes": 15782,
+            "bytes": 14711,
             "path": "authority/configuration/.github/workflows/ci.yml",
-            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
           }
         }
       ],
@@ -350,14 +350,14 @@
           },
           {
             "binding": "candidate_source_blob",
-            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_blob": "a286f6ffed488bbc1022f368dca72593d05e862a",
             "git_mode": "100644",
             "path": ".github/workflows/ci.yml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 15782,
+              "bytes": 14711,
               "path": "authority/configuration/.github/workflows/ci.yml",
-              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+              "sha256": "2a7be2db3957fcb7b6c1497a72d8380958620d6b7460d9d1cdcd8133129fb925"
             }
           }
         ]
