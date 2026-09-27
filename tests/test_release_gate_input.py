@@ -8055,6 +8055,7 @@ def test_current_environment_floor_replays_all_four_original_ci_cells() -> None:
     "before,after",
     [
         (b"runs-on: macos-latest", b"runs-on: macos-15"),
+        (b"runs-on: ubuntu-latest", b"runs-on: ubuntu-24.04"),
         (b'python-version: ["3.12", "3.13"]', b'python-version: ["3.12"]'),
         (b"shard-index: [0, 1, 2, 3]", b"shard-index: [0, 1, 2]"),
         (b"  linux-regressions:", b"  other-job:"),
