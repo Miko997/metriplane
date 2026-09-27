@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `8719ca143e6815be5b530547bc7cebdb7fe1a4ee481f3fae4a797fbbb670ea9d`
+Canonical projection SHA-256: `64fb024b03bf8d123f1dad3fb5ca96d24dee3af75e480747c26bed50bb9a8648`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 239 |
+| total_discovered_features | 243 |
 | ui_full | 59 |
 | ui_partial | 2 |
 | ui_copy_command_only | 10 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 154 |
+| cli_only_documented | 158 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -184,6 +184,8 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.capture_repository_protection | Capture Repository Protection | tools/capture_repository_protection.py | python tools/capture_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.characterize_supported_surface | Characterize Supported Surface | tools/characterize_supported_surface.py | python tools/characterize_supported_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_blockers | Check Blockers | tools/check_blockers.py | python tools/check_blockers.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_dependency_delta | Check Dependency Delta | tools/check_dependency_delta.py | python tools/check_dependency_delta.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_dependency_licenses | Check Dependency Licenses | tools/check_dependency_licenses.py | python tools/check_dependency_licenses.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_functional_inventory | Check Functional Inventory | tools/check_functional_inventory.py | python tools/check_functional_inventory.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_met77_transition | Check Met77 Transition | tools/check_met77_transition.py | python tools/check_met77_transition.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_pr_contract | Check Pr Contract | tools/check_pr_contract.py | python tools/check_pr_contract.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -193,6 +195,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.check_required_terminal | Check Required Terminal | tools/check_required_terminal.py | python tools/check_required_terminal.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_ros2_adapters | Check Ros2 Adapters | tools/check_ros2_adapters.py | python tools/check_ros2_adapters.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_security_controls | Check Security Controls | tools/check_security_controls.py | python tools/check_security_controls.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_supply_chain_policy | Check Supply Chain Policy | tools/check_supply_chain_policy.py | python tools/check_supply_chain_policy.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_traceability | Check Traceability | tools/check_traceability.py | python tools/check_traceability.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_work_order_catalog | Check Work Order Catalog | tools/check_work_order_catalog.py | python tools/check_work_order_catalog.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.collect_publication_observations | Collect Publication Observations | tools/collect_publication_observations.py | python tools/collect_publication_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -258,6 +261,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.stop_the_line | Stop The Line | tools/stop_the_line.py | python tools/stop_the_line.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.supply_chain_paths | Supply Chain Paths | tools/supply_chain_paths.py | python tools/supply_chain_paths.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_attestation_builder | Task Attestation Builder | tools/task_attestation_builder.py | python tools/task_attestation_builder.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_authority_attestor | Task Authority Attestor | tools/task_authority_attestor.py | python tools/task_authority_attestor.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_delegation | Task Delegation | tools/task_delegation.py | python tools/task_delegation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

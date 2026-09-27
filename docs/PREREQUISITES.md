@@ -128,8 +128,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 Add to `pyproject.toml`:
 
 ```toml
-[tool.pytest.ini_options]
-addopts = "-p no:launch_testing"
+[tool.pytest]
+addopts = ["-p", "no:launch_testing"]
 ```
 
 Then run normally:

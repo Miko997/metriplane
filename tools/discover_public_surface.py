@@ -104,16 +104,16 @@ FAMILY_OBLIGATION = {
 }
 EXPECTED_FAMILY_COUNTS = {
     "configs": 167,
-    "current_claims": 392,
+    "current_claims": 396,
     "examples": 172,
-    "jobs": 61,
+    "jobs": 70,
     "manifest_keys": 3938,
     "model_fields": 1564,
     "models": 258,
     "proofs": 322,
     "public_api": 2601,
-    "resources": 1757,
-    "workflows": 18,
+    "resources": 1768,
+    "workflows": 19,
 }
 
 JsonObject = dict[str, Any]
