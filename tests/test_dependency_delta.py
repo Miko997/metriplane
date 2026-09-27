@@ -44,7 +44,13 @@ def test_declared_dependency_delta_is_canonical() -> None:
 
 @pytest.mark.parametrize(
     "path",
-    ("unknown/pyproject.toml", "unknown/uv.lock", "unknown.Dockerfile", "LICENSES/GPL.txt"),
+    (
+        "unknown/pyproject.toml",
+        "unknown/uv.lock",
+        "unknown.Dockerfile",
+        "docker/Dockerfile.unclassified",
+        "LICENSES/GPL.txt",
+    ),
 )
 def test_undeclared_dependency_surface_fails_closed(path: str) -> None:
     with pytest.raises(DependencyDeltaError, match="undeclared dependency-bearing path"):

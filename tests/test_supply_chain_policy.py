@@ -367,9 +367,14 @@ def test_scanner_target_substitutions_fail_closed(
         validate_policy(root)
 
 
-def test_runtime_image_inventory_is_exact_and_classified(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "image_path", ("unclassified.Dockerfile", "docker/Dockerfile.unclassified")
+)
+def test_runtime_image_inventory_is_exact_and_classified(tmp_path: Path, image_path: str) -> None:
     root = _copy_repository(tmp_path)
-    (root / "unclassified.Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    path = root / image_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("FROM scratch\n", encoding="utf-8")
     with pytest.raises(SupplyChainPolicyError, match="image inventory drift"):
         validate_policy(root)
 

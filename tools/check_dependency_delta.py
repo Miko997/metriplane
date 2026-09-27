@@ -12,6 +12,11 @@ import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
+if __package__:
+    from tools.supply_chain_paths import is_dockerfile_path
+else:
+    from supply_chain_paths import is_dockerfile_path
+
 
 class DependencyDeltaError(ValueError):
     """The exact dependency delta is incomplete or cannot be established."""
@@ -62,7 +67,7 @@ def validate_changed_paths(
         pure = PurePosixPath(path)
         dependency_like = (
             pure.name in {"pyproject.toml", "uv.lock"}
-            or pure.name.endswith("Dockerfile")
+            or is_dockerfile_path(pure)
             or path in {".github/dependabot.yml", "supply-chain-policy.json"}
             or path.startswith("LICENSES/")
             or path in {"LICENSE", "NOTICE"}

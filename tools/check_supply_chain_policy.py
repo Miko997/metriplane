@@ -14,6 +14,11 @@ from typing import Any
 
 import yaml
 
+if __package__:
+    from tools.supply_chain_paths import is_dockerfile_path
+else:
+    from supply_chain_paths import is_dockerfile_path
+
 
 class SupplyChainPolicyError(ValueError):
     """The repository does not satisfy its declared supply-chain policy."""
@@ -559,7 +564,10 @@ def validate_policy(root: Path) -> dict[str, Any]:
     excluded_paths = [item["path"] for item in excluded_images]
     _require(all(item["reason"] for item in excluded_images), "image exclusion reason")
     all_images = {
-        path.relative_to(root).as_posix() for path in root.rglob("*Dockerfile") if path.is_file()
+        path.relative_to(root).as_posix()
+        for pattern in ("Dockerfile", "Dockerfile.*", "*.Dockerfile")
+        for path in root.rglob(pattern)
+        if path.is_file() and is_dockerfile_path(path.relative_to(root).as_posix())
     }
     _require(set(scanned_images) | set(excluded_paths) == all_images, "image inventory drift")
     for image_path in scanned_images:

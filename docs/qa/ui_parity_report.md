@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `5eb348f7e8be3a8a196f0d88912ae50e7c8b229c5e3787e887f79e8957ea5445`
+Canonical projection SHA-256: `64fb024b03bf8d123f1dad3fb5ca96d24dee3af75e480747c26bed50bb9a8648`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 242 |
+| total_discovered_features | 243 |
 | ui_full | 59 |
 | ui_partial | 2 |
 | ui_copy_command_only | 10 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 157 |
+| cli_only_documented | 158 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -261,6 +261,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.stop_the_line | Stop The Line | tools/stop_the_line.py | python tools/stop_the_line.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.supply_chain_paths | Supply Chain Paths | tools/supply_chain_paths.py | python tools/supply_chain_paths.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_attestation_builder | Task Attestation Builder | tools/task_attestation_builder.py | python tools/task_attestation_builder.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_authority_attestor | Task Authority Attestor | tools/task_authority_attestor.py | python tools/task_authority_attestor.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.task_delegation | Task Delegation | tools/task_delegation.py | python tools/task_delegation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

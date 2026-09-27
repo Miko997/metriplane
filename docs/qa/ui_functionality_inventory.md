@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `5eb348f7e8be3a8a196f0d88912ae50e7c8b229c5e3787e887f79e8957ea5445`
+Canonical projection SHA-256: `64fb024b03bf8d123f1dad3fb5ca96d24dee3af75e480747c26bed50bb9a8648`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 242 |
+| actions | 243 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -356,6 +356,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.session_health_summary | tool | Session Health Summary | python tools/session_health_summary.py |
 | tool.start_metriplane | tool | Start Metriplane | tools/start_metriplane.sh |
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
+| tool.supply_chain_paths | tool | Supply Chain Paths | python tools/supply_chain_paths.py |
 | tool.task_attestation_builder | tool | Task Attestation Builder | python tools/task_attestation_builder.py |
 | tool.task_authority_attestor | tool | Task Authority Attestor | python tools/task_authority_attestor.py |
 | tool.task_delegation | tool | Task Delegation | python tools/task_delegation.py |
