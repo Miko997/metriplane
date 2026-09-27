@@ -177,11 +177,12 @@ def validate_dependency_licenses(
         len(current_paths) == len(baseline_paths) and bool(current_paths),
         "current and baseline project inventories differ",
     )
-    projects = [set(parse_frozen_requirements([path])) for path in current_paths]
+    projects = [set(parse_frozen_requirements([path], allow_empty=True)) for path in current_paths]
     baselines = [
         set(parse_frozen_requirements([path], allow_empty=True)) for path in baseline_paths
     ]
     packages = sorted(set().union(*projects))
+    _require(bool(packages), "requirements exports contain no exact packages")
     review_packages = sorted(
         set().union(*(current - baseline for current, baseline in zip(projects, baselines)))
     )

@@ -137,6 +137,31 @@ def test_cross_project_introduction_cannot_hide_behind_other_baseline(tmp_path: 
         )
 
 
+def test_empty_runtime_project_is_valid_when_another_project_has_packages(tmp_path: Path) -> None:
+    result = validate_dependency_licenses(
+        [_requirements(tmp_path, "", "empty"), _requirements(tmp_path)],
+        baseline_requirements=[
+            _requirements(tmp_path, "", "baseline-empty"),
+            _requirements(tmp_path, "", "baseline"),
+        ],
+        denied_licenses=["GPL-3.0", "AGPL-3.0"],
+        index_url="https://pypi.org/pypi",
+        fetch=lambda _name, _version: _metadata("MIT"),
+    )
+    assert result["package_count"] == 1
+
+
+def test_all_empty_runtime_projects_fail_closed(tmp_path: Path) -> None:
+    with pytest.raises(DependencyLicenseError, match="no exact packages"):
+        validate_dependency_licenses(
+            [_requirements(tmp_path, "", "current")],
+            baseline_requirements=[_requirements(tmp_path, "", "baseline")],
+            denied_licenses=["GPL-3.0", "AGPL-3.0"],
+            index_url="https://pypi.org/pypi",
+            fetch=lambda _name, _version: _metadata("MIT"),
+        )
+
+
 def test_source_identity_is_exact_and_schedule_bound(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
