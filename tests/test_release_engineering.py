@@ -497,10 +497,12 @@ def test_citation_paths_do_not_mix_release_and_research_versions() -> None:
     assert "Do not use the v0.2.0 DOI for v0.3.0" in guide
 
 
-def test_v041_release_candidate_sets_the_package_version() -> None:
-    import metriplane
+def test_v041_release_record_preserves_the_historical_package_version() -> None:
+    readiness = json.loads(RELEASE_READINESS.read_text(encoding="utf-8"))
+    context = next(row for row in readiness["release_contexts"] if row["context_id"] == "MET-163")
 
-    assert metriplane.__version__ == "0.4.1"
+    assert context["target_policy"]["initial_normalized_package_version"] == "0.4.1"
+    assert context["target_policy"]["initial_release_tag"] == "v0.4.1"
 
 
 def test_v041_postpublication_materials_record_exact_release() -> None:
