@@ -750,7 +750,11 @@ def test_root_dependency_import_and_wheel_discovery_boundary_is_source_neutral()
         assert forbidden_import.search(source_path.read_text(encoding="utf-8")) is None, source_path
 
     package_find = pyproject["tool"]["setuptools"]["packages"]["find"]
-    assert package_find["include"] == ["metriplane*", "integrations*"]
+    assert "metriplane*" not in package_find["include"]
+    assert "integrations*" not in package_find["include"]
+    assert {"metriplane", "integrations", "integrations.isaac*", "integrations.omniverse*"} <= set(
+        package_find["include"]
+    )
     assert all("adapter" not in pattern.lower() for pattern in package_find["include"])
     assert not (REPOSITORY_ROOT / "metriplane" / "adapters").exists()
     assert not any(

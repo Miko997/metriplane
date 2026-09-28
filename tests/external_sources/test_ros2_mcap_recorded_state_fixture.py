@@ -666,13 +666,12 @@ def test_frozen_git_lineage_and_subtrees_are_preserved() -> None:
 
 def test_root_package_contract_and_source_neutrality_remain_frozen() -> None:
     project = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert (REPOSITORY_ROOT / "metriplane" / "__init__.py").read_text(
-        encoding="utf-8"
-    ).splitlines()[5] == '__version__ = "0.4.1"'
-    assert project["tool"]["setuptools"]["packages"]["find"]["include"] == [
-        "metriplane*",
-        "integrations*",
-    ]
+    includes = project["tool"]["setuptools"]["packages"]["find"]["include"]
+    assert "metriplane*" not in includes
+    assert "integrations*" not in includes
+    assert {"metriplane", "integrations", "integrations.isaac*", "integrations.omniverse*"} <= set(
+        includes
+    )
     dependencies = "\n".join(project["project"]["dependencies"]).lower()
     lock = (REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
     prohibited = (

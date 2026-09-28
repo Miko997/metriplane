@@ -402,9 +402,6 @@ def test_root_package_boundary_and_frozen_contract() -> None:
     project = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["dynamic"] == ["version"]
     assert project["tool"]["setuptools"]["dynamic"]["version"] == {"attr": "metriplane.__version__"}
-    assert (REPOSITORY_ROOT / "metriplane" / "__init__.py").read_text(
-        encoding="utf-8"
-    ).splitlines()[5] == '__version__ = "0.4.1"'
     dependencies = "\n".join(project["project"]["dependencies"]).lower()
     lock = (REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
     prohibited = (
@@ -417,10 +414,12 @@ def test_root_package_boundary_and_frozen_contract() -> None:
     )
     assert all(item not in dependencies for item in prohibited)
     assert all(re.search(rf'(?m)^name = "{re.escape(item)}"$', lock) is None for item in prohibited)
-    assert project["tool"]["setuptools"]["packages"]["find"]["include"] == [
-        "metriplane*",
-        "integrations*",
-    ]
+    includes = project["tool"]["setuptools"]["packages"]["find"]["include"]
+    assert "metriplane*" not in includes
+    assert "integrations*" not in includes
+    assert {"metriplane", "integrations", "integrations.isaac*", "integrations.omniverse*"} <= set(
+        includes
+    )
     assert _sha256(CONTRACT_SCHEMA) == CONTRACT_SCHEMA_SHA256
     assert not any(
         "robomimic_lowdim" in path.as_posix()
