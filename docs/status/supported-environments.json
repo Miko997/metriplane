@@ -74,14 +74,14 @@
         "toolchain_sources": [
           {
             "binding": "candidate_source_blob",
-            "git_blob": "d619ae4e42342396c04411d6a6c6214391862d56",
+            "git_blob": "fc78daaa2ae706fcb11184fc1f1c060ba4808034",
             "git_mode": "100644",
             "path": "pyproject.toml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 3908,
+              "bytes": 5312,
               "path": "authority/configuration/pyproject.toml",
-              "sha256": "d643b56d566e7f32ab56aba2af2968dce9af71dcd36a7ac0cea69208dc497743"
+              "sha256": "394a3ab42e892aab888fe9d667db2f1b7acacb3591f5933f73bd1e356cfde2b2"
             }
           },
           {
@@ -162,14 +162,14 @@
         "toolchain_sources": [
           {
             "binding": "candidate_source_blob",
-            "git_blob": "d619ae4e42342396c04411d6a6c6214391862d56",
+            "git_blob": "fc78daaa2ae706fcb11184fc1f1c060ba4808034",
             "git_mode": "100644",
             "path": "pyproject.toml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 3908,
+              "bytes": 5312,
               "path": "authority/configuration/pyproject.toml",
-              "sha256": "d643b56d566e7f32ab56aba2af2968dce9af71dcd36a7ac0cea69208dc497743"
+              "sha256": "394a3ab42e892aab888fe9d667db2f1b7acacb3591f5933f73bd1e356cfde2b2"
             }
           },
           {
@@ -250,14 +250,14 @@
         "toolchain_sources": [
           {
             "binding": "candidate_source_blob",
-            "git_blob": "d619ae4e42342396c04411d6a6c6214391862d56",
+            "git_blob": "fc78daaa2ae706fcb11184fc1f1c060ba4808034",
             "git_mode": "100644",
             "path": "pyproject.toml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 3908,
+              "bytes": 5312,
               "path": "authority/configuration/pyproject.toml",
-              "sha256": "d643b56d566e7f32ab56aba2af2968dce9af71dcd36a7ac0cea69208dc497743"
+              "sha256": "394a3ab42e892aab888fe9d667db2f1b7acacb3591f5933f73bd1e356cfde2b2"
             }
           },
           {
@@ -338,14 +338,14 @@
         "toolchain_sources": [
           {
             "binding": "candidate_source_blob",
-            "git_blob": "d619ae4e42342396c04411d6a6c6214391862d56",
+            "git_blob": "fc78daaa2ae706fcb11184fc1f1c060ba4808034",
             "git_mode": "100644",
             "path": "pyproject.toml",
             "repository": "Miko997/metriplane",
             "source_bytes": {
-              "bytes": 3908,
+              "bytes": 5312,
               "path": "authority/configuration/pyproject.toml",
-              "sha256": "d643b56d566e7f32ab56aba2af2968dce9af71dcd36a7ac0cea69208dc497743"
+              "sha256": "394a3ab42e892aab888fe9d667db2f1b7acacb3591f5933f73bd1e356cfde2b2"
             }
           },
           {
