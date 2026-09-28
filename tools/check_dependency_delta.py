@@ -9,6 +9,7 @@ import argparse
 import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
@@ -57,7 +58,10 @@ def _declared_paths(policy: dict[str, Any]) -> tuple[set[str], dict[str, str]]:
 
 
 def validate_changed_paths(
-    policy: dict[str, Any], changed_paths: Iterable[str]
+    policy: dict[str, Any],
+    changed_paths: Iterable[str],
+    *,
+    dependency_neutral_manifests: Iterable[str] = (),
 ) -> dict[str, object]:
     declared, project_locks = _declared_paths(policy)
     changed = sorted(set(changed_paths))
@@ -76,15 +80,64 @@ def validate_changed_paths(
             _require(path in declared, f"undeclared dependency-bearing path: {path}")
             dependency_paths.append(path)
     changed_set = set(changed)
+    neutral_manifests = set(dependency_neutral_manifests)
+    _require(neutral_manifests <= set(project_locks), "unknown dependency-neutral manifest")
     for manifest, lock in project_locks.items():
         _require(
-            manifest not in changed_set or lock in changed_set,
+            manifest not in changed_set or lock in changed_set or manifest in neutral_manifests,
             f"changed project manifest lacks its lock delta: {manifest}",
         )
     return {
         "dependency_paths": dependency_paths,
         "dependency_path_count": len(dependency_paths),
     }
+
+
+def _manifest_dependency_projection(payload: bytes, *, path: str) -> dict[str, object]:
+    try:
+        document = tomllib.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise DependencyDeltaError(f"cannot parse dependency manifest {path}: {exc}") from exc
+    project = document.get("project", {})
+    _require(isinstance(project, dict), f"dependency manifest project table is invalid: {path}")
+    dynamic = project.get("dynamic", [])
+    _require(isinstance(dynamic, list), f"dependency manifest dynamic field is invalid: {path}")
+    _require(
+        not {"dependencies", "optional-dependencies"}.intersection(dynamic),
+        f"dynamic dependency manifest requires its lock delta: {path}",
+    )
+    tool = document.get("tool", {})
+    _require(isinstance(tool, dict), f"dependency manifest tool table is invalid: {path}")
+    return {
+        "build-system": document.get("build-system"),
+        "dependency-groups": document.get("dependency-groups"),
+        "project": {
+            key: project.get(key)
+            for key in ("dependencies", "dynamic", "optional-dependencies", "requires-python")
+        },
+        "tool.uv": tool.get("uv"),
+    }
+
+
+def _dependency_neutral_manifests(
+    root: Path,
+    *,
+    base: str,
+    head: str,
+    changed: set[str],
+    project_locks: dict[str, str],
+) -> set[str]:
+    neutral: set[str] = set()
+    for manifest, lock in project_locks.items():
+        if manifest not in changed or lock in changed:
+            continue
+        before = _run_git(root, "show", f"{base}:{manifest}")
+        after = _run_git(root, "show", f"{head}:{manifest}")
+        if _manifest_dependency_projection(
+            before, path=manifest
+        ) == _manifest_dependency_projection(after, path=manifest):
+            neutral.add(manifest)
+    return neutral
 
 
 def validate_dependency_delta(
@@ -107,9 +160,22 @@ def validate_dependency_delta(
         changed = [item.decode() for item in raw.split(b"\0") if item]
     policy = json.loads((root / "supply-chain-policy.json").read_text(encoding="utf-8"))
     _require(isinstance(policy, dict), "supply-chain policy is not an object")
-    result = validate_changed_paths(policy, changed)
+    _, project_locks = _declared_paths(policy)
+    neutral_manifests = _dependency_neutral_manifests(
+        root,
+        base=base,
+        head=head,
+        changed=set(changed),
+        project_locks=project_locks,
+    )
+    result = validate_changed_paths(
+        policy,
+        changed,
+        dependency_neutral_manifests=neutral_manifests,
+    )
     return {
         "base": base,
+        "dependency_neutral_manifests": sorted(neutral_manifests),
         "event_name": event_name,
         "head": head,
         **result,
