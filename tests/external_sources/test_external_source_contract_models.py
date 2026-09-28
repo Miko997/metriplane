@@ -402,7 +402,14 @@ def test_contract_and_profile_versions_are_independent() -> None:
         == 4
     )
 
-    for invalid_version in ("0.4.0.post", "0.4.0.post0", "0.4.0.post01", "0.4.0.post1.extra"):
+    for invalid_version in (
+        "0.4.0.dev",
+        "0.4.0.dev1",
+        "0.4.0.post",
+        "0.4.0.post0",
+        "0.4.0.post01",
+        "0.4.0.post1.extra",
+    ):
         payload = _read_json(VALID_BUNDLE / "source-manifest.json")
         payload["evaluation"]["metriplane_version"] = invalid_version
         with pytest.raises(ValueError, match="exact supported package version"):

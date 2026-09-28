@@ -198,6 +198,9 @@ jobs:
           SETUPTOOLS_PACKAGE_SHA256 = (
               "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
           )
+          PACKAGE_FIND_SHA256 = (
+              "583ad172bf172808e1169ffc970910115d7b67598c0860757ab21abafeac1d90"
+          )
           PYTEST_DEV_EDGE = {"name": "pytest"}
           PYTEST_DEV_PROFILES = {
               ("8.4.2", ">=8.4,<9"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
@@ -351,6 +354,13 @@ jobs:
                       raise SystemExit("checkout build-identity command classes differ")
                   if package_data.pop("metriplane", None) != ["build-info.json"]:
                       raise SystemExit("checkout build-info package data differs")
+                  package_find = configuration["packages"]["find"]
+                  encoded = json.dumps(
+                      package_find, sort_keys=True, separators=(",", ":")
+                  ).encode()
+                  if hashlib.sha256(encoded).hexdigest() != PACKAGE_FIND_SHA256:
+                      raise SystemExit("checkout package allowlist identity differs")
+                  package_find["include"] = ["metriplane*", "integrations*"]
               elif "cmdclass" in configuration or "metriplane" in package_data:
                   raise SystemExit(
                       "recorded candidate unexpectedly contains build-identity packaging"
@@ -520,6 +530,9 @@ jobs:
           SETUPTOOLS_PACKAGE_SHA256 = (
               "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
           )
+          PACKAGE_FIND_SHA256 = (
+              "583ad172bf172808e1169ffc970910115d7b67598c0860757ab21abafeac1d90"
+          )
           PYTEST_DEV_EDGE = {"name": "pytest"}
           PYTEST_DEV_PROFILES = {
               ("8.4.2", ">=8.4,<9"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
@@ -673,6 +686,13 @@ jobs:
                       raise SystemExit("checkout build-identity command classes differ")
                   if package_data.pop("metriplane", None) != ["build-info.json"]:
                       raise SystemExit("checkout build-info package data differs")
+                  package_find = configuration["packages"]["find"]
+                  encoded = json.dumps(
+                      package_find, sort_keys=True, separators=(",", ":")
+                  ).encode()
+                  if hashlib.sha256(encoded).hexdigest() != PACKAGE_FIND_SHA256:
+                      raise SystemExit("checkout package allowlist identity differs")
+                  package_find["include"] = ["metriplane*", "integrations*"]
               elif "cmdclass" in configuration or "metriplane" in package_data:
                   raise SystemExit(
                       "recorded candidate unexpectedly contains build-identity packaging"

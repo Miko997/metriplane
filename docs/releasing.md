@@ -82,7 +82,13 @@ No long-lived registry token belongs in GitHub secrets.
 Use a clean branch from the latest `main`. The release-candidate pull request is
 the only place that changes the package version.
 
-1. Set `metriplane.__version__` to the intended version.
+Ordinary v0.5 development builds use `0.5.0.dev0`; the final release identity
+is `0.5.0`. Both permitted identities are declared in `metriplane/_version.py`,
+while the literal `metriplane.__version__` remains the build backend and
+fail-closed release freezer input. Package discovery is bounded by the explicit
+allowlist in `pyproject.toml`, and the built wheel must retain `py.typed`.
+
+1. Set `metriplane.__version__` to the declared final release identity.
 2. Confirm distribution metadata and `metriplane --version` use that same
    value.
 3. Finalize the changelog, migration note, README quickstart, and substantive

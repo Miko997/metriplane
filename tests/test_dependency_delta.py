@@ -85,7 +85,89 @@ def test_exact_git_delta_binds_base_head_and_changed_paths(tmp_path: Path) -> No
     head = _git(tmp_path, "rev-parse", "HEAD")
     result = validate_dependency_delta(tmp_path, event_name="pull_request", base=base, head=head)
     assert result["dependency_paths"] == ["pyproject.toml", "uv.lock"]
+    assert result["dependency_neutral_manifests"] == []
     assert result["verdict"] == "PASS"
+
+
+def _dependency_repository(tmp_path: Path, manifest: str) -> str:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "user.email", "test@example.invalid")
+    (tmp_path / "supply-chain-policy.json").write_text(json.dumps(_policy()), encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(manifest, encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "base")
+    return _git(tmp_path, "rev-parse", "HEAD")
+
+
+def test_dependency_neutral_manifest_change_does_not_require_synthetic_lock_delta(
+    tmp_path: Path,
+) -> None:
+    base = _dependency_repository(
+        tmp_path,
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=1']\n",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=1']\n"
+        "[tool.setuptools.packages.find]\ninclude=['demo']\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "package config")
+    head = _git(tmp_path, "rev-parse", "HEAD")
+
+    result = validate_dependency_delta(tmp_path, event_name="pull_request", base=base, head=head)
+
+    assert result["dependency_paths"] == ["pyproject.toml"]
+    assert result["dependency_neutral_manifests"] == ["pyproject.toml"]
+    assert result["verdict"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    (
+        "[project]\nname='demo'\nrequires-python='>=3.13'\ndependencies=['demo-dep>=1']\n",
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=2']\n",
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=1']\n"
+        "[project.optional-dependencies]\nextra=['other-dep']\n",
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=1']\n"
+        "[build-system]\nrequires=['setuptools>=82']\nbuild-backend='setuptools.build_meta'\n",
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=1']\n"
+        "[tool.uv]\nconstraint-dependencies=['bounded-dep<2']\n",
+    ),
+)
+def test_dependency_projection_change_still_requires_lock_delta(
+    tmp_path: Path, replacement: str
+) -> None:
+    base = _dependency_repository(
+        tmp_path,
+        "[project]\nname='demo'\nrequires-python='>=3.12'\ndependencies=['demo-dep>=1']\n",
+    )
+    (tmp_path / "pyproject.toml").write_text(replacement, encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "dependency change")
+    head = _git(tmp_path, "rev-parse", "HEAD")
+
+    with pytest.raises(DependencyDeltaError, match="lacks its lock delta"):
+        validate_dependency_delta(tmp_path, event_name="pull_request", base=base, head=head)
+
+
+def test_dynamic_dependencies_cannot_use_dependency_neutral_exception(tmp_path: Path) -> None:
+    base = _dependency_repository(
+        tmp_path,
+        "[project]\nname='demo'\ndynamic=['version']\n",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='demo'\ndynamic=['version','dependencies']\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "dynamic dependency")
+    head = _git(tmp_path, "rev-parse", "HEAD")
+
+    with pytest.raises(DependencyDeltaError, match="dynamic dependency manifest"):
+        validate_dependency_delta(tmp_path, event_name="pull_request", base=base, head=head)
 
 
 def test_wrong_head_and_non_ancestor_fail_closed(tmp_path: Path) -> None:

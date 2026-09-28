@@ -96,7 +96,7 @@ _COMMIT_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _CONTENT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CONTAINER_DIGEST = re.compile(r"^(?:[^@\s]+@)?sha256:[0-9a-f]{64}$")
 _METRIPLANE_VERSION = re.compile(
-    r"^[0-9]+\.[0-9]+\.[0-9]+(?:\.post[1-9][0-9]*|[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
+    r"^[0-9]+\.[0-9]+\.[0-9]+(?:\.dev0|\.post[1-9][0-9]*|[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
 )
 
 

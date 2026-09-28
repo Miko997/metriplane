@@ -203,10 +203,12 @@ def test_public_fixture_exact_atlas_result(
 
 def test_ordinary_wheel_configuration_excludes_adapter_and_upstream_runtime() -> None:
     project = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert project["tool"]["setuptools"]["packages"]["find"]["include"] == [
-        "metriplane*",
-        "integrations*",
-    ]
+    includes = project["tool"]["setuptools"]["packages"]["find"]["include"]
+    assert "metriplane*" not in includes
+    assert "integrations*" not in includes
+    assert {"metriplane", "integrations", "integrations.isaac*", "integrations.omniverse*"} <= set(
+        includes
+    )
     dependencies = "\n".join(project["project"]["dependencies"]).lower()
     lock = (REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
     prohibited = (
