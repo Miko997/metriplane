@@ -171,6 +171,12 @@ otherwise closes the check and records the request as terminal uncertain.
 Provider timeouts, rate limits, malformed success responses, and server errors
 are ambiguous, not definite rejections.
 
+Before it creates the durable merge transaction or publishes App success, the
+broker requires strictly more than its complete 60-second readiness interval
+and 120-second safety margin to remain on the selected merge request. A request
+with 180 seconds or less remaining is rejected as never admitted, preserving
+normal same-head renewal after that request expires.
+
 ## Trust and availability
 
 Repository administrators are an explicit trusted-settings boundary. GitHub

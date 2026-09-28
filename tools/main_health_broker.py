@@ -7043,6 +7043,19 @@ class Broker:
             "provider did not report the exact pull request merge-ready within bounded polling"
         )
 
+    @staticmethod
+    def _require_pre_reservation_merge_budget(
+        *, admission: dict[str, Any], provider_now: datetime
+    ) -> None:
+        required_budget = timedelta(
+            seconds=(MERGE_READINESS_TIMEOUT_SECONDS + MERGE_READINESS_LEASE_MARGIN_SECONDS)
+        )
+        remaining_budget = _timestamp(admission["request"]["expires_at"]) - provider_now
+        if remaining_budget <= required_budget:
+            raise BrokerError(
+                "merge request has insufficient lease budget before durable reservation"
+            )
+
     def _post_success_admission_seal(
         self,
         *,
@@ -7912,13 +7925,18 @@ class Broker:
             ):
                 raise BrokerError("owner emergency manifest expired during admission seal")
         self._guard_owner_transaction(admission=admission, token=token)
+        reservation_provider_now = self.api.provider_now(token)
+        self._require_pre_reservation_merge_budget(
+            admission=admission,
+            provider_now=reservation_provider_now,
+        )
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],
             pull_request=number,
             request=admission["request"],
             status="merging",
-            updated_at=final_provider_now.isoformat().replace("+00:00", "Z"),
+            updated_at=reservation_provider_now.isoformat().replace("+00:00", "Z"),
         )
         check_controller.succeed(
             check_run_id=check_run_id,
