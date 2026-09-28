@@ -35,6 +35,13 @@ from metriplane.external_sources.contract import (
     evaluation_inputs_sha256,
     validate_external_fixture_bundle,
 )
+from metriplane.external_sources.sandbox import (
+    AcquisitionIdentity,
+    SandboxLimits,
+    SandboxResult,
+    _open_verified_acquisition,
+    run_normalization_sandbox,
+)
 from metriplane.provenance.run_provenance import get_git_info, sha256_file
 from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import frame_time_s
@@ -220,6 +227,52 @@ class ExternalRunSummary(_ExecutionModel):
 class _PreflightResult:
     summary: ExternalValidationSummary
     fixture: ValidatedExternalFixture | None
+
+
+def normalize_external_fixture(
+    source_root: str | Path,
+    output_root: str | Path,
+    *,
+    adapter_script: str,
+    acquisition: AcquisitionIdentity,
+    acquisition_allowlist: tuple[AcquisitionIdentity, ...],
+    limits: SandboxLimits = SandboxLimits(),
+) -> SandboxResult:
+    """Normalize one exactly allowlisted source into a canonical fixture.
+
+    The adapter script is untrusted source content. It runs only inside the
+    shared networkless sandbox and its staged result is published only after
+    the canonical external-fixture validator accepts it.
+    """
+    script = Path(adapter_script)
+    if (
+        script.is_absolute()
+        or not script.parts
+        or any(part in {"", ".", ".."} for part in script.parts)
+    ):
+        raise ValueError("adapter_script must be a safe relative source path")
+
+    def validate_staged_output(stage: Path) -> None:
+        validate_external_fixture_bundle(stage)
+
+    with _open_verified_acquisition(
+        acquisition, acquisition_allowlist, source_root
+    ) as verified_acquisition:
+        return run_normalization_sandbox(
+            [
+                "/usr/bin/python3",
+                f"/input/{script.as_posix()}",
+                "--input",
+                "/input",
+                "--out",
+                "/dev/stdout",
+            ],
+            fixture_root=source_root,
+            output_root=output_root,
+            validate_output=validate_staged_output,
+            limits=limits,
+            verified_acquisition=verified_acquisition,
+        )
 
 
 def _source_identities(manifest: ExternalSourceManifestV1) -> list[SourceIdentitySummary]:

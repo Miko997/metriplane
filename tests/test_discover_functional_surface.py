@@ -134,15 +134,15 @@ def test_discovery_reproduces_the_exact_current_cli_census() -> None:
     result = scanner.discover(ROOT)
 
     assert result.root_dispatches == 23
-    assert result.parser_declarations == 91
-    assert result.parser_leaves == 75
+    assert result.parser_declarations == 92
+    assert result.parser_leaves == 76
     assert result.parser_groups == 16
     assert result.root_console_scripts == 2
     assert result.adapter_console_scripts == 4
     assert result.entry_points == 6
     assert result.aliases == 1
     assert result.implicit_config_routes == 1
-    assert len(result.rows) == 122
+    assert len(result.rows) == 123
 
 
 def test_committed_inventory_matches_current_cli_surface() -> None:
@@ -155,7 +155,7 @@ def test_committed_inventory_matches_current_cli_surface() -> None:
 
     assert candidate_inventory == _load(ROOT / INVENTORY)
     assert candidate_profiles == _load(ROOT / PROFILES)
-    assert len(_generated_rows(candidate_inventory)) == len(discovery.rows) == 122
+    assert len(_generated_rows(candidate_inventory)) == len(discovery.rows) == 123
 
 
 def test_root_dispatch_entry_points_alias_and_implicit_route_are_exact() -> None:
@@ -363,7 +363,7 @@ def test_source_symlink_escape_fails_closed(tmp_path: Path) -> None:
 
 def test_leaf_action_floor_is_enforced() -> None:
     with pytest.raises(scanner.DiscoveryError, match="leaf-action floor failed"):
-        scanner.discover(ROOT, minimum_leaf_actions=76)
+        scanner.discover(ROOT, minimum_leaf_actions=77)
 
 
 def test_malformed_registry_fails_before_any_write(tmp_path: Path) -> None:
@@ -434,8 +434,8 @@ def test_cli_check_reports_the_canonical_summary() -> None:
         "aliases": 1,
         "entry_points": 6,
         "groups": 16,
-        "leaves": 75,
-        "parser_declarations": 91,
+        "leaves": 76,
+        "parser_declarations": 92,
         "root_dispatches": 23,
-        "rows": 122,
+        "rows": 123,
     }

@@ -425,14 +425,34 @@ def test_complete_report_suite_proves_each_platform_and_partition(
     assert result["result"] == "success"
     assert result["sha"] == SHA
     assert len(result["reports"]) == 16
-    assert result["collection_count"] == 30
+    assert result["collection_count"] == 38
     assert result["source"] == source
     assert result["totals"] == {
-        "linux-py3.12": {"passed": 14, "skipped": 16, "failed": 0, "total": 30},
-        "linux-py3.13": {"passed": 14, "skipped": 16, "failed": 0, "total": 30},
-        "macos-py3.12": {"passed": 9, "skipped": 21, "failed": 0, "total": 30},
-        "macos-py3.13": {"passed": 9, "skipped": 21, "failed": 0, "total": 30},
+        "linux-py3.12": {"passed": 15, "skipped": 23, "failed": 0, "total": 38},
+        "linux-py3.13": {"passed": 15, "skipped": 23, "failed": 0, "total": 38},
+        "macos-py3.12": {"passed": 9, "skipped": 29, "failed": 0, "total": 38},
+        "macos-py3.13": {"passed": 9, "skipped": 29, "failed": 0, "total": 38},
     }
+
+
+def test_suite_rejects_wrong_bubblewrap_skip_reason_on_macos(tmp_path: Path) -> None:
+    root, source = _suite_fixture(tmp_path)
+    node = (
+        "tests/external_sources/test_adapter_execution_sandbox.py::"
+        "test_escape_or_fork_or_output_or_network_real_output_cap"
+    )
+    report_path = next(
+        path
+        for path in root.glob("ci-suite-123-1-macos-py3.12-shard*/report.json")
+        if node in json.loads(path.read_text(encoding="utf-8"))["selected"]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    setup = next(phase for phase in report["outcomes"][node] if phase["when"] == "setup")
+    setup["skip_reason"] = "sandbox dependency unavailable"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(TerminalValidationError, match="wrong governed skip"):
+        _check_suite(root, source)
 
 
 @pytest.mark.parametrize(
@@ -1151,7 +1171,7 @@ def test_suite_aggregate_cli_is_stdlib_only_and_binds_its_actual_source(tmp_path
     aggregate = json.loads(proc.stdout)
     assert len(aggregate["reports"]) == 16
     assert aggregate["source"] == source
-    assert aggregate["totals"]["linux-py3.12"]["skipped"] == 16
+    assert aggregate["totals"]["linux-py3.12"]["skipped"] == 23
     wrong = list(command)
     wrong[-1] = "2"
     proc = subprocess.run(wrong, cwd=repo, env=env, capture_output=True, text=True)

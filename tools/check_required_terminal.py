@@ -331,6 +331,17 @@ def _expected_skips(system: str) -> dict[str, tuple[str, str]]:
             ),
         }
     )
+    sandbox = "tests/external_sources/test_adapter_execution_sandbox.py::"
+    for name in (
+        "test_escape_or_fork_or_output_or_network_fail_closed",
+        "test_escape_or_fork_or_output_or_network_timeout_no_survivor",
+        "test_escape_or_fork_or_output_or_network_real_output_cap",
+        "test_escape_or_fork_or_output_or_network_real_memory_cap",
+        "test_escape_or_fork_or_output_or_network_real_inode_n_plus_one_cap",
+        "test_escape_or_fork_or_output_or_network_real_tree_bytes_n_plus_one_cap",
+        "test_escape_or_fork_or_output_or_network_real_verified_artifact_overlay",
+    ):
+        result[sandbox + name] = ("setup", "bubblewrap is unavailable")
     if system == "linux":
         result["tests/test_launcher.py::test_launcher_darwin_unreaped_zombie_is_not_live"] = (
             "setup",
@@ -339,6 +350,11 @@ def _expected_skips(system: str) -> dict[str, tuple[str, str]]:
     if system == "macos":
         result.update(
             {
+                "tests/external_sources/test_adapter_execution_sandbox.py::"
+                "test_seccomp_filter_is_finite_and_readable": (
+                    "setup",
+                    "Linux seccomp architecture is unavailable",
+                ),
                 "tests/e2e/test_dashboard_playwright_smoke.py::"
                 "test_dashboard_pages_render_without_uncaught_js_errors": (
                     "call",

@@ -21,8 +21,20 @@ from metriplane.external_sources.execution import (
     ExternalRunSummary,
     ExternalSourceProvenanceV1,
     ExternalValidationSummary,
+    normalize_external_fixture,
     run_external_fixture,
     validate_external_fixture,
+)
+from metriplane.external_sources.sandbox import (
+    AcquisitionIdentity,
+    AdapterSandboxError,
+    SandboxLimits,
+    SandboxResult,
+    credential_empty_environment,
+    load_acquisition_allowlist,
+    require_allowlisted_acquisition,
+    run_normalization_sandbox,
+    verify_allowlisted_acquisition,
 )
 
 __all__ = [
@@ -35,12 +47,22 @@ __all__ = [
     "ExternalSourceManifestV1",
     "ExternalSourceProvenanceV1",
     "ExternalValidationSummary",
+    "AcquisitionIdentity",
+    "AdapterSandboxError",
+    "SandboxLimits",
+    "SandboxResult",
     "ValidatedExternalFixture",
     "conversion_inputs_sha256",
+    "credential_empty_environment",
     "evaluation_inputs_sha256",
     "load_external_source_manifest",
+    "load_acquisition_allowlist",
+    "normalize_external_fixture",
     "render_external_source_contract_schema",
     "run_external_fixture",
+    "run_normalization_sandbox",
+    "require_allowlisted_acquisition",
     "validate_external_fixture",
     "validate_external_fixture_bundle",
+    "verify_allowlisted_acquisition",
 ]
