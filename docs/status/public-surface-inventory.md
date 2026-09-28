@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `b22a2423b4730c8b64776ebae96540ff84d95c2c35dbaa814b3d3a4f263cf2a7`
-- Owned rows: `11343`
-- Owned rows SHA-256: `9fefb3a46cf82470c6c8fb3529f482a9c8ae41f6740a8067c81de64b48e2bf80`
+- Materialization SHA-256: `4aec903043dd2d2fce982649074f79345035fe74d69011857320551d486991ae`
+- Owned rows: `11348`
+- Owned rows SHA-256: `1753b1446314649bb326c1bfef0b2a43f9b7f71837ffb23f34e695ea81ad1c69`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
@@ -22,8 +22,8 @@
 | `model_fields` | `python_model_field` | 1589 | `a54d3e172d6f243aff14275a33ef480203c433da28faae7d7f5f3414f4dcf209` |
 | `models` | `python_model` | 262 | `7abf11d5250d50560c9a30845b18881f35ebf8f83c888df78cbbbc7d0fed1efa` |
 | `proofs` | `maintained_proof` | 322 | `cd6dcae29622d9e73dea66a214b0d52f3498bee529af968da4d8af69981fc4de` |
-| `public_api` | `python_public_api` | 2636 | `f048eccbb8d4b2a473b668245d9ce9b8189fcadd7f314a80bef76299c87d6004` |
-| `resources` | `repository_resource` | 1771 | `7afb8d40f02287df6be9b7dbc4d20e55828d828ec76978e8860c2d1ed51abf01` |
+| `public_api` | `python_public_api` | 2638 | `91a3e99f2c93d36bf2444ddc6d4eff8ee4a66c9dacf9e0726349be1a65d9b9b6` |
+| `resources` | `repository_resource` | 1774 | `042f8bde9974de06b89da8cfba0e48281dd4f093066f2507bf781f2b812f32fe` |
 | `workflows` | `workflow_declaration` | 19 | `4332f3981b11a2e0e2394ff54469a8c7232db66cd5ed8f31d48c4592018c9333` |
 
 ## Resource facets
@@ -39,14 +39,14 @@
 
 | Source identity | Count |
 |---|---:|
-| `git_entries` | 1776 |
-| `regular_blobs` | 1773 |
+| `git_entries` | 1779 |
+| `regular_blobs` | 1776 |
 | `symlink_blobs` | 3 |
 
 ## Parser census
 
 | Parser input | Count |
 |---|---:|
-| `all_python_modules` | 572 |
-| `packaged_python_modules` | 225 |
+| `all_python_modules` | 574 |
+| `packaged_python_modules` | 226 |
 | `workflow_documents` | 19 |
