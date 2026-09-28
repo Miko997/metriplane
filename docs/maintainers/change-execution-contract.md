@@ -196,6 +196,12 @@ head/base/paths, new nonce/digest uniqueness, current state/rulesets and closed
 provider readback. Expired, spent, rejected or uncertain transactions are never
 reset to unused. See [the broker contract](main-health-broker.md).
 
+The final provider seal must leave strictly more than the broker's full
+60-second merge-readiness interval and 120-second safety margin before request
+expiry. An insufficient or exactly 180-second remainder fails before durable
+reservation and App success, so normal same-head renewal remains available
+after the never-admitted request expires.
+
 ## Stop conditions
 
 Stop before an unauthorized setting mutation, tag, publication, release claim,

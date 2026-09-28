@@ -177,7 +177,7 @@ def _request() -> dict[str, Any]:
     return {
         "base_ref": "main",
         "base_sha": BASE_SHA,
-        "expires_at": "2026-08-26T12:05:00Z",
+        "expires_at": "2026-08-26T12:10:00Z",
         "head_sha": HEAD_SHA,
         "health_generation": 42,
         "nonce": "e" * 32,
@@ -196,7 +196,7 @@ def _repair_request() -> dict[str, Any]:
     return {
         "base_ref": "main",
         "base_sha": BASE_SHA,
-        "expires_at": "2026-08-26T12:05:00Z",
+        "expires_at": "2026-08-26T12:10:00Z",
         "head_sha": HEAD_SHA,
         "incident_digest": "f" * 64,
         "issue": "MET-77",
@@ -1279,7 +1279,7 @@ def test_admission_rejects_expiry_head_change_and_fork() -> None:
     with pytest.raises(broker.BrokerError, match="not currently valid"):
         broker.select_admission(
             commits=_commits(),
-            now=NOW + timedelta(minutes=6),
+            now=NOW + timedelta(minutes=11),
             pull=_pull(),
             repository=REPOSITORY,
             reviewer_permissions={"reviewer": "write"},
@@ -2233,6 +2233,7 @@ class FakeOwnerTransactionApi(FakeTransactionApi):
     def __init__(self, config: broker.BrokerConfig, behavior: str) -> None:
         super().__init__(config, behavior)
         request = _owner_request()
+        request["expires_at"] = "2026-08-26T12:10:00Z"
         request["ruleset_digests"] = broker.validate_hosted_rulesets(
             config=config,
             rulesets=_rulesets(config),
@@ -2323,6 +2324,11 @@ class FakeOwnerTransactionApi(FakeTransactionApi):
             return broker.ApiResult({}, 200, {"permission": "admin"})
         if path.endswith("/pulls/81"):
             value = {**_owner_pull(), "changed_files": 2, "commits": self.reported_commits}
+            if self.mergeable_states:
+                self.merge_readiness_calls += 1
+                mergeable_state = self.mergeable_states.pop(0)
+                value["mergeable"] = None if mergeable_state == "unknown" else True
+                value["mergeable_state"] = mergeable_state
             if self.merged:
                 value.update(
                     {
@@ -2602,7 +2608,7 @@ def test_provider_readiness_wait_has_independent_attempt_bound(
 
 def test_provider_readiness_rejects_clean_after_lease_margin(tmp_path: Path) -> None:
     service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
-    api.current_now = NOW + timedelta(minutes=3)
+    api.current_now = NOW + timedelta(minutes=8)
     api.mergeable_states = ["clean"]
 
     with pytest.raises(broker.BrokerError, match="within its lease"):
@@ -2769,6 +2775,158 @@ def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
     assert spool.request_status(request_digest) == "merged"
 
 
+@pytest.mark.parametrize("remaining_seconds", [179, 180])
+def test_owner_request_requires_full_budget_before_durable_reservation(
+    tmp_path: Path, remaining_seconds: int
+) -> None:
+    config = _config(tmp_path)
+    api = FakeOwnerTransactionApi(config, "success")
+    api.current_now = broker._timestamp(api.owner_request["expires_at"]) - timedelta(
+        seconds=remaining_seconds
+    )
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id=api.owner_check["external_id"],
+        updated_at="2026-08-26T12:00:00Z",
+    )
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=spool,
+    )
+    checks = FakeAdmissionChecks(api, spool)
+    readiness_wait_calls = 0
+    original_wait = service._wait_for_provider_merge_ready
+
+    def track_wait(*, admission: dict[str, Any], token: str) -> None:
+        nonlocal readiness_wait_calls
+        readiness_wait_calls += 1
+        original_wait(admission=admission, token=token)
+
+    service._wait_for_provider_merge_ready = track_wait  # type: ignore[method-assign]
+
+    with pytest.raises(broker.BrokerError, match="insufficient lease budget"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=api.current_now,
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    request_digest = broker.digest(api.owner_request)
+    assert spool.request_status(request_digest) is None
+    assert checks.succeeded == []
+    assert readiness_wait_calls == 0
+    assert api.merge_calls == 0
+
+
+def test_owner_request_with_more_than_full_budget_can_reserve_and_merge(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakeOwnerTransactionApi(config, "success")
+    api.current_now = broker._timestamp(api.owner_request["expires_at"]) - timedelta(seconds=181)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id=api.owner_check["external_id"],
+        updated_at="2026-08-26T12:00:00Z",
+    )
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=spool,
+    )
+    checks = FakeAdmissionChecks(api, spool)
+    readiness_wait_calls = 0
+    original_wait = service._wait_for_provider_merge_ready
+
+    def track_wait(*, admission: dict[str, Any], token: str) -> None:
+        nonlocal readiness_wait_calls
+        readiness_wait_calls += 1
+        original_wait(admission=admission, token=token)
+
+    service._wait_for_provider_merge_ready = track_wait  # type: ignore[method-assign]
+
+    proof = service._process_pull(
+        check_controller=checks,  # type: ignore[arg-type]
+        number=81,
+        provider_now=api.current_now,
+        settings_token="token",
+        state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    request_digest = broker.digest(api.owner_request)
+    assert proof is not None and proof["merge_sha"] == MERGE_SHA
+    assert checks.succeeded == [(42, HEAD_SHA, request_digest)]
+    assert spool.request_status(request_digest) == "merged"
+    assert readiness_wait_calls == 1
+    assert api.merge_calls == 1
+
+
+def test_owner_request_rechecks_budget_after_pre_reservation_readback(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakeOwnerTransactionApi(config, "success")
+    api.current_now = broker._timestamp(api.owner_request["expires_at"]) - timedelta(seconds=181)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id=api.owner_check["external_id"],
+        updated_at="2026-08-26T12:00:00Z",
+    )
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=spool,
+    )
+    checks = FakeAdmissionChecks(api, spool)
+    readiness_wait_calls = 0
+    original_guard = service._guard_owner_transaction
+    original_wait = service._wait_for_provider_merge_ready
+
+    def advance_during_guard(
+        *, admission: dict[str, Any], token: str, reserved: bool = False
+    ) -> None:
+        original_guard(admission=admission, token=token, reserved=reserved)
+        api.current_now += timedelta(seconds=1)
+
+    def track_wait(*, admission: dict[str, Any], token: str) -> None:
+        nonlocal readiness_wait_calls
+        readiness_wait_calls += 1
+        original_wait(admission=admission, token=token)
+
+    service._guard_owner_transaction = advance_during_guard  # type: ignore[method-assign]
+    service._wait_for_provider_merge_ready = track_wait  # type: ignore[method-assign]
+
+    with pytest.raises(broker.BrokerError, match="insufficient lease budget"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=api.current_now,
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    request_digest = broker.digest(api.owner_request)
+    assert spool.request_status(request_digest) is None
+    assert checks.succeeded == []
+    assert readiness_wait_calls == 0
+    assert api.merge_calls == 0
+
+
 def test_single_maintainer_review_change_during_final_context_blocks_merge(
     tmp_path: Path,
 ) -> None:
@@ -2898,7 +3056,7 @@ def test_approval_expiry_during_final_health_verification_blocks_merge(
         reconciler: broker.HealthReconciler, provider_now: datetime
     ) -> dict[str, Any]:
         verified_state = verify_current_health(reconciler, provider_now)
-        api.current_now = NOW + timedelta(minutes=6)
+        api.current_now = NOW + timedelta(minutes=11)
         return verified_state
 
     monkeypatch.setattr(broker.HealthReconciler, "verify_current_health", expire_approval)
@@ -3214,11 +3372,11 @@ def test_merged_repair_binding_retains_bounded_provider_request() -> None:
     assert binding["request_digest"] == broker.digest(_repair_request())
 
     expired = _merged_repair_pull()
-    expired["merged_at"] = "2026-08-26T12:06:00Z"
+    expired["merged_at"] = "2026-08-26T12:11:00Z"
     with pytest.raises(broker.BrokerError, match="not provider- and incident-bound"):
         broker._merged_repair_binding(
             commits=_commits(),
-            now=NOW + timedelta(minutes=7),
+            now=NOW + timedelta(minutes=12),
             pull=expired,
             repository=REPOSITORY,
             reviewer_permissions={"reviewer": "write"},

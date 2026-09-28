@@ -315,6 +315,13 @@ The broker diagnostic therefore includes the durable transaction status and
 digest so the fenced source identity can be identified without reading or
 changing the broker database.
 
+Immediately before durable reservation, the broker requires strictly more
+than the complete bounded merge-readiness interval plus its safety margin to
+remain on the selected request: 60 seconds plus 120 seconds. An insufficient
+or exactly 180-second budget fails before the `merging` row and before App
+success publication. The request therefore remains never admitted and may be
+renewed on the same qualified head under the rules above after it expires.
+
 ### Fresh metadata and staged activation
 
 At each full admission snapshot and immediately before the merge PUT, the
