@@ -67,6 +67,11 @@ def test_platform_run_path_is_resolved_only_for_returned_commands(tmp_path: Path
     sentinel = next(command for command in resolved_commands if command.id == "sentinel-demo")
     assert "--run-id" not in sentinel.command
 
+    atlas = next(command for command in resolved_commands if command.id == "atlas-demo")
+    assert str(paths.data_dir / "dashboard" / "atlas_run") in atlas.command
+    assert "configs/domain_packs/assembly_cell" not in atlas.command
+    assert "datasets/demo/atlas/assembly_cell_missing_tool.jsonl" not in atlas.command
+
 
 def test_only_path_dependent_command_is_disabled_without_home(monkeypatch):
     for name in (
@@ -85,8 +90,9 @@ def test_only_path_dependent_command_is_disabled_without_home(monkeypatch):
     replay = next(command for command in commands if command.id == "run-demo-replay")
     sentinel = next(command for command in commands if command.id == "sentinel-demo")
     doctor = next(command for command in commands if command.id == "doctor")
+    atlas = next(command for command in commands if command.id == "atlas-demo")
 
-    for command in (replay, sentinel):
+    for command in (replay, sentinel, atlas):
         assert command.enabled is False
         assert command.disabled_reason is not None
         assert "Platform paths unavailable" in command.disabled_reason

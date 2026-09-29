@@ -103,16 +103,16 @@ FAMILY_OBLIGATION = {
     "workflows": "MP2-013.OBL.WORKFLOW_JOB_DISCOVERY",
 }
 EXPECTED_FAMILY_COUNTS = {
-    "configs": 167,
-    "current_claims": 398,
+    "configs": 169,
+    "current_claims": 399,
     "examples": 172,
     "jobs": 70,
     "manifest_keys": 3938,
-    "model_fields": 1589,
-    "models": 262,
+    "model_fields": 1595,
+    "models": 263,
     "proofs": 322,
-    "public_api": 2638,
-    "resources": 1778,
+    "public_api": 2677,
+    "resources": 1833,
     "workflows": 19,
 }
 

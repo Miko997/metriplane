@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.dev/schemas/metriplane.runtime-resource-registry.v1.schema.json",
+  "title": "Metriplane runtime resource registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "owner_task", "source_roots", "entries", "interfaces"],
+  "properties": {
+    "schema_version": {"const": "metriplane.runtime-resource-registry.v1"},
+    "owner_task": {"const": "MP2-042"},
+    "source_roots": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "classification", "git_mode", "git_object", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "classification": {
+            "enum": [
+              "packaged",
+              "packaged_existing",
+              "explicit_configuration_input",
+              "explicit_site_input",
+              "source_documentation"
+            ]
+          },
+          "git_mode": {"enum": ["100644", "100755", "120000"]},
+          "git_object": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "installed_path": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "interfaces": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module", "source_path", "installed_path", "sha256"],
+        "properties": {
+          "module": {"type": "string", "pattern": "^metriplane\\.runner\\.tools\\."},
+          "source_path": {"type": "string", "pattern": "^tools/"},
+          "installed_path": {"type": "string", "pattern": "^metriplane/runner/tools/"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

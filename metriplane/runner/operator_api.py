@@ -295,6 +295,49 @@ def _check_cv2_available(python_exe: str) -> Tuple[bool, Optional[str], bool]:
         return False, None, False
 
 
+_OPERATOR_MODULE_IMPORT_PROBE = (
+    "import hashlib,hmac,importlib,pathlib,sys; "
+    "m=importlib.import_module(sys.argv[1]); "
+    "p=pathlib.Path(m.__file__).resolve(strict=True); "
+    "d=hashlib.sha256(p.read_bytes()).hexdigest(); "
+    "raise SystemExit(0 if hmac.compare_digest(d,sys.argv[2]) else 1)"
+)
+
+
+def _check_python_module_available(python_exe: str, module: str) -> bool:
+    """Require a successful import of the exact current operator-tool payload."""
+    module_name = module.rsplit(".", 1)[-1]
+    canonical_path = Path(__file__).with_name("tools") / f"{module_name}.py"
+    try:
+        expected_digest = hashlib.sha256(canonical_path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                python_exe,
+                "-c",
+                _OPERATOR_MODULE_IMPORT_PROBE,
+                module,
+                expected_digest,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+_OPERATOR_TOOL_ROUTES = {
+    ("GET", "/cameras"): "metriplane.runner.tools.list_cameras",
+    ("POST", "/calibrate"): "metriplane.runner.tools.calibrate_planar_homography",
+    ("POST", "/validate-alignment"): "metriplane.runner.tools.report_alignment",
+    ("POST", "/validate-alignment-full"): "metriplane.runner.tools.debug_alignment",
+}
+
+
 # ── OperatorAPI ────────────────────────────────────────────────────────────────
 
 
@@ -333,6 +376,16 @@ class OperatorAPI:
         """
         sub = path[len("/operator") :]  # strip /operator prefix
         try:
+            required_module = _OPERATOR_TOOL_ROUTES.get((method, sub))
+            if required_module is not None and not _check_python_module_available(
+                self._python, required_module
+            ):
+                return 503, {
+                    "error": "Selected runner Python cannot import the installed operator tool",
+                    "python_executable": self._python,
+                    "required_module": required_module,
+                    "hint": "Install this exact Metriplane distribution into the selected environment.",
+                }
             if method == "GET":
                 if sub == "/env":
                     return self._get_env()
@@ -436,6 +489,7 @@ class OperatorAPI:
         # cv2 / aruco availability via the resolved interpreter
         py_exe = self._python
         cv2_ok, cv2_ver, aruco_ok = _check_cv2_available(py_exe)
+        tools_ok = _check_python_module_available(py_exe, "metriplane.runner.tools.list_cameras")
         py_warn: Optional[str] = None
         if not cv2_ok:
             py_warn = (
@@ -455,18 +509,16 @@ class OperatorAPI:
             "cv2_available": cv2_ok,
             "cv2_version": cv2_ver,
             "aruco_available": aruco_ok,
+            "operator_tools_available": tools_ok,
             "python_warning": py_warn,
         }
 
     # ── GET /operator/cameras ──────────────────────────────────────────────────
 
     def _get_cameras(self) -> tuple[int, dict[str, Any]]:
-        script = self.repo_root / "tools" / "list_cameras.py"
-        if not script.exists():
-            return 500, {"error": "tools/list_cameras.py not found"}
         try:
             result = subprocess.run(
-                [self._python, str(script)],
+                [self._python, "-m", "metriplane.runner.tools.list_cameras"],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -918,10 +970,10 @@ class OperatorAPI:
             return 400, {"error": cam_err}
 
         # Build safe command (no shell=True, no user data in shell-sensitive positions)
-        script = self.repo_root / "tools" / "calibrate_planar_homography.py"
         command = [
             py_exe,
-            str(script),
+            "-m",
+            "metriplane.runner.tools.calibrate_planar_homography",
             "--cam",
             cv2_cam,
             "--anchors",
@@ -994,10 +1046,6 @@ class OperatorAPI:
 
         # Use report_alignment.py — intrinsics are optional (default=None) there.
         # This is the planar-only path: works after homography calibration only.
-        script = self.repo_root / "tools" / "report_alignment.py"
-        if not script.exists():
-            return 500, {"error": "tools/report_alignment.py not found in repo"}
-
         cv2_cam0, err0 = _resolve_cv2_index(cam0_path)
         cv2_cam1, err1 = _resolve_cv2_index(cam1_path)
         if err0:
@@ -1008,7 +1056,8 @@ class OperatorAPI:
         assert cv2_cam0 is not None and cv2_cam1 is not None
         command: list[str] = [
             self._python,
-            str(script),
+            "-m",
+            "metriplane.runner.tools.report_alignment",
             "--cam0",
             cv2_cam0,
             "--cam1",
@@ -1100,10 +1149,6 @@ class OperatorAPI:
                 "can_skip": True,
             }
 
-        script = self.repo_root / "tools" / "debug_alignment.py"
-        if not script.exists():
-            return 500, {"error": "tools/debug_alignment.py not found"}
-
         cv2_cam0, err0 = _resolve_cv2_index(cam0_path)
         cv2_cam1, err1 = _resolve_cv2_index(cam1_path)
         if err0:
@@ -1113,7 +1158,8 @@ class OperatorAPI:
 
         command = [
             self._python,
-            str(script),
+            "-m",
+            "metriplane.runner.tools.debug_alignment",
             "--cam0",
             cv2_cam0,
             "--cam1",
@@ -1233,6 +1279,17 @@ class OperatorAPI:
 
         if report_type not in ("zones", "id-stability"):
             return 400, {"error": "type must be 'zones' or 'id-stability'"}
+        module = (
+            "metriplane.runner.tools.zones_report_jsonl"
+            if report_type == "zones"
+            else "metriplane.runner.tools.analyze_id_stability_jsonl"
+        )
+        if not _check_python_module_available(self._python, module):
+            return 503, {
+                "error": "Selected runner Python cannot import the installed operator tool",
+                "python_executable": self._python,
+                "required_module": module,
+            }
 
         runs_root = self._runs_root()
         # Validate prefix
@@ -1256,13 +1313,10 @@ class OperatorAPI:
                     if profile and not _valid_name(profile):
                         return 400, {"error": "Invalid profile name"}
 
-                    script = self.repo_root / "tools" / "zones_report_jsonl.py"
-                    if not script.exists():
-                        return 500, {"error": "tools/zones_report_jsonl.py not found"}
-
                     command = [
                         self._python,
-                        str(script),
+                        "-m",
+                        "metriplane.runner.tools.zones_report_jsonl",
                         session_argument,
                         "--out",
                         str(evidence_dir),
@@ -1276,21 +1330,18 @@ class OperatorAPI:
                             command += ["--zones", str(zones_yaml)]
 
                 else:  # id-stability
-                    script = self.repo_root / "tools" / "analyze_id_stability_jsonl.py"
-                    if not script.exists():
-                        return 500, {"error": "tools/analyze_id_stability_jsonl.py not found"}
-
                     out_csv = evidence_dir / f"{out_prefix}_id_stability.csv"
                     command = [
                         self._python,
-                        str(script),
+                        "-m",
+                        "metriplane.runner.tools.analyze_id_stability_jsonl",
                         session_argument,
                         "--out",
                         str(out_csv),
                     ]
 
                 display_command = command.copy()
-                display_command[2] = str(session.display_path)
+                display_command[3] = str(session.display_path)
                 command_display = " ".join(str(x) for x in display_command)
                 try:
                     job_id = self.executor.execute(

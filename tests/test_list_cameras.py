@@ -15,17 +15,11 @@ All tests mock hardware so they run on any CI machine.
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
 from typing import Dict
 from unittest.mock import patch
 
-
-# ── import tools/list_cameras.py without requiring a package ──────────────────
-_TOOL_PATH = Path(__file__).parent.parent / "tools" / "list_cameras.py"
-_spec = importlib.util.spec_from_file_location("list_cameras", _TOOL_PATH)
-_mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
-_spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+from metriplane.resources import read_bytes
+from metriplane.runner.tools import list_cameras as _mod
 
 # Expose module-level names for convenience
 _is_capture_capable = _mod._is_capture_capable
@@ -369,8 +363,7 @@ class TestOperatorJsRenderingGuard:
     """
 
     def _load_operator_js(self) -> str:
-        p = Path(__file__).parent.parent / "web" / "dashboard" / "operator.js"
-        return p.read_text()
+        return read_bytes("dashboard/operator.js").decode("utf-8")
 
     def test_recommended_for_operator_read(self):
         """operator.js must read recommended_for_operator from camera data."""

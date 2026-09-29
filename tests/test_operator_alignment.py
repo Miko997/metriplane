@@ -125,16 +125,16 @@ class TestValidateAlignment:
         assert "cam0" in resp["error"].lower()
         api.executor.execute.assert_not_called()
 
-    def test_missing_report_alignment_script_returns_500(self, tmp_path):
+    def test_alignment_uses_installed_report_module_without_repo_script(self, tmp_path):
         api = _make_api(tmp_path)
         _minimal_profile(tmp_path)
         # Do NOT create tools/report_alignment.py
 
         status, resp = api._validate_alignment({"profile": "local_test", "cam0": "0", "cam1": "2"})
 
-        assert status == 500
-        assert "report_alignment.py" in resp["error"]
-        api.executor.execute.assert_not_called()
+        assert status == 200
+        command = api.executor.execute.call_args.kwargs["command"]
+        assert command[1:3] == ["-m", "metriplane.runner.tools.report_alignment"]
 
 
 # ── validate-alignment-full (debug, intrinsics required) ────────────────────
@@ -195,7 +195,7 @@ class TestFullAlignmentCheck:
         assert resp["mode"] == "full-undistort"
         cmd = api.executor.execute.call_args[1]["command"]
         cmd_str = " ".join(str(x) for x in cmd)
-        assert "debug_alignment.py" in cmd_str
+        assert "metriplane.runner.tools.debug_alignment" in cmd_str
         assert "--intrinsics-cam0" in cmd_str
         assert "--intrinsics-cam1" in cmd_str
 

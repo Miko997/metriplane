@@ -14,51 +14,9 @@ from pathlib import Path, PurePosixPath
 from socketserver import TCPServer
 from urllib.parse import unquote, urlsplit
 
+from metriplane.resources import DASHBOARD_RESOURCES, dashboard_directory
 
-DASHBOARD_ASSETS = frozenset(
-    {
-        "app.js",
-        "atlas.html",
-        "benchmarks.html",
-        "command_center.css",
-        "command_center.html",
-        "command_center.js",
-        "command_center_data.json",
-        "command_center_live.html",
-        "command_center_live.js",
-        "help.html",
-        "icons/metriplane-api-bridge.svg",
-        "icons/metriplane-calibration-target.svg",
-        "icons/metriplane-camera-video.svg",
-        "icons/metriplane-coordinate-grid.svg",
-        "icons/metriplane-dashboard-metrics.svg",
-        "icons/metriplane-detect-markers.svg",
-        "icons/metriplane-floor-state.svg",
-        "icons/metriplane-health-monitor.svg",
-        "icons/metriplane-homography-calibration.svg",
-        "icons/metriplane-integration-ready.svg",
-        "icons/metriplane-metric-xy.svg",
-        "icons/metriplane-multi-camera-fusion.svg",
-        "icons/metriplane-object-tracking.svg",
-        "icons/metriplane-observability-health.svg",
-        "icons/metriplane-replay-logs.svg",
-        "icons/metriplane-schema-first.svg",
-        "icons/metriplane-state-stream.svg",
-        "icons/metriplane-websocket-json.svg",
-        "icons/metriplane-zones-events.svg",
-        "index.html",
-        "integrations.html",
-        "mp_nav.js",
-        "operator.html",
-        "operator.js",
-        "product_actions.js",
-        "report.html",
-        "run.html",
-        "runtime.html",
-        "settings.html",
-        "style.css",
-    }
-)
+DASHBOARD_ASSETS = frozenset(DASHBOARD_RESOURCES)
 
 
 class DashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -66,6 +24,16 @@ class DashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     server_version = "MetriplaneLocal"
     sys_version = ""
+
+    def __init__(
+        self,
+        *args: object,
+        generated_directory: str | None = None,
+        **kwargs: object,
+    ) -> None:
+        self.generated_directory = generated_directory
+        self._serving_generated_artifact = False
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
 
     def _asset_path(self) -> str | None:
         path = unquote(urlsplit(self.path).path)
@@ -82,18 +50,19 @@ class DashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             or any(part in {"", ".", ".."} for part in pure_path.parts)
         ):
             return None
-        root = Path(self.directory).resolve()
-        candidate = root.joinpath(*pure_path.parts)
-        current = root
+        if self.generated_directory is None:
+            return None
+        generated_root = Path(self.generated_directory).resolve()
+        candidate = generated_root.joinpath(*pure_path.parts[1:])
+        current = generated_root
         try:
-            for part in pure_path.parts:
+            for part in pure_path.parts[1:]:
                 current /= part
                 if current.is_symlink():
                     return None
             resolved = candidate.resolve(strict=True)
         except OSError:
             return None
-        generated_root = root / "atlas_run"
         if not resolved.is_relative_to(generated_root) or not resolved.is_file():
             return None
         return f"/{relative}"
@@ -103,12 +72,25 @@ class DashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         if asset_path is None:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return None
+        if asset_path.startswith("/atlas_run/"):
+            assert self.generated_directory is not None
+            original_directory = self.directory
+            original_path = self.path
+            self.directory = self.generated_directory
+            self.path = asset_path.removeprefix("/atlas_run")
+            self._serving_generated_artifact = True
+            try:
+                return super().send_head()
+            finally:
+                self.directory = original_directory
+                self.path = original_path
+                self._serving_generated_artifact = False
         self.path = asset_path
         return super().send_head()
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
-        generated_artifact = urlsplit(self.path).path.startswith("/atlas_run/")
+        generated_artifact = self._serving_generated_artifact
         content_security_policy = (
             "sandbox allow-downloads; default-src 'none'; img-src 'self' data:; "
             "style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; "
@@ -159,21 +141,34 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Serve the local Metriplane dashboard")
     parser.add_argument("port", type=int)
     parser.add_argument("--bind", default="127.0.0.1")
-    parser.add_argument("--directory", default=".")
+    parser.add_argument("--directory", default=None)
+    parser.add_argument("--generated-directory", default=None)
     args = parser.parse_args(argv)
 
     if not _is_numeric_loopback(args.bind):
         parser.error("--bind must be a numeric IPv4 loopback address such as 127.0.0.1")
 
-    handler = partial(DashboardHTTPRequestHandler, directory=args.directory)
-    with LocalHTTPServer((args.bind, args.port), handler) as server:
-        print(
-            f"Serving Metriplane dashboard on http://{args.bind}:{server.server_port}/", flush=True
+    def serve(directory: Path) -> None:
+        handler = partial(
+            DashboardHTTPRequestHandler,
+            directory=str(directory),
+            generated_directory=args.generated_directory,
         )
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+        with LocalHTTPServer((args.bind, args.port), handler) as server:
+            print(
+                f"Serving Metriplane dashboard on http://{args.bind}:{server.server_port}/",
+                flush=True,
+            )
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                pass
+
+    if args.directory is not None:
+        serve(Path(args.directory))
+    else:
+        with dashboard_directory() as directory:
+            serve(directory)
     return 0
 
 

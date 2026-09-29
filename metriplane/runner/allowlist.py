@@ -20,7 +20,8 @@ from metriplane.paths import (
 )
 
 _RUNS_DIR_TOKEN = "{metriplane_platform_runs_dir}"
-_ATLAS_UI_RUN = "web/dashboard/atlas_run"
+_DATA_DIR_TOKEN = "{metriplane_platform_data_dir}"
+_ATLAS_UI_RUN = f"{_DATA_DIR_TOKEN}/dashboard/atlas_run"
 _ATLAS_UI_BUNDLE_DIR = f"{_ATLAS_UI_RUN}/evidence_bundles/INC-0001"
 _ATLAS_UI_BUNDLE = f"{_ATLAS_UI_RUN}/evidence_bundles/INC-0001.zip"
 _ATLAS_UI_REGRESSION = f"{_ATLAS_UI_RUN}/regression_tests/INC-0001.yaml"
@@ -172,7 +173,7 @@ ALLOWLIST: List[AllowedCommand] = [
         id="list-cameras",
         title="List Cameras",
         description="Discover available v4l2 camera devices (JSON output)",
-        command=[_PYTHON, "tools/list_cameras.py"],
+        command=[_PYTHON, "-m", "metriplane.runner.tools.list_cameras"],
         enabled=True,
         disabled_reason=None,
         timeout_s=20,
@@ -211,7 +212,6 @@ ALLOWLIST: List[AllowedCommand] = [
             "metriplane.cli",
             "atlas",
             "validate-pack",
-            "configs/domain_packs/assembly_cell",
         ],
         enabled=True,
         disabled_reason=None,
@@ -227,15 +227,10 @@ ALLOWLIST: List[AllowedCommand] = [
             "-m",
             "metriplane.cli",
             "atlas",
-            "run",
-            "--session-jsonl",
-            "datasets/demo/atlas/assembly_cell_missing_tool.jsonl",
-            "--pack",
-            "configs/domain_packs/assembly_cell",
+            "run-pack",
+            "assembly_cell",
             "--out",
             _ATLAS_UI_RUN,
-            "--run-id",
-            "metriplane_sample",
         ],
         enabled=True,
         disabled_reason=None,
@@ -473,7 +468,7 @@ ALLOWLIST: List[AllowedCommand] = [
 
 
 def _resolve_command(command: AllowedCommand, paths: PlatformPaths | None) -> AllowedCommand:
-    if _RUNS_DIR_TOKEN not in command.command:
+    if not any(_RUNS_DIR_TOKEN in part or _DATA_DIR_TOKEN in part for part in command.command):
         return command
     try:
         resolved_paths = paths if paths is not None else resolve_platform_paths()
@@ -486,7 +481,12 @@ def _resolve_command(command: AllowedCommand, paths: PlatformPaths | None) -> Al
             enabled=False,
             disabled_reason=f"Platform paths unavailable: {exc}",
         )
-    argv = [str(runs_dir) if part == _RUNS_DIR_TOKEN else part for part in command.command]
+    argv = [
+        part.replace(_RUNS_DIR_TOKEN, str(runs_dir)).replace(
+            _DATA_DIR_TOKEN, str(resolved_paths.data_dir)
+        )
+        for part in command.command
+    ]
     return replace(command, command=argv)
 
 

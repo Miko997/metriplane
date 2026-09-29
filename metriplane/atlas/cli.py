@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from contextlib import ExitStack
+from importlib import resources
 from pathlib import Path
 
 from metriplane.strict_parsing import load_json_path
@@ -15,7 +17,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     validate = sub.add_parser("validate-pack", help="Validate an Atlas domain pack")
-    validate.add_argument("pack")
+    validate.add_argument(
+        "pack", nargs="?", help="Domain-pack path (default: bundled assembly_cell)"
+    )
 
     run = sub.add_parser("run", help="Run Atlas Cell Black Box over a replay session")
     run.add_argument("--session-jsonl", required=True)
@@ -43,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     bundle_verify = bundle_sub.add_parser("verify")
     bundle_verify.add_argument("bundle")
 
-    replay = sub.add_parser("replay-bundle", help="Verify that a bundle has a replayable state segment")
+    replay = sub.add_parser(
+        "replay-bundle", help="Verify that a bundle has a replayable state segment"
+    )
     replay.add_argument("bundle")
 
     regression = sub.add_parser("regression", help="Create Atlas physical regression specs")
@@ -74,11 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     query_events.add_argument("--json", action="store_true")
     query_saved = query_sub.add_parser("saved")
     query_saved.add_argument("--run-dir", required=True)
-    query_saved.add_argument("--query-file", default="configs/atlas/saved_queries.yaml")
+    query_saved.add_argument("--query-file", default=None)
     query_saved.add_argument("--query-id", required=True)
     query_saved.add_argument("--json", action="store_true")
     query_list = query_sub.add_parser("list-saved")
-    query_list.add_argument("--query-file", default="configs/atlas/saved_queries.yaml")
+    query_list.add_argument("--query-file", default=None)
     query_index = query_sub.add_parser("index")
     query_index.add_argument("--root", required=True)
 
@@ -88,7 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     dashboard_build.add_argument("--run-dir", required=True)
     dashboard_build.add_argument("--out", default=None)
 
-    twinverify = sub.add_parser("twinverify", help="Export Atlas replay artifacts for TwinVerify/USD workflows")
+    twinverify = sub.add_parser(
+        "twinverify", help="Export Atlas replay artifacts for TwinVerify/USD workflows"
+    )
     twinverify_sub = twinverify.add_subparsers(dest="twinverify_cmd", required=True)
     twinverify_export = twinverify_sub.add_parser("export-usd")
     twinverify_export.add_argument("--run-dir", required=True)
@@ -180,46 +188,66 @@ def main(argv: list[str] | None = None) -> int:
     bench_sub = bench.add_subparsers(dest="bench_cmd", required=True)
     bench_core = bench_sub.add_parser("core")
     bench_core.add_argument("--out", required=True)
-    bench_core.add_argument("--session-jsonl", default="datasets/demo/atlas/assembly_cell_missing_tool.jsonl")
-    bench_core.add_argument("--pack", default="configs/domain_packs/assembly_cell")
+    bench_core.add_argument("--session-jsonl", default=None)
+    bench_core.add_argument("--pack", default=None)
 
     args = parser.parse_args(argv)
 
     try:
         if args.cmd == "validate-pack":
             from metriplane.atlas.domain_packs import validate_domain_pack
-            errors = validate_domain_pack(args.pack)
+            from metriplane.demo import bundled_inputs
+
+            with ExitStack() as stack:
+                if args.pack is None:
+                    _session, pack = stack.enter_context(bundled_inputs())
+                else:
+                    pack = Path(args.pack)
+                errors = validate_domain_pack(pack)
             if errors:
                 for error in errors:
                     print(f"ERROR: {error}")
                 return 2
-            print(f"PASS {args.pack}")
+            print(f"PASS {pack}")
             return 0
 
         if args.cmd == "run":
             from metriplane.atlas.runtime import run_atlas
-            manifest = run_atlas(args.session_jsonl, args.pack, args.out, args.run_id, overwrite=args.overwrite)
-            print(f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}")
+
+            manifest = run_atlas(
+                args.session_jsonl, args.pack, args.out, args.run_id, overwrite=args.overwrite
+            )
+            print(
+                f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}"
+            )
             print(f"report: {Path(args.out) / manifest.artifacts['cell_truth_report_html']}")
             return 0
 
         if args.cmd == "run-pack":
-            if args.pack_name != "assembly_cell":
-                pack = Path("configs/domain_packs") / args.pack_name
-            else:
-                pack = Path("configs/domain_packs/assembly_cell")
-            if args.session_jsonl:
-                session = args.session_jsonl
-            elif args.pack_name == "assembly_cell":
-                session = "datasets/demo/atlas/assembly_cell_missing_tool.jsonl"
-            else:
-                raise ValueError(
-                    "--session-jsonl is required for non-assembly domain packs; "
-                    "the assembly demo session is not valid for this pack"
-                )
             from metriplane.atlas.runtime import run_atlas
-            manifest = run_atlas(session, pack, args.out, run_id=f"{args.pack_name}_demo", overwrite=args.overwrite)
-            print(f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}")
+            from metriplane.demo import bundled_inputs
+
+            with ExitStack() as stack:
+                if args.pack_name == "assembly_cell":
+                    bundled_session, pack = stack.enter_context(bundled_inputs())
+                    session = Path(args.session_jsonl) if args.session_jsonl else bundled_session
+                else:
+                    pack = Path("configs/domain_packs") / args.pack_name
+                    if not args.session_jsonl:
+                        raise ValueError(
+                            "--session-jsonl is required for non-assembly domain packs"
+                        )
+                    session = Path(args.session_jsonl)
+                manifest = run_atlas(
+                    session,
+                    pack,
+                    args.out,
+                    run_id=f"{args.pack_name}_demo",
+                    overwrite=args.overwrite,
+                )
+            print(
+                f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}"
+            )
             print(f"report: {Path(args.out) / manifest.artifacts['cell_truth_report_html']}")
             return 0
 
@@ -233,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "bundle":
             from metriplane.atlas.bundles import export_bundle, verify_bundle
+
             if args.bundle_cmd == "export":
                 path = export_bundle(
                     args.run_dir,
@@ -248,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "replay-bundle":
             from metriplane.atlas.bundles import verify_bundle
+
             result = verify_bundle(args.bundle)
             if not result["pass"]:
                 print(json.dumps(result, indent=2, sort_keys=True))
@@ -257,12 +287,14 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "regression":
             from metriplane.atlas.regression import create_regression_from_bundle
+
             spec = create_regression_from_bundle(args.bundle, args.out)
             print(f"wrote {args.out} ({spec.test_id})")
             return 0
 
         if args.cmd == "test":
             from metriplane.atlas.regression import run_regression
+
             result = run_regression(args.spec)
             if args.json:
                 print(json.dumps(result, indent=2, sort_keys=True))
@@ -276,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
             from metriplane.archive_safety import staged_path
             from metriplane.atlas.models import AtlasIncident
             from metriplane.atlas.training import training_case_from_incident, write_training_case
+
             bundle_path = Path(args.bundle)
             with staged_path(bundle_path) as bundle_root:
                 incident_path = bundle_root / "incident.json"
@@ -286,93 +319,156 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.cmd == "query":
-            from metriplane.atlas.query import explain_query, index_runs, query_run_events, run_saved_query
+            from metriplane.atlas.query import (
+                explain_query,
+                index_runs,
+                query_run_events,
+                run_saved_query,
+            )
+
             if args.query_cmd == "events":
-                rows = query_run_events(args.run_dir, args.asset, args.zone, args.station, args.step, args.type)
+                rows = query_run_events(
+                    args.run_dir, args.asset, args.zone, args.station, args.step, args.type
+                )
                 if args.json:
                     print(json.dumps(rows, indent=2, sort_keys=True))
                 else:
                     for row in rows:
-                        print(f"{row['event_id']} {row['event_type']} {row.get('asset_id')} {row['message']}")
+                        print(
+                            f"{row['event_id']} {row['event_type']} {row.get('asset_id')} {row['message']}"
+                        )
                 return 0
             if args.query_cmd == "saved":
-                rows = run_saved_query(args.run_dir, args.query_file, args.query_id)
+                with ExitStack() as stack:
+                    query_file = args.query_file
+                    if query_file is None:
+                        query_file = stack.enter_context(
+                            resources.as_file(
+                                resources.files("metriplane.resources").joinpath(
+                                    "configs", "atlas", "saved_queries.yaml"
+                                )
+                            )
+                        )
+                    rows = run_saved_query(args.run_dir, query_file, args.query_id)
                 if args.json:
                     print(json.dumps(rows, indent=2, sort_keys=True))
                 else:
                     for row in rows:
-                        print(f"{row['event_id']} {row['event_type']} {row.get('asset_id')} {row['message']}")
+                        print(
+                            f"{row['event_id']} {row['event_type']} {row.get('asset_id')} {row['message']}"
+                        )
                 return 0
             if args.query_cmd == "list-saved":
-                print(json.dumps(explain_query(args.query_file), indent=2, sort_keys=True))
+                with ExitStack() as stack:
+                    query_file = args.query_file
+                    if query_file is None:
+                        query_file = stack.enter_context(
+                            resources.as_file(
+                                resources.files("metriplane.resources").joinpath(
+                                    "configs", "atlas", "saved_queries.yaml"
+                                )
+                            )
+                        )
+                    print(json.dumps(explain_query(query_file), indent=2, sort_keys=True))
                 return 0
             print(json.dumps(index_runs(args.root), indent=2, sort_keys=True))
             return 0
 
         if args.cmd == "dashboard":
             from metriplane.atlas.dashboard import build_dashboard
+
             path = build_dashboard(args.run_dir, args.out)
             print(path)
             return 0
 
         if args.cmd == "twinverify":
             from metriplane.atlas.usd import export_usda
+
             path = export_usda(args.run_dir, args.out)
             print(path)
             return 0
 
         if args.cmd == "lake":
             from metriplane.atlas.evidence_lake import build_lake, lake_query, trend_summary
+
             if args.lake_cmd == "build":
                 print(json.dumps(build_lake(args.root, args.db), indent=2, sort_keys=True))
                 return 0
             if args.lake_cmd == "query":
-                print(json.dumps(lake_query(args.db, args.table, args.asset, args.type, args.cell), indent=2, sort_keys=True))
+                print(
+                    json.dumps(
+                        lake_query(args.db, args.table, args.asset, args.type, args.cell),
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
                 return 0
             print(json.dumps(trend_summary(args.db, args.out), indent=2, sort_keys=True))
             return 0
 
         if args.cmd == "connectors":
             from metriplane.atlas.connectors import export_connectors
+
             print(json.dumps(export_connectors(args.run_dir, args.out), indent=2, sort_keys=True))
             return 0
 
         if args.cmd == "edge":
             from metriplane.atlas.edge import edge_doctor, retention_plan, write_edge_bundle
+
             if args.edge_cmd == "doctor":
                 result = edge_doctor(args.runs_root, args.min_free_mb)
                 print(json.dumps(result, indent=2, sort_keys=True))
                 return 0 if result["pass"] else 1
             if args.edge_cmd == "retention-plan":
-                print(json.dumps(retention_plan(args.runs_root, args.keep_last), indent=2, sort_keys=True))
+                print(
+                    json.dumps(
+                        retention_plan(args.runs_root, args.keep_last), indent=2, sort_keys=True
+                    )
+                )
                 return 0
             print(write_edge_bundle(args.runs_root, args.out))
             return 0
 
         if args.cmd == "multicell":
             from metriplane.atlas.multicell import compare_cells
-            print(json.dumps(compare_cells(args.root, args.out_json, args.out_md), indent=2, sort_keys=True))
+
+            print(
+                json.dumps(
+                    compare_cells(args.root, args.out_json, args.out_md), indent=2, sort_keys=True
+                )
+            )
             return 0
 
         if args.cmd == "privacy":
             from metriplane.atlas.privacy import privacy_report, pseudonymize_run
+
             if args.privacy_cmd == "report":
                 print(json.dumps(privacy_report(args.run_dir, args.out), indent=2, sort_keys=True))
                 return 0
-            print(json.dumps(
-                pseudonymize_run(args.run_dir, args.out, overwrite=args.overwrite),
-                indent=2,
-                sort_keys=True,
-            ))
+            print(
+                json.dumps(
+                    pseudonymize_run(args.run_dir, args.out, overwrite=args.overwrite),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
 
         if args.cmd == "improvement":
             from metriplane.atlas.improvement import compare_runs
-            print(json.dumps(compare_runs(args.before_run, args.after_run, args.out), indent=2, sort_keys=True))
+
+            print(
+                json.dumps(
+                    compare_runs(args.before_run, args.after_run, args.out),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
 
         if args.cmd == "protocol":
             from metriplane.atlas.protocol import compat_check, export_protocol
+
             if args.protocol_cmd == "export":
                 print(json.dumps(export_protocol(args.out), indent=2, sort_keys=True))
                 return 0
@@ -382,11 +478,13 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "pilot":
             from metriplane.atlas.pilot import create_pilot_kit
+
             print(json.dumps(create_pilot_kit(args.out), indent=2, sort_keys=True))
             return 0
 
         if args.cmd == "freeze":
             from metriplane.atlas.freeze import build_freeze, claim_audit
+
             if args.freeze_cmd == "build":
                 print(json.dumps(build_freeze(args.root, args.out), indent=2, sort_keys=True))
                 return 0
@@ -395,7 +493,13 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "bench":
             from metriplane.atlas.bench import bench_core
-            result = bench_core(args.session_jsonl, args.pack, args.out)
+            from metriplane.demo import bundled_inputs
+
+            with ExitStack() as stack:
+                bundled_session, bundled_pack = stack.enter_context(bundled_inputs())
+                session = Path(args.session_jsonl) if args.session_jsonl else bundled_session
+                pack = Path(args.pack) if args.pack else bundled_pack
+                result = bench_core(session, pack, args.out)
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0 if result["bundles_pass"] and result["regressions_pass"] else 1
     except ValueError as exc:

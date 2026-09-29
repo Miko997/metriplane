@@ -39,7 +39,16 @@ EVIDENCE_LAKE_REPAIRED_SHA256 = "90f8dcf04e8d9ada011fd8eb0c3512e03faa9eb29d77d2e
 SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
 SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
 SETUPTOOLS_PACKAGE_SHA256 = "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
-PACKAGE_FIND_SHA256 = "583ad172bf172808e1169ffc970910115d7b67598c0860757ab21abafeac1d90"
+PACKAGE_FIND_SHA256 = "7c2e0325e1b3a9e8866a3eee63dd08c844dfcab489b169cc3a328f27340ac304"
+RUNTIME_RESOURCE_PACKAGE_DATA = [
+    "configs/*.yaml",
+    "configs/atlas/*.yaml",
+    "dashboard/*.css",
+    "dashboard/*.html",
+    "dashboard/*.js",
+    "dashboard/*.json",
+    "dashboard/icons/*.svg",
+]
 PYTEST_DEV_EDGE = {"name": "pytest"}
 PYTEST_DEV_PROFILES = {
     ("8.4.2", ">=8.4,<9"): "0d68458d332d89e2a4069e4a560212e1d80d47863930e7567e4e83d9ef6187e5",
@@ -1218,6 +1227,8 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
             }
             assert "metriplane" in package_data
             assert package_data.pop("metriplane") == ["build-info.json"]
+            assert "metriplane.resources" in package_data
+            assert package_data.pop("metriplane.resources") == RUNTIME_RESOURCE_PACKAGE_DATA
             package_find = configuration["packages"]["find"]
             encoded = json.dumps(package_find, sort_keys=True, separators=(",", ":")).encode()
             assert hashlib.sha256(encoded).hexdigest() == PACKAGE_FIND_SHA256
@@ -1249,6 +1260,12 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     extra_resource = copy.deepcopy(checkout_setuptools)
     extra_resource["package-data"]["metriplane"].append("unexpected.json")
     invalid_setuptools.append(extra_resource)
+    missing_runtime_resources = copy.deepcopy(checkout_setuptools)
+    missing_runtime_resources["package-data"].pop("metriplane.resources")
+    invalid_setuptools.append(missing_runtime_resources)
+    extra_runtime_resource = copy.deepcopy(checkout_setuptools)
+    extra_runtime_resource["package-data"]["metriplane.resources"].append("dashboard/*.map")
+    invalid_setuptools.append(extra_runtime_resource)
     added_package = copy.deepcopy(checkout_setuptools)
     added_package["packages"]["find"]["include"].append("metriplane.unapproved*")
     invalid_setuptools.append(added_package)
@@ -1468,6 +1485,10 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert text.count('"build_py": "tools.release_artifacts.BoundBuildPy"') == 2
     assert text.count('"sdist": "tools.release_artifacts.BoundSdist"') == 2
     assert text.count('package_data.pop("metriplane", None)') == 2
+    assert text.count(f'"{PACKAGE_FIND_SHA256}"') == 2
+    assert text.count("RUNTIME_RESOURCE_PACKAGE_DATA = [") == 2
+    assert text.count('package_data.pop("metriplane.resources", None)') == 2
+    assert text.count("checkout runtime-resource package data differs") == 2
     assert text.count('metadata.pop("requires-dev")') == 2
     assert text.count(f'"{SETUPTOOLS_PACKAGE_SHA256}"') == 2
     for package_sha256 in set(PYTEST_DEV_PROFILES.values()):
