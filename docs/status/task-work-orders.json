@@ -8159,19 +8159,27 @@
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "read_only_resolver_argv": [
               [
-                "rg",
-                "--files",
-                "schemas"
+                "git",
+                "ls-tree",
+                "-r",
+                "--full-tree",
+                "HEAD",
+                "--",
+                "web"
               ],
               [
-                "rg",
+                "git",
+                "grep",
                 "-n",
                 "-i",
-                "mp2\\-042|package|runtime|resource|require|explicit|input|packages",
-                "schemas"
+                "-E",
+                "web/dashboard|dashboard_assets|dashboard",
+                "HEAD",
+                "--",
+                "."
               ]
             ],
-            "expected_resolution": "one canonical owner plus all consumers; CREATE additionally requires zero conflicting owner and one reviewed exact destination",
+            "expected_resolution": "enumerate the exact tracked web tree and every consumer; MP2-012 is canonical for UI behavior and page semantics, while MP2-013 inventory/public-resource rows are projections and not a competing file-ownership grant; CREATE additionally requires zero conflicting owner and one reviewed exact destination",
             "evidence_output": "build/work-orders/MP2-042/<base-sha>/<materialization-id>/resolved-anchors.json",
           "stop_rule": "missing baseline-declared authority, zero owner for a read/consumer anchor, multiple competing authorities, an undeclared or ambiguous CREATE destination, an unexpanded grouped resolver, or a path outside the declared boundary => BLOCKED_NOT_READY; only the same row-owned planned output proven absent with no baseline/inventory/compatibility owner may materialize CREATE under catalog invariants"
           },
@@ -8180,19 +8188,27 @@
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "read_only_resolver_argv": [
               [
-                "rg",
-                "--files",
-                "schemas"
+                "git",
+                "ls-tree",
+                "-r",
+                "--full-tree",
+                "HEAD",
+                "--",
+                "configs"
               ],
               [
-                "rg",
+                "git",
+                "grep",
                 "-n",
                 "-i",
-                "mp2\\-042|package|runtime|resource|require|explicit|input|packages",
-                "schemas"
+                "-E",
+                "configs/|config(_dir|uration)?|--config",
+                "HEAD",
+                "--",
+                "."
               ]
             ],
-            "expected_resolution": "one canonical owner plus all consumers; CREATE additionally requires zero conflicting owner and one reviewed exact destination",
+            "expected_resolution": "enumerate the exact tracked configs tree, classify each runtime read as packaged immutable data or explicit caller/workspace input, and bind every consumer; CREATE additionally requires zero conflicting owner and one reviewed exact destination",
             "evidence_output": "build/work-orders/MP2-042/<base-sha>/<materialization-id>/resolved-anchors.json",
           "stop_rule": "missing baseline-declared authority, zero owner for a read/consumer anchor, multiple competing authorities, an undeclared or ambiguous CREATE destination, an unexpanded grouped resolver, or a path outside the declared boundary => BLOCKED_NOT_READY; only the same row-owned planned output proven absent with no baseline/inventory/compatibility owner may materialize CREATE under catalog invariants"
           },
@@ -8201,19 +8217,27 @@
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "read_only_resolver_argv": [
               [
-                "rg",
-                "--files",
-                "schemas"
+                "git",
+                "ls-tree",
+                "-r",
+                "--full-tree",
+                "HEAD",
+                "--",
+                "calib"
               ],
               [
-                "rg",
+                "git",
+                "grep",
                 "-n",
                 "-i",
-                "mp2\\-042|package|runtime|resource|require|explicit|input|packages",
-                "schemas"
+                "-E",
+                "calib/|calib_root|active_profile|--profile",
+                "HEAD",
+                "--",
+                "."
               ]
             ],
-            "expected_resolution": "one canonical owner plus all consumers; CREATE additionally requires zero conflicting owner and one reviewed exact destination",
+            "expected_resolution": "enumerate the exact tracked calibration tree, including Git modes and symlink targets, classify mutable/site calibration as explicit input rather than packaged defaults, and bind every consumer; CREATE additionally requires zero conflicting owner and one reviewed exact destination",
             "evidence_output": "build/work-orders/MP2-042/<base-sha>/<materialization-id>/resolved-anchors.json",
           "stop_rule": "missing baseline-declared authority, zero owner for a read/consumer anchor, multiple competing authorities, an undeclared or ambiguous CREATE destination, an unexpanded grouped resolver, or a path outside the declared boundary => BLOCKED_NOT_READY; only the same row-owned planned output proven absent with no baseline/inventory/compatibility owner may materialize CREATE under catalog invariants"
           }

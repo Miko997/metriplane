@@ -102,3 +102,42 @@ def test_v050_rows_apply_owner_scoped_human_review_policy_only() -> None:
             row["required_role"] for row in tasks[task_id]["manual_external_irreversible_actions"]
         }
         assert required_role in roles
+
+
+def test_mp2_042_resolvers_bind_the_declared_runtime_trees() -> None:
+    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    task = next(row for row in catalog["tasks"] if row["task_id"] == "MP2-042")
+    anchors = {row["locator"]: row for row in task["ownership"]["start_anchors"]}
+
+    patterns = {
+        "web/": "web/dashboard|dashboard_assets|dashboard",
+        "configs/": "configs/|config(_dir|uration)?|--config",
+        "calib/": "calib/|calib_root|active_profile|--profile",
+    }
+    for locator, tree in (("web/", "web"), ("configs/", "configs"), ("calib/", "calib")):
+        resolver = anchors[locator]["read_only_resolver_argv"]
+        assert resolver[0] == [
+            "git",
+            "ls-tree",
+            "-r",
+            "--full-tree",
+            "HEAD",
+            "--",
+            tree,
+        ]
+        assert "schemas" not in resolver[0]
+        assert resolver[1] == [
+            "git",
+            "grep",
+            "-n",
+            "-i",
+            "-E",
+            patterns[locator],
+            "HEAD",
+            "--",
+            ".",
+        ]
+
+    ownership = anchors["web/"]["expected_resolution"]
+    assert "MP2-012 is canonical for UI behavior and page semantics" in ownership
+    assert "MP2-013 inventory/public-resource rows are projections" in ownership
