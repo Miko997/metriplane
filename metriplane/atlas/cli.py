@@ -30,6 +30,11 @@ def main(argv: list[str] | None = None) -> int:
 
     run_pack = sub.add_parser("run-pack", help="Run a named checked-in domain pack")
     run_pack.add_argument("pack_name")
+    run_pack.add_argument(
+        "--pack-root",
+        default=None,
+        help="Explicit parent directory for non-bundled domain packs",
+    )
     run_pack.add_argument("--out", required=True)
     run_pack.add_argument("--session-jsonl", default=None)
     run_pack.add_argument("--overwrite", action="store_true")
@@ -179,10 +184,10 @@ def main(argv: list[str] | None = None) -> int:
     freeze = sub.add_parser("freeze", help="Build Atlas evidence-freeze artifacts")
     freeze_sub = freeze.add_subparsers(dest="freeze_cmd", required=True)
     freeze_build = freeze_sub.add_parser("build")
-    freeze_build.add_argument("--root", default=".")
+    freeze_build.add_argument("--root", required=True)
     freeze_build.add_argument("--out", required=True)
     freeze_audit = freeze_sub.add_parser("audit")
-    freeze_audit.add_argument("--root", default=".")
+    freeze_audit.add_argument("--root", required=True)
 
     bench = sub.add_parser("bench", help="Run Atlas benchmarks")
     bench_sub = bench.add_subparsers(dest="bench_cmd", required=True)
@@ -232,7 +237,9 @@ def main(argv: list[str] | None = None) -> int:
                     bundled_session, pack = stack.enter_context(bundled_inputs())
                     session = Path(args.session_jsonl) if args.session_jsonl else bundled_session
                 else:
-                    pack = Path("configs/domain_packs") / args.pack_name
+                    if args.pack_root is None:
+                        raise ValueError("--pack-root is required for non-assembly domain packs")
+                    pack = Path(args.pack_root) / args.pack_name
                     if not args.session_jsonl:
                         raise ValueError(
                             "--session-jsonl is required for non-assembly domain packs"

@@ -203,9 +203,9 @@ def test_production_census_is_exact_and_family_closed(
     assert dict(production_discovery.family_counts) == scanner.EXPECTED_FAMILY_COUNTS
     assert len(production_discovery.rows) == 11_457
     assert sum(production_discovery.family_counts.values()) == 11_457
-    assert production_discovery.family_counts["public_api"] == 2_677
+    assert production_discovery.family_counts["public_api"] == 2_676
     assert production_discovery.family_counts["manifest_keys"] == 3_938
-    assert production_discovery.family_counts["resources"] == 1_833
+    assert production_discovery.family_counts["resources"] == 1_834
 
 
 def test_two_discovery_runs_are_byte_deterministic(
@@ -409,7 +409,7 @@ def test_direct_script_loads_sibling_kernel_without_pythonpath() -> None:
     assert completed.returncode == 0, completed.stderr
     summary = json.loads(completed.stdout)
     assert summary["rows"] == 11_457
-    assert summary["public_api"] == 2_677
+    assert summary["public_api"] == 2_676
     assert summary["manifest_keys"] == 3_938
 
 
