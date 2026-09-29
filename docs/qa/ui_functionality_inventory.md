@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `64fb024b03bf8d123f1dad3fb5ca96d24dee3af75e480747c26bed50bb9a8648`
+Canonical projection SHA-256: `0c6cdc496a8a6f3c80f65bc6974e3fb131def1a51cdd657b042fdc0ec4dc25c0`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 243 |
+| actions | 244 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -280,6 +280,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.check_pr_contract | tool | Check Pr Contract | python tools/check_pr_contract.py |
 | tool.check_release_delta | tool | Check Release Delta | python tools/check_release_delta.py |
 | tool.check_release_readiness | tool | Check Release Readiness | python tools/check_release_readiness.py |
+| tool.check_release_sets | tool | Check Release Sets | python tools/check_release_sets.py |
 | tool.check_repository_protection | tool | Check Repository Protection | python tools/check_repository_protection.py |
 | tool.check_required_terminal | tool | Check Required Terminal | python tools/check_required_terminal.py |
 | tool.check_ros2_adapters | tool | Check Ros2 Adapters | python tools/check_ros2_adapters.py |

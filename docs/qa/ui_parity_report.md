@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `64fb024b03bf8d123f1dad3fb5ca96d24dee3af75e480747c26bed50bb9a8648`
+Canonical projection SHA-256: `0c6cdc496a8a6f3c80f65bc6974e3fb131def1a51cdd657b042fdc0ec4dc25c0`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 243 |
+| total_discovered_features | 244 |
 | ui_full | 59 |
 | ui_partial | 2 |
 | ui_copy_command_only | 10 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 158 |
+| cli_only_documented | 159 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -191,6 +191,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.check_pr_contract | Check Pr Contract | tools/check_pr_contract.py | python tools/check_pr_contract.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_release_delta | Check Release Delta | tools/check_release_delta.py | python tools/check_release_delta.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_release_readiness | Check Release Readiness | tools/check_release_readiness.py | python tools/check_release_readiness.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_release_sets | Check Release Sets | tools/check_release_sets.py | python tools/check_release_sets.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_repository_protection | Check Repository Protection | tools/check_repository_protection.py | python tools/check_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_required_terminal | Check Required Terminal | tools/check_required_terminal.py | python tools/check_required_terminal.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_ros2_adapters | Check Ros2 Adapters | tools/check_ros2_adapters.py | python tools/check_ros2_adapters.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
