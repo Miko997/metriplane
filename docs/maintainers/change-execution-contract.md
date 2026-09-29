@@ -34,6 +34,10 @@ trusts only the production authority keyring committed at the exact base under
 fixture key or synthetic snapshot cannot create authority. The v1 assignment
 and work-order schemas remain read-only historical interpretation formats and
 must not be used for new `READY` evidence.
+The v2 provider snapshot stays fresh only inside its signed task lease, which
+is capped at ten provider-clock minutes; it cannot predate issuance, come from
+the future, or survive delegation expiry. Repeated broker admission seals use
+that same bounded window rather than an undocumented shorter sub-lease.
 
 Use the exact supported tool versions from `docs/maintainers/testing-policy.md`.
 Do not substitute a newer executable merely because it is on `PATH`.

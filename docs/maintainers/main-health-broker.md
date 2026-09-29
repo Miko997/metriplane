@@ -271,6 +271,14 @@ marker on the PR uses its existing human path and cannot be rescued by a
 machine request. Red-state owner-emergency admission is unchanged. No absent
 independent-human review is ever represented as PASS.
 
+The signed v2 task lease and its provider snapshot share one maximum
+ten-minute provider-clock validity window. The broker may repeat exact-base
+work-order validation throughout that live window; there is no separate
+five-minute snapshot sub-lease. Capture before issuance, future capture,
+expired task authority, or an expired merge request still fails closed at
+every admission seal, and the existing pre-reservation merge-budget guard
+still applies.
+
 This mechanism is not active merely because the code exists. Until the owner
 grant, isolated attestor, read-only Linear credential, executor key and
 protected exact-main qualification exist, the broker fails closed and the

@@ -34,6 +34,9 @@ except ImportError:
     )
 
 
+MAX_TASK_LEASE_SECONDS = 600
+
+
 def validate_delegated_task(
     delegation: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -160,12 +163,16 @@ def validate_delegated_task(
     grant_expires = parse_utc(program["expires_at"], "owner program grant expiry")
     if issued >= expires or issued < grant_issued or issued > now or expires > grant_expires:
         raise DelegationError("delegated task time interval is invalid")
-    if (expires - issued).total_seconds() > 600:
+    if (expires - issued).total_seconds() > MAX_TASK_LEASE_SECONDS:
         raise DelegationError("delegated task lease exceeds ten minutes")
     if now >= expires:
         raise DelegationNotReady("delegated task lease is expired")
     captured = parse_utc(snapshot.get("captured_at"), "provider snapshot capture time")
-    if captured > now or captured < issued or (now - captured).total_seconds() > 300:
+    if (
+        captured > now
+        or captured < issued
+        or (now - captured).total_seconds() > MAX_TASK_LEASE_SECONDS
+    ):
         raise DelegationNotReady("provider snapshot is not fresh within the task lease")
     if snapshot.get("repository") != repository or snapshot.get("project_id") != project_id:
         raise DelegationError("provider snapshot repository/project differs from the task")
