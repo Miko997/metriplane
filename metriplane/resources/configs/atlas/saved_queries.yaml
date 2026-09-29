@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.saved_queries.v1
+queries:
+  - query_id: missing_required_assets
+    label: Missing required assets
+    filters:
+      event_type: required_asset_missing
+  - query_id: delayed_steps
+    label: Delayed process steps
+    filters:
+      event_type: step_delayed
+  - query_id: station_a_events
+    label: Station A event history
+    filters:
+      station_id: station_a
+  - query_id: torque_driver_history
+    label: Torque driver history
+    filters:
+      asset_id: torque_driver_1

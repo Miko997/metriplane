@@ -12,6 +12,8 @@ All tests are fully mocked — no subprocess, no real filesystem.
 from __future__ import annotations
 
 import os
+import hashlib
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -19,7 +21,9 @@ from unittest.mock import MagicMock, patch
 
 from metriplane.runner.operator_api import (
     OperatorAPI,
+    _OPERATOR_MODULE_IMPORT_PROBE,
     _check_cv2_available,
+    _check_python_module_available,
     _resolve_python_executable,
 )
 
@@ -169,6 +173,71 @@ class TestResolvePythonExecutable:
             result = _resolve_python_executable(tmp_path)
         # Should not use non-exec file → falls back to sys.executable
         assert result != str(non_exec)
+
+
+# ── installed operator-module preflight ──────────────────────────────────────
+
+
+def test_python_module_preflight_is_fail_closed() -> None:
+    with patch(
+        "metriplane.runner.operator_api.subprocess.run",
+        return_value=MagicMock(returncode=1),
+    ):
+        assert not _check_python_module_available(
+            "/alternate/python", "metriplane.runner.tools.list_cameras"
+        )
+
+
+def test_operator_route_rejects_interpreter_without_installed_tool(tmp_path: Path) -> None:
+    api = _make_api_with_python(tmp_path, "/alternate/python")
+    with patch(
+        "metriplane.runner.operator_api._check_python_module_available",
+        return_value=False,
+    ):
+        status, response = api.route("GET", "/operator/cameras", {})
+
+    assert status == 503
+    assert response["python_executable"] == "/alternate/python"
+    assert response["required_module"] == "metriplane.runner.tools.list_cameras"
+    api.executor.execute.assert_not_called()
+
+
+def _run_module_probe(tmp_path: Path, source: str, expected_digest: str) -> int:
+    (tmp_path / "probe_tool.py").write_text(source, encoding="utf-8")
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(tmp_path)
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _OPERATOR_MODULE_IMPORT_PROBE,
+            "probe_tool",
+            expected_digest,
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    ).returncode
+
+
+def test_module_probe_rejects_discoverable_module_with_broken_import(tmp_path: Path) -> None:
+    source = "import dependency_that_does_not_exist\n"
+    digest = hashlib.sha256(source.encode()).hexdigest()
+    assert _run_module_probe(tmp_path, source, digest) != 0
+
+
+def test_module_probe_rejects_stale_installed_payload(tmp_path: Path) -> None:
+    source = "VALUE = 'stale'\n"
+    current_digest = hashlib.sha256(b"VALUE = 'current'\n").hexdigest()
+    assert _run_module_probe(tmp_path, source, current_digest) != 0
+
+
+def test_module_probe_accepts_importable_exact_payload(tmp_path: Path) -> None:
+    source = "VALUE = 'current'\n"
+    digest = hashlib.sha256(source.encode()).hexdigest()
+    assert _run_module_probe(tmp_path, source, digest) == 0
 
 
 # ── _check_cv2_available ──────────────────────────────────────────────────────

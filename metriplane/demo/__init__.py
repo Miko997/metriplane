@@ -60,7 +60,8 @@ def _next_default_out_dir(root: Path | None = None) -> Path:
 
 
 @contextmanager
-def _bundled_inputs() -> Iterator[tuple[Path, Path]]:
+def bundled_inputs() -> Iterator[tuple[Path, Path]]:
+    """Materialize the installed demo session and domain pack for one operation."""
     asset_root = resources.files(_RESOURCE_PACKAGE).joinpath("assets")
     with resources.as_file(asset_root) as extracted_root:
         root = Path(extracted_root)
@@ -178,7 +179,7 @@ def run_demo(out_dir: str | Path) -> DemoResult:
     from metriplane.atlas.regression import run_regression
     from metriplane.atlas.runtime import run_atlas
 
-    with _bundled_inputs() as (session, pack):
+    with bundled_inputs() as (session, pack):
         pack_errors = validate_domain_pack(pack)
         if pack_errors:
             raise _DemoError(f"Bundled domain pack is invalid: {'; '.join(pack_errors)}")

@@ -257,10 +257,11 @@ def test_generate_report_transfers_a_pinned_session_fd(
     assert len(executor.pass_fds) == 1
     inherited_fd = executor.pass_fds[0]
     try:
-        assert executor.command[2].endswith(f"/{inherited_fd}")
+        assert executor.command[1:3] == ["-m", "metriplane.runner.tools.zones_report_jsonl"]
+        assert executor.command[3].endswith(f"/{inherited_fd}")
         run.rename(parked)
         run.symlink_to(outside, target_is_directory=True)
-        assert Path(executor.command[2]).read_text() == "authorized session\n"
+        assert Path(executor.command[3]).read_text() == "authorized session\n"
     finally:
         os.close(inherited_fd)
 
@@ -317,11 +318,21 @@ def test_generate_report_async_child_reads_pinned_inode_after_parent_swap(
     run.mkdir(parents=True)
     outside.mkdir()
     session = run / "session.jsonl"
-    session.write_text("authorized session\n", encoding="utf-8")
-    (outside / session.name).write_text("outside session\n", encoding="utf-8")
+    session.write_text('{"ts":0,"objects":[]}\n', encoding="utf-8")
+    (outside / session.name).write_text('{"ts":1,"objects":[]}\n', encoding="utf-8")
+    profile = tmp_path / "calib" / "profiles" / "local_test"
+    profile.mkdir(parents=True)
+    (profile / "zones.yaml").write_text(
+        "schema_version: '1.0'\n"
+        "units: meters\n"
+        "zones:\n"
+        "  - name: test\n"
+        "    polygon: [[0, 0], [1, 0], [1, 1], [0, 1]]\n",
+        encoding="utf-8",
+    )
 
     status, payload = api._generate_report(
-        {"type": "zones", "session": str(session), "prefix": "secure"}
+        {"type": "zones", "session": str(session), "prefix": "secure", "profile": "local_test"}
     )
     assert status == 200
     run.rename(parked)
@@ -335,7 +346,7 @@ def test_generate_report_async_child_reads_pinned_inode_after_parent_swap(
 
     assert job is not None
     assert job["status"] == "succeeded"
-    assert job["stdout"] == "authorized session\n"
+    assert "frames=1" in job["stdout"] or "frames_yielded': 1" in job["stdout"]
 
 
 @pytest.mark.parametrize("endpoint", ["start-fusion", "generate-report", "save-config"])

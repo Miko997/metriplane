@@ -259,6 +259,19 @@ def _check_demo_resources() -> tuple[str, str]:
     )
 
 
+def _check_runtime_resources() -> tuple[str, str]:
+    """Check every installed immutable dashboard/config resource."""
+    try:
+        from metriplane.resources import RUNTIME_RESOURCES, resource
+
+        missing = [path for path in RUNTIME_RESOURCES if not resource(path).is_file()]
+    except Exception as exc:
+        return ("FAIL", f"Bundled runtime resources unreadable: {type(exc).__name__}")
+    if missing:
+        return ("FAIL", f"Bundled runtime resources missing: {', '.join(missing)}")
+    return ("PASS", f"Bundled runtime resources available ({len(RUNTIME_RESOURCES)} files)")
+
+
 def _installation_context() -> str:
     """Describe whether doctor is running from an editable checkout or a package."""
     root = _package_source_root()
@@ -373,6 +386,7 @@ def _main_doctor(argv: list[str]) -> int:
         _check_import_metriplane(),
         _check_required_dependencies(),
         _check_demo_resources(),
+        _check_runtime_resources(),
     ]
     source_checks = (
         [_check_git_commit(), _check_vt_sh_exists(), _check_config_exists()]
@@ -437,7 +451,7 @@ Launcher flags (shared by start and restart):
   --live              Start runtime stream immediately
   --no-live           Dashboard/runner only, no runtime stream (default)
   --backend cpu|gpu   Compute backend for fusion (default: cpu)
-  --config PATH       Runtime config YAML (default: configs/local_demo_replay.yaml)
+  --config PATH       Runtime config YAML (required with --live)
   --duration-s INT    Stop fusion after N seconds (default: 7200)
   --run-id TEXT       Override run ID (default: live_YYYYMMDD_HHMMSS)
   --dashboard-port N  Dashboard web server port (default: 8088)
@@ -474,9 +488,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
             default="cpu",
             help="Fusion compute backend (default: cpu)",
         )
-        p.add_argument(
-            "--config", default="configs/local_demo_replay.yaml", help="Runtime config YAML"
-        )
+        p.add_argument("--config", default=None, help="Runtime config YAML (required with --live)")
         p.add_argument(
             "--duration-s",
             type=float,

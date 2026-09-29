@@ -41,7 +41,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
@@ -85,6 +85,7 @@ from metriplane.launcher import (
     cmd_stop,
 )
 from metriplane.paths import PlatformPaths
+from metriplane.resources import dashboard_directory, read_bytes
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -150,20 +151,28 @@ def _test_platform_paths(root: Path) -> PlatformPaths:
 
 
 @contextmanager
-def _dashboard_server(directory: Path | None = None):
-    handler = partial(
-        DashboardHTTPRequestHandler,
-        directory=str(directory or Path.cwd() / "web" / "dashboard"),
-    )
-    server = LocalHTTPServer(("127.0.0.1", 0), handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}"
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+def _dashboard_server(
+    directory: Path | None = None,
+    generated_directory: Path | None = None,
+):
+    with ExitStack() as stack:
+        root = directory or stack.enter_context(dashboard_directory())
+        handler = partial(
+            DashboardHTTPRequestHandler,
+            directory=str(root),
+            generated_directory=(
+                str(generated_directory) if generated_directory is not None else None
+            ),
+        )
+        server = LocalHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{server.server_port}"
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
 
 
 def test_dashboard_server_exposes_only_declared_assets_with_secure_headers():
@@ -185,14 +194,13 @@ def test_dashboard_server_exposes_only_declared_assets_with_secure_headers():
 
 
 def test_dashboard_assets_do_not_link_outside_the_bounded_server_root():
-    dashboard = Path.cwd() / "web" / "dashboard"
     for relative in sorted(DASHBOARD_ASSETS):
         if not relative.endswith(".html"):
             continue
-        source = (dashboard / relative).read_text(encoding="utf-8")
+        source = read_bytes(f"dashboard/{relative}").decode("utf-8")
         assert "../" not in source, relative
 
-    app_source = (dashboard / "app.js").read_text(encoding="utf-8")
+    app_source = read_bytes("dashboard/app.js").decode("utf-8")
     assert "MANIFEST_URLS: ['atlas_run/manifest.csv']" in app_source
     assert "evidence/manifest.csv" not in app_source
 
@@ -207,7 +215,8 @@ def test_dashboard_request_log_never_contains_query_capability(capsys):
 
 def test_dashboard_generated_artifact_boundary_and_numeric_bind_are_fail_closed(tmp_path):
     dashboard = tmp_path / "dashboard"
-    generated = dashboard / "atlas_run"
+    generated = tmp_path / "generated" / "atlas_run"
+    dashboard.mkdir()
     generated.mkdir(parents=True)
     (dashboard / "index.html").write_text("dashboard", encoding="utf-8")
     (generated / "atlas_manifest.json").write_text("{}", encoding="utf-8")
@@ -216,7 +225,7 @@ def test_dashboard_generated_artifact_boundary_and_numeric_bind_are_fail_closed(
     outside.write_text("private", encoding="utf-8")
     (generated / "escape.txt").symlink_to(outside)
 
-    with _dashboard_server(dashboard) as base:
+    with _dashboard_server(dashboard, generated) as base:
         with urllib.request.urlopen(f"{base}/atlas_run/atlas_manifest.json", timeout=5) as response:
             assert response.read() == b"{}"
             assert response.headers["Content-Security-Policy"].startswith(
@@ -283,7 +292,7 @@ class TestCLIHelp:
         out = capsys.readouterr().out
         assert "--live" in out
         assert "default: off" in out
-        assert "configs/local_demo_replay.yaml" in out
+        assert "required with --live" in out
 
     def test_start_help_mentions_no_open(self, capsys):
         with pytest.raises(SystemExit):
@@ -336,12 +345,10 @@ class TestLauncherDefaults:
     def test_start_defaults_to_runtime_idle(self):
         assert cmd_start.__kwdefaults__["live"] is False
 
-    def test_default_config_is_camera_free_demo(self):
-        assert _DEFAULT_FUSION_CONFIG == "configs/local_demo_replay.yaml"
-        assert Path(_DEFAULT_FUSION_CONFIG).is_file()
-
-    def test_demo_config_uses_replay_runtime(self):
-        assert _runtime_module_for_config(_DEFAULT_FUSION_CONFIG, Path.cwd()) == "metriplane.run"
+    def test_live_config_has_no_checkout_relative_default(self, capsys):
+        assert _DEFAULT_FUSION_CONFIG is None
+        assert cmd_start(live=True, config=None, open_browser=False) == 2
+        assert "--config PATH is required with --live" in capsys.readouterr().out
 
     def test_camera_config_uses_fusion_runtime(self):
         assert (
@@ -391,6 +398,7 @@ class TestLauncherDefaults:
             port=8088,
             log_file=tmp_path / "dashboard.log",
             repo_root=Path.cwd(),
+            generated_directory=tmp_path / "data" / "dashboard" / "atlas_run",
         )
 
         assert captured["cmd"][1:3] == ["-m", "metriplane._local_http"]
@@ -442,10 +450,15 @@ class TestLauncherDefaults:
             port=8088,
             log_file=tmp_path / "dashboard.log",
             repo_root=Path("/checkout"),
+            generated_directory=Path("/data/metriplane/dashboard/atlas_run"),
         )
 
         command = captured["cmd"]
-        assert command[command.index("--directory") + 1] == "/checkout/web/dashboard"
+        assert "--directory" not in command
+        assert command[command.index("--generated-directory") + 1] == (
+            "/data/metriplane/dashboard/atlas_run"
+        )
+        assert command[1:3] == ["-m", "metriplane._local_http"]
 
     def test_start_canonicalizes_explicit_runs_dir_before_runner_start(
         self,
@@ -590,7 +603,15 @@ class TestLauncherDefaults:
             lambda _paths: (_ for _ in ()).throw(OSError("stop after run-ID validation")),
         )
 
-        assert lm.cmd_start(live=True, run_id=None, open_browser=False) == 2
+        assert (
+            lm.cmd_start(
+                live=True,
+                config="configs/local_demo_replay.yaml",
+                run_id=None,
+                open_browser=False,
+            )
+            == 2
+        )
         assert len(validated) == 1
         assert validated[0].startswith("live_")
 
@@ -2136,7 +2157,11 @@ class TestStartStatusStop:
             lambda pgid, pid, **kwargs: stopped.append(pid),
         )
 
-        rc = lm.cmd_start(live=True, open_browser=False)
+        rc = lm.cmd_start(
+            live=True,
+            config="configs/local_demo_replay.yaml",
+            open_browser=False,
+        )
 
         assert rc == 1
         assert stopped == [103, 102, 101]

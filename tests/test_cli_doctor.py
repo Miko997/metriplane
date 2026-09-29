@@ -89,6 +89,25 @@ def test_doctor_checks_every_bundled_demo_resource() -> None:
     )
 
 
+def test_doctor_checks_every_bundled_runtime_resource() -> None:
+    assert cli._check_runtime_resources() == (
+        "PASS",
+        "Bundled runtime resources available (42 files)",
+    )
+
+
+def test_doctor_reports_a_missing_bundled_runtime_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metriplane.resources as runtime_resources
+
+    monkeypatch.setattr(runtime_resources, "RUNTIME_RESOURCES", ("dashboard/missing.html",))
+    assert cli._check_runtime_resources() == (
+        "FAIL",
+        "Bundled runtime resources missing: dashboard/missing.html",
+    )
+
+
 def test_doctor_reports_a_missing_bundled_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -151,6 +170,7 @@ def _stub_doctor_checks(
         "_check_import_metriplane",
         "_check_required_dependencies",
         "_check_demo_resources",
+        "_check_runtime_resources",
     )
     optional = (
         "_check_git_commit",
@@ -178,7 +198,7 @@ def test_doctor_optional_capabilities_do_not_block_the_demo(
     output = capsys.readouterr().out
     assert "Installation:" in output
     assert "Required for the bundled camera-free demo:" in output
-    assert "Summary: 4 passed, 0 warnings, 0 failed" in output
+    assert "Summary: 5 passed, 0 warnings, 0 failed" in output
     assert "Optional: 0 available, 4 unavailable or not configured" in output
     assert "Source-checkout development checks skipped" in output
     assert "Ready for the bundled camera-free demo." in output
@@ -195,7 +215,7 @@ def test_doctor_required_failure_is_nonzero(
     assert cli._main_doctor([]) == 1
 
     output = capsys.readouterr().out
-    assert "Summary: 0 passed, 0 warnings, 4 failed" in output
+    assert "Summary: 0 passed, 0 warnings, 5 failed" in output
     assert "Not ready for the bundled camera-free demo." in output
 
 

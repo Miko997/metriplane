@@ -44,8 +44,12 @@ def static_dashboard_server():
 
 
 @contextmanager
-def bounded_dashboard_server(directory: Path):
-    handler = partial(DashboardHTTPRequestHandler, directory=str(directory))
+def bounded_dashboard_server(directory: Path, generated_directory: Path | None = None):
+    handler = partial(
+        DashboardHTTPRequestHandler,
+        directory=str(directory),
+        generated_directory=(str(generated_directory) if generated_directory is not None else None),
+    )
     server = LocalHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -225,7 +229,8 @@ def test_generated_active_html_is_sandboxed_away_from_capability(tmp_path: Path)
     playwright = pytest.importorskip("playwright.sync_api")
     sync_playwright = playwright.sync_playwright
     dashboard = tmp_path / "dashboard"
-    generated = dashboard / "atlas_run"
+    generated = tmp_path / "generated" / "atlas_run"
+    dashboard.mkdir()
     generated.mkdir(parents=True)
     (dashboard / "index.html").write_text("dashboard", encoding="utf-8")
     (generated / "hostile.html").write_text(
@@ -235,7 +240,7 @@ def test_generated_active_html_is_sandboxed_away_from_capability(tmp_path: Path)
     )
     (generated / "evidence.zip").write_bytes(b"bounded-evidence-bundle")
 
-    with bounded_dashboard_server(dashboard) as base_url, sync_playwright() as pw:
+    with bounded_dashboard_server(dashboard, generated) as base_url, sync_playwright() as pw:
         executable = chromium_executable(pw)
         if executable is None:
             pytest.skip("Playwright Chromium browser is not installed")

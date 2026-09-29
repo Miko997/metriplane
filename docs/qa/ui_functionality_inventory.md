@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `0c6cdc496a8a6f3c80f65bc6974e3fb131def1a51cdd657b042fdc0ec4dc25c0`
+Canonical projection SHA-256: `6e18eda734d64dde3f594c06f25e9e7a87ef1b69e36d091ef923419c188e6ad6`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 244 |
+| actions | 245 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -26,34 +26,34 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | action_id | method | path | source |
 | --- | --- | --- | --- |
-| api.operator.get.camera_trust | GET | /operator/camera-trust | metriplane/runner/operator_api.py:358 |
-| api.operator.get.cameras | GET | /operator/cameras | metriplane/runner/operator_api.py:339 |
-| api.operator.get.configs | GET | /operator/configs | metriplane/runner/operator_api.py:343 |
-| api.operator.get.env | GET | /operator/env | metriplane/runner/operator_api.py:337 |
-| api.operator.get.frames | GET | /operator/frames | metriplane/runner/operator_api.py:360 |
-| api.operator.get.incidents | GET | /operator/incidents | metriplane/runner/operator_api.py:354 |
-| api.operator.get.latest_run | GET | /operator/latest-run | metriplane/runner/operator_api.py:345 |
-| api.operator.get.live_summary | GET | /operator/live-summary | metriplane/runner/operator_api.py:350 |
-| api.operator.get.objects | GET | /operator/objects | metriplane/runner/operator_api.py:352 |
-| api.operator.get.profiles | GET | /operator/profiles | metriplane/runner/operator_api.py:341 |
-| api.operator.get.runner_status | GET | /operator/runner-status | metriplane/runner/operator_api.py:347 |
-| api.operator.get.traces | GET | /operator/traces | metriplane/runner/operator_api.py:356 |
-| api.operator.post.ask | POST | /operator/ask | metriplane/runner/operator_api.py:393 |
-| api.operator.post.calibrate | POST | /operator/calibrate | metriplane/runner/operator_api.py:371 |
-| api.operator.post.camera_trust | POST | /operator/camera-trust | metriplane/runner/operator_api.py:389 |
-| api.operator.post.checksum | POST | /operator/checksum | metriplane/runner/operator_api.py:379 |
-| api.operator.post.create_profile | POST | /operator/create-profile | metriplane/runner/operator_api.py:363 |
-| api.operator.post.frames | POST | /operator/frames | metriplane/runner/operator_api.py:391 |
-| api.operator.post.generate_report | POST | /operator/generate-report | metriplane/runner/operator_api.py:377 |
-| api.operator.post.incidents | POST | /operator/incidents | metriplane/runner/operator_api.py:385 |
-| api.operator.post.live_summary | POST | /operator/live-summary | metriplane/runner/operator_api.py:381 |
-| api.operator.post.objects | POST | /operator/objects | metriplane/runner/operator_api.py:383 |
-| api.operator.post.save_config | POST | /operator/save-config | metriplane/runner/operator_api.py:367 |
-| api.operator.post.start_fusion | POST | /operator/start-fusion | metriplane/runner/operator_api.py:369 |
-| api.operator.post.traces | POST | /operator/traces | metriplane/runner/operator_api.py:387 |
-| api.operator.post.validate_alignment | POST | /operator/validate-alignment | metriplane/runner/operator_api.py:373 |
-| api.operator.post.validate_alignment_full | POST | /operator/validate-alignment-full | metriplane/runner/operator_api.py:375 |
-| api.operator.post.write_zones | POST | /operator/write-zones | metriplane/runner/operator_api.py:365 |
+| api.operator.get.camera_trust | GET | /operator/camera-trust | metriplane/runner/operator_api.py:411 |
+| api.operator.get.cameras | GET | /operator/cameras | metriplane/runner/operator_api.py:392 |
+| api.operator.get.configs | GET | /operator/configs | metriplane/runner/operator_api.py:396 |
+| api.operator.get.env | GET | /operator/env | metriplane/runner/operator_api.py:390 |
+| api.operator.get.frames | GET | /operator/frames | metriplane/runner/operator_api.py:413 |
+| api.operator.get.incidents | GET | /operator/incidents | metriplane/runner/operator_api.py:407 |
+| api.operator.get.latest_run | GET | /operator/latest-run | metriplane/runner/operator_api.py:398 |
+| api.operator.get.live_summary | GET | /operator/live-summary | metriplane/runner/operator_api.py:403 |
+| api.operator.get.objects | GET | /operator/objects | metriplane/runner/operator_api.py:405 |
+| api.operator.get.profiles | GET | /operator/profiles | metriplane/runner/operator_api.py:394 |
+| api.operator.get.runner_status | GET | /operator/runner-status | metriplane/runner/operator_api.py:400 |
+| api.operator.get.traces | GET | /operator/traces | metriplane/runner/operator_api.py:409 |
+| api.operator.post.ask | POST | /operator/ask | metriplane/runner/operator_api.py:446 |
+| api.operator.post.calibrate | POST | /operator/calibrate | metriplane/runner/operator_api.py:424 |
+| api.operator.post.camera_trust | POST | /operator/camera-trust | metriplane/runner/operator_api.py:442 |
+| api.operator.post.checksum | POST | /operator/checksum | metriplane/runner/operator_api.py:432 |
+| api.operator.post.create_profile | POST | /operator/create-profile | metriplane/runner/operator_api.py:416 |
+| api.operator.post.frames | POST | /operator/frames | metriplane/runner/operator_api.py:444 |
+| api.operator.post.generate_report | POST | /operator/generate-report | metriplane/runner/operator_api.py:430 |
+| api.operator.post.incidents | POST | /operator/incidents | metriplane/runner/operator_api.py:438 |
+| api.operator.post.live_summary | POST | /operator/live-summary | metriplane/runner/operator_api.py:434 |
+| api.operator.post.objects | POST | /operator/objects | metriplane/runner/operator_api.py:436 |
+| api.operator.post.save_config | POST | /operator/save-config | metriplane/runner/operator_api.py:420 |
+| api.operator.post.start_fusion | POST | /operator/start-fusion | metriplane/runner/operator_api.py:422 |
+| api.operator.post.traces | POST | /operator/traces | metriplane/runner/operator_api.py:440 |
+| api.operator.post.validate_alignment | POST | /operator/validate-alignment | metriplane/runner/operator_api.py:426 |
+| api.operator.post.validate_alignment_full | POST | /operator/validate-alignment-full | metriplane/runner/operator_api.py:428 |
+| api.operator.post.write_zones | POST | /operator/write-zones | metriplane/runner/operator_api.py:418 |
 | api.runner.cancel_job | POST | /jobs/{job_id}/cancel | metriplane/runner/service.py:252 |
 | api.runner.commands | GET | /commands | metriplane/runner/service.py:215 |
 | api.runner.execute | POST | /execute | metriplane/runner/service.py:250 |
@@ -65,7 +65,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | id | name | protocol | source |
 | --- | --- | --- | --- |
-| MP2-012.UI.SERVICE.DASHBOARD_STATIC_HTTP | Dashboard static HTTP | http | metriplane/_local_http.py:169 |
+| MP2-012.UI.SERVICE.DASHBOARD_STATIC_HTTP | Dashboard static HTTP | http | metriplane/_local_http.py:157 |
 | MP2-012.UI.SERVICE.LOCAL_RUNNER_HTTP | Local runner HTTP | http | metriplane/runner/service.py:477 |
 | MP2-012.UI.SERVICE.RUNTIME_FRAME_WEBSOCKET | Runtime frame WebSocket | websocket | metriplane/streaming/ws_server.py:152 |
 | MP2-012.UI.SERVICE.RUNTIME_HEALTH_METRICS_HTTP | Runtime health and metrics HTTP | http | metriplane/metrics.py:344 |
@@ -220,16 +220,16 @@ This is a static source census. It does not characterize runtime behavior or exp
 | cli.stop | cli | metriplane stop | python -m metriplane.cli stop |
 | cli.test | cli | metriplane test | python -m metriplane.cli test |
 | cli.traces | cli | metriplane traces | python -m metriplane.cli traces |
-| runner.atlas-demo | allowlist | Build Evidence Sample | _PYTHON -m metriplane.cli atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out web/dashboard/atlas_run --run-id metriplane_sample |
-| runner.atlas-edge-doctor | allowlist | Run Edge Readiness | _PYTHON -m metriplane.cli atlas edge doctor --runs-root web/dashboard/atlas_run --min-free-mb 64 |
-| runner.atlas-freeze-build | allowlist | Build Audit Snapshot | _PYTHON -m metriplane.cli atlas freeze build --root . --out web/dashboard/atlas_run/evidence_freeze |
-| runner.atlas-lake-build | allowlist | Build Evidence Index | _PYTHON -m metriplane.cli atlas lake build --root web/dashboard/atlas_run --db web/dashboard/atlas_run/evidence_lake.sqlite |
-| runner.atlas-pilot-kit | allowlist | Create Field Review Kit | _PYTHON -m metriplane.cli atlas pilot kit --out web/dashboard/atlas_run/pilot_kit |
-| runner.atlas-protocol-export | allowlist | Export Protocol Files | _PYTHON -m metriplane.cli atlas protocol export --out web/dashboard/atlas_run/protocol |
-| runner.atlas-query-demo-events | allowlist | Query Event Ledger | _PYTHON -m metriplane.cli atlas query events --run-dir web/dashboard/atlas_run --json |
-| runner.atlas-regression-demo | allowlist | Replay Evidence Regression | _PYTHON -m metriplane.cli atlas test web/dashboard/atlas_run/regression_tests/INC-0001.yaml --json |
-| runner.atlas-validate-pack | allowlist | Validate Evidence Rules | _PYTHON -m metriplane.cli atlas validate-pack configs/domain_packs/assembly_cell |
-| runner.atlas-verify-demo | allowlist | Verify Incident Archive | _PYTHON -m metriplane.cli atlas bundle verify web/dashboard/atlas_run/evidence_bundles/INC-0001.zip |
+| runner.atlas-demo | allowlist | Build Evidence Sample | _PYTHON -m metriplane.cli atlas run-pack assembly_cell --out {metriplane_platform_data_dir}/dashboard/atlas_run |
+| runner.atlas-edge-doctor | allowlist | Run Edge Readiness | _PYTHON -m metriplane.cli atlas edge doctor --runs-root {metriplane_platform_data_dir}/dashboard/atlas_run --min-free-mb 64 |
+| runner.atlas-freeze-build | allowlist | Build Audit Snapshot | _PYTHON -m metriplane.cli atlas freeze build --root . --out {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_freeze |
+| runner.atlas-lake-build | allowlist | Build Evidence Index | _PYTHON -m metriplane.cli atlas lake build --root {metriplane_platform_data_dir}/dashboard/atlas_run --db {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_lake.sqlite |
+| runner.atlas-pilot-kit | allowlist | Create Field Review Kit | _PYTHON -m metriplane.cli atlas pilot kit --out {metriplane_platform_data_dir}/dashboard/atlas_run/pilot_kit |
+| runner.atlas-protocol-export | allowlist | Export Protocol Files | _PYTHON -m metriplane.cli atlas protocol export --out {metriplane_platform_data_dir}/dashboard/atlas_run/protocol |
+| runner.atlas-query-demo-events | allowlist | Query Event Ledger | _PYTHON -m metriplane.cli atlas query events --run-dir {metriplane_platform_data_dir}/dashboard/atlas_run --json |
+| runner.atlas-regression-demo | allowlist | Replay Evidence Regression | _PYTHON -m metriplane.cli atlas test {metriplane_platform_data_dir}/dashboard/atlas_run/regression_tests/INC-0001.yaml --json |
+| runner.atlas-validate-pack | allowlist | Validate Evidence Rules | _PYTHON -m metriplane.cli atlas validate-pack |
+| runner.atlas-verify-demo | allowlist | Verify Incident Archive | _PYTHON -m metriplane.cli atlas bundle verify {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_bundles/INC-0001.zip |
 | runner.backpressure | allowlist | Backpressure Test | ./tools/mp.sh backpressure |
 | runner.cleanup | allowlist | Check Stale Processes | _PYTHON tools/ui_safe_cleanup.py |
 | runner.deterministic-replay | allowlist | Deterministic Replay | ./tools/mp.sh deterministic-replay |
@@ -241,10 +241,10 @@ This is a static source census. It does not characterize runtime behavior or exp
 | runner.gpu-equivalence | allowlist | GPU Equivalence Test | ./tools/mp.sh gpu-equivalence |
 | runner.gpu-smoke | allowlist | GPU Smoke Test | ./tools/mp.sh gpu-smoke |
 | runner.health-degrade-cam1 | allowlist | Health Degradation | ./tools/mp.sh health-degrade-cam1 |
-| runner.integration-isaac-export | allowlist | Export Isaac USD Replay | _PYTHON -m integrations.isaac.metriplane_to_usd --run-dir web/dashboard/atlas_run/evidence_bundles/INC-0001 --out web/dashboard/atlas_run/isaac/metriplane_replay.usda |
-| runner.integration-omniverse-export | allowlist | Export Omniverse USD Replay | _PYTHON -m integrations.omniverse.metriplane_usd_replay --run-dir web/dashboard/atlas_run/evidence_bundles/INC-0001 --out web/dashboard/atlas_run/omniverse/metriplane_replay.usda |
+| runner.integration-isaac-export | allowlist | Export Isaac USD Replay | _PYTHON -m integrations.isaac.metriplane_to_usd --run-dir {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_bundles/INC-0001 --out {metriplane_platform_data_dir}/dashboard/atlas_run/isaac/metriplane_replay.usda |
+| runner.integration-omniverse-export | allowlist | Export Omniverse USD Replay | _PYTHON -m integrations.omniverse.metriplane_usd_replay --run-dir {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_bundles/INC-0001 --out {metriplane_platform_data_dir}/dashboard/atlas_run/omniverse/metriplane_replay.usda |
 | runner.integration-ros2-check | allowlist | Check ROS 2 Bridge Adapters | _PYTHON tools/check_ros2_adapters.py |
-| runner.list-cameras | allowlist | List Cameras | _PYTHON tools/list_cameras.py |
+| runner.list-cameras | allowlist | List Cameras | _PYTHON -m metriplane.runner.tools.list_cameras |
 | runner.preflight | allowlist | Preflight | ./tools/mp.sh preflight |
 | runner.provenance | allowlist | Provenance Check | ./tools/mp.sh provenance |
 | runner.run-demo-replay | allowlist | Run Demo Replay | _PYTHON tools/run_ui_demo_replay.py --runs-dir {metriplane_platform_runs_dir} |
@@ -284,6 +284,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.check_repository_protection | tool | Check Repository Protection | python tools/check_repository_protection.py |
 | tool.check_required_terminal | tool | Check Required Terminal | python tools/check_required_terminal.py |
 | tool.check_ros2_adapters | tool | Check Ros2 Adapters | python tools/check_ros2_adapters.py |
+| tool.check_runtime_resources | tool | Check Runtime Resources | python tools/check_runtime_resources.py |
 | tool.check_security_controls | tool | Check Security Controls | python tools/check_security_controls.py |
 | tool.check_supply_chain_policy | tool | Check Supply Chain Policy | python tools/check_supply_chain_policy.py |
 | tool.check_traceability | tool | Check Traceability | python tools/check_traceability.py |

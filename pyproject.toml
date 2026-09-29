@@ -186,6 +186,7 @@ include = [
   "metriplane.provenance*",
   "metriplane.recording*",
   "metriplane.replay*",
+  "metriplane.resources*",
   "metriplane.runner*",
   "metriplane.sentinel*",
   "metriplane.streaming*",
@@ -204,6 +205,15 @@ exclude = ["integrations.ros2*"]
   "assets/*.jsonl",
   "assets/assembly_cell/*.yaml",
   "assets/assembly_cell/*.csv",
+]
+"metriplane.resources" = [
+  "configs/*.yaml",
+  "configs/atlas/*.yaml",
+  "dashboard/*.css",
+  "dashboard/*.html",
+  "dashboard/*.js",
+  "dashboard/*.json",
+  "dashboard/icons/*.svg",
 ]
 
 [project.scripts]

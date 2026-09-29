@@ -68,7 +68,7 @@ _DEFAULT_RUNNER_HOST = "127.0.0.1"
 _DEFAULT_RUNNER_PORT = 9000
 _DEFAULT_DASHBOARD_PORT = 8088
 _DEFAULT_DASHBOARD_HOST = "127.0.0.1"
-_DEFAULT_FUSION_CONFIG = "configs/local_demo_replay.yaml"
+_DEFAULT_FUSION_CONFIG: str | None = None
 _DEFAULT_DURATION_S = 7200
 
 _STATE_SCHEMA_VERSION = 1
@@ -1247,7 +1247,12 @@ def _start_runner(
 
 
 def _start_dashboard(
-    *, host: str, port: int, log_file: Path, repo_root: Path
+    *,
+    host: str,
+    port: int,
+    log_file: Path,
+    repo_root: Path,
+    generated_directory: Path,
 ) -> subprocess.Popen[bytes]:
     cmd = [
         sys.executable,
@@ -1256,8 +1261,8 @@ def _start_dashboard(
         str(port),
         "--bind",
         host,
-        "--directory",
-        str(repo_root / "web" / "dashboard"),
+        "--generated-directory",
+        str(generated_directory),
     ]
     return _launch(cmd, log_file, repo_root)
 
@@ -1469,7 +1474,7 @@ def cmd_start(
     *,
     live: bool = False,
     backend: str = "cpu",
-    config: str = _DEFAULT_FUSION_CONFIG,
+    config: str | None = _DEFAULT_FUSION_CONFIG,
     duration_s: float = _DEFAULT_DURATION_S,
     run_id: str | None = None,
     dashboard_host: str = _DEFAULT_DASHBOARD_HOST,
@@ -1485,6 +1490,9 @@ def cmd_start(
     timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     effective_run_id = f"live_{timestamp}" if run_id is None else run_id
     if live:
+        if config is None:
+            print("--config PATH is required with --live")
+            return 2
         try:
             effective_run_id = validate_portable_run_id(effective_run_id)
         except ValueError as exc:
@@ -1525,7 +1533,7 @@ def _cmd_start_locked(
     *,
     live: bool,
     backend: str,
-    config: str,
+    config: str | None,
     duration_s: float,
     effective_run_id: str,
     dashboard_host: str,
@@ -1651,6 +1659,7 @@ def _cmd_start_locked(
         port=dashboard_port,
         log_file=log_d / "dashboard.log",
         repo_root=repo_root,
+        generated_directory=resolved_paths.data_dir / "dashboard" / "atlas_run",
     )
     try:
         dashboard_entry = _make_proc_entry(dp)
@@ -1684,6 +1693,7 @@ def _cmd_start_locked(
     # --- Start runtime stream ---
     fusion_entry: dict[str, Any] | None = None
     if live:
+        assert config is not None
         print(f"▶  Starting runtime stream  (config={config}, run_id={effective_run_id})")
         fp = _start_fusion(
             config=config,
@@ -2041,7 +2051,7 @@ def cmd_restart(
     *,
     live: bool = False,
     backend: str = "cpu",
-    config: str = _DEFAULT_FUSION_CONFIG,
+    config: str | None = _DEFAULT_FUSION_CONFIG,
     duration_s: float = _DEFAULT_DURATION_S,
     run_id: str | None = None,
     dashboard_host: str = _DEFAULT_DASHBOARD_HOST,
@@ -2081,7 +2091,7 @@ def _cmd_restart_locked(
     *,
     live: bool,
     backend: str,
-    config: str,
+    config: str | None,
     duration_s: float,
     run_id: str | None,
     dashboard_host: str,
