@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import sys
@@ -39,7 +40,56 @@ EXPECTED_PROJECTS = {
         "path": "adapters/source_adapter_sdk",
     },
 }
-EXPECTED_SCHEMA_SHA256 = "eb8983491deb210af038ad37f4c8084dd3a539ad3b5e0ee564b40d5460ac546e"
+EXPECTED_VERSION_COORDINATES: Mapping[str, Mapping[str, str]] = {
+    "maniskill-pickcube": {
+        "authority_kind": "pyproject-static",
+        "authority_path": "adapters/maniskill_pickcube/pyproject.toml",
+        "authority_pointer": "project.version",
+        "cross_adapter_component_id": "maniskill-pickcube",
+        "current_version": "1.0.0",
+        "lock_package": "maniskill-pickcube-adapter",
+    },
+    "massrobotics-amr": {
+        "authority_kind": "pyproject-static",
+        "authority_path": "adapters/massrobotics_amr/pyproject.toml",
+        "authority_pointer": "project.version",
+        "cross_adapter_component_id": "massrobotics-amr",
+        "current_version": "1.0.0",
+        "lock_package": "metriplane-massrobotics-amr-adapter",
+    },
+    "metriplane": {
+        "authority_kind": "python-attribute",
+        "authority_path": "metriplane/__init__.py",
+        "authority_pointer": "__version__",
+        "current_version": "0.5.0.dev0",
+        "lock_package": "metriplane",
+    },
+    "robomimic-lowdim": {
+        "authority_kind": "pyproject-static",
+        "authority_path": "adapters/robomimic_lowdim/pyproject.toml",
+        "authority_pointer": "project.version",
+        "cross_adapter_component_id": "robomimic-lowdim",
+        "current_version": "1.0.0",
+        "lock_package": "robomimic-lowdim-adapter",
+    },
+    "ros2-mcap": {
+        "authority_kind": "pyproject-static",
+        "authority_path": "adapters/ros2_mcap/pyproject.toml",
+        "authority_pointer": "project.version",
+        "cross_adapter_component_id": "ros2-mcap",
+        "current_version": "1.0.0",
+        "lock_package": "metriplane-ros2-mcap-adapter",
+    },
+    "source-adapter-sdk": {
+        "authority_kind": "pyproject-static",
+        "authority_path": "adapters/source_adapter_sdk/pyproject.toml",
+        "authority_pointer": "project.version",
+        "cross_adapter_component_id": "source-adapter-sdk",
+        "current_version": "1.0.0",
+        "lock_package": "metriplane-source-adapter-sdk",
+    },
+}
+EXPECTED_SCHEMA_SHA256 = "d58b0e6899af5ca892fb074419c0d238a52bf6a815bc978f1b17fcddf30eca35"
 EXPECTED_SET_SHAPES: Mapping[str, Mapping[str, object]] = {
     "adapters": {
         "extends": ["core"],
@@ -94,6 +144,51 @@ def _unique_sorted(values: object, label: str) -> list[str]:
     return values
 
 
+def _literal_assignment(path: Path, name: str) -> str:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    values = [
+        node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]
+    if len(values) != 1:
+        raise ReleaseSetError(f"{path}: {name} must have one literal string assignment")
+    return values[0]
+
+
+def _validate_historical_baseline(root: Path, registry: Mapping[str, Any]) -> None:
+    baseline = registry.get("historical_audit_baseline")
+    expected = {
+        "authority_path": "tests/adapter_conformance/registry.json",
+        "audited_base_commit": "34099903b3c3fdeb4f794edceddbf845a3f4aba8",
+        "current_release_set_authority": False,
+        "relationship": "historical-adapter-audit-baseline",
+    }
+    if baseline != expected:
+        raise ReleaseSetError("historical adapter audit baseline relationship is not exact")
+    adapter_registry = _read_json(root / "tests/adapter_conformance/registry.json")
+    if adapter_registry.get("audited_base_commit") != expected["audited_base_commit"]:
+        raise ReleaseSetError("historical adapter audit baseline differs from its authority")
+
+
+def _cross_adapter_versions(root: Path) -> Mapping[str, str]:
+    registry = _read_json(root / "tests/adapter_conformance/registry.json")
+    components = [*registry.get("shared_infrastructure", []), *registry.get("adapters", [])]
+    if not all(isinstance(component, Mapping) for component in components):
+        raise ReleaseSetError("cross-adapter component records are malformed")
+    versions = {
+        str(component["component_id"]): str(component["package_version"])
+        for component in components
+    }
+    expected = set(EXPECTED_PROJECTS) - {"metriplane"}
+    if set(versions) != expected:
+        raise ReleaseSetError("cross-adapter version component set is not exact")
+    return versions
+
+
 def validate(root: Path, registry_path: Path, schema_path: Path) -> None:
     registry = _read_json(registry_path)
     schema_bytes = schema_path.read_bytes()
@@ -111,7 +206,14 @@ def validate(root: Path, registry_path: Path, schema_path: Path) -> None:
         except jsonschema.ValidationError as exc:
             raise ReleaseSetError(f"registry schema failure: {exc.message}") from exc
 
-    if set(registry) != {"owner", "projects", "python_requires", "schema_version", "sets"}:
+    if set(registry) != {
+        "historical_audit_baseline",
+        "owner",
+        "projects",
+        "python_requires",
+        "schema_version",
+        "sets",
+    }:
         raise ReleaseSetError("registry fields are not exact")
     if registry.get("owner") != "MP2-041":
         raise ReleaseSetError("registry owner is not MP2-041")
@@ -122,15 +224,25 @@ def validate(root: Path, registry_path: Path, schema_path: Path) -> None:
 
     projects = registry.get("projects")
     sets = registry.get("sets")
-    if projects != EXPECTED_PROJECTS:
+    if not isinstance(projects, Mapping) or set(projects) != set(EXPECTED_PROJECTS):
         raise ReleaseSetError("project BOM is not the exact v0.5 package family")
     if not isinstance(sets, Mapping) or set(sets) != set(EXPECTED_SET_SHAPES):
         raise ReleaseSetError("release-set names are not exact")
 
+    _validate_historical_baseline(root, registry)
+    cross_adapter_versions = _cross_adapter_versions(root)
     root_extras: set[str] = set()
     for project_id, raw in projects.items():
         if not isinstance(raw, Mapping):
             raise ReleaseSetError(f"project {project_id} is malformed")
+        expected_project = EXPECTED_PROJECTS[project_id]
+        if {key: raw.get(key) for key in expected_project} != expected_project:
+            raise ReleaseSetError(f"project {project_id} BOM coordinates are not exact")
+        if set(raw) != {*expected_project, "version_coordinate"}:
+            raise ReleaseSetError(f"project {project_id} fields are not exact")
+        coordinate = raw.get("version_coordinate")
+        if coordinate != EXPECTED_VERSION_COORDINATES[project_id]:
+            raise ReleaseSetError(f"project {project_id} version coordinate is not exact")
         project_root = (root / str(raw["path"])).resolve()
         if project_root != root.resolve() and root.resolve() not in project_root.parents:
             raise ReleaseSetError(f"project {project_id} escapes the repository")
@@ -145,6 +257,45 @@ def validate(root: Path, registry_path: Path, schema_path: Path) -> None:
             raise ReleaseSetError(f"project {project_id} name differs from pyproject.toml")
         if metadata.get("requires-python") != registry.get("python_requires"):
             raise ReleaseSetError(f"project {project_id} Python contract differs")
+        current_version = coordinate["current_version"]
+        if coordinate["authority_kind"] == "pyproject-static":
+            if metadata.get("version") != current_version:
+                raise ReleaseSetError(f"project {project_id} pyproject version differs")
+        else:
+            pyproject = tomllib.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("dynamic") != ["version"]:
+                raise ReleaseSetError("root project version must remain dynamic")
+            if pyproject.get("tool", {}).get("setuptools", {}).get("dynamic", {}).get(
+                "version", {}
+            ).get("attr") != ("metriplane.__version__"):
+                raise ReleaseSetError("root project version attribute differs")
+            if _literal_assignment(
+                root / coordinate["authority_path"], coordinate["authority_pointer"]
+            ) != (current_version):
+                raise ReleaseSetError("root project version authority differs")
+        lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+        lock_records = [
+            package
+            for package in lock.get("package", [])
+            if package.get("name") == coordinate["lock_package"]
+        ]
+        if len(lock_records) != 1 or lock_records[0].get("source") != {"editable": "."}:
+            raise ReleaseSetError(f"project {project_id} editable lock identity differs")
+        lock_version = lock_records[0].get("version")
+        if project_id == "metriplane":
+            if lock_version is not None:
+                raise ReleaseSetError("dynamic root lock must not assert a static version")
+        elif lock_version != current_version:
+            raise ReleaseSetError(f"project {project_id} lock version differs")
+        component_id = coordinate.get("cross_adapter_component_id")
+        if project_id == "metriplane":
+            if component_id is not None:
+                raise ReleaseSetError("root project may not claim a cross-adapter component")
+        elif (
+            not isinstance(component_id, str)
+            or cross_adapter_versions.get(component_id) != current_version
+        ):
+            raise ReleaseSetError(f"project {project_id} cross-adapter version differs")
         if project_id == "metriplane":
             extras = metadata.get("optional-dependencies", {})
             if not isinstance(extras, Mapping):
