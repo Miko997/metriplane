@@ -37,6 +37,7 @@ PROJECT_ID = "cf53f98f-0965-4360-a66e-530457e40354"
 EXECUTOR_ID = "01a096e0-4e21-7a11-9f0f-fb303387c5c0"
 STATE_BRANCH = "metriplane-main-health-state"
 RULESET_IDS = (20613848, 21487681, 21500579, 21533351, 21633569, 22071973, 22170798)
+REQUEST_LEASE = dt.timedelta(minutes=10)
 
 
 class RequestPreparationError(ValueError):
@@ -219,7 +220,7 @@ def prepare(
         "state_commit": state_commit,
         "health_generation": state["generation"],
         "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "expires_at": (now + dt.timedelta(minutes=8)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "expires_at": (now + REQUEST_LEASE).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "nonce": secrets.token_hex(32),
     }
     subject["request_id"] = merge_request_id(subject)

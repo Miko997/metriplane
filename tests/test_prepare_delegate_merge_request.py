@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,8 @@ from tools import prepare_delegate_merge_request as request_builder
 def test_bounded_provider_read_rejects_errors_and_malformed_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    assert request_builder.REQUEST_LEASE == timedelta(minutes=10)
+
     def failed(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess([], 1, "", "unavailable")
 
