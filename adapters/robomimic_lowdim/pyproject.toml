@@ -14,7 +14,7 @@ requires-python = ">=3.12,<3.14"
 license = "MIT"
 dependencies = [
   "h5py==3.16.0",
-  "huggingface-hub==1.27.0",
+  "huggingface-hub==2.0.0",
   "numpy==2.5.2",
 ]
 
