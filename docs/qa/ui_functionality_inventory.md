@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `6e18eda734d64dde3f594c06f25e9e7a87ef1b69e36d091ef923419c188e6ad6`
+Canonical projection SHA-256: `50a8feda4097bb1a7e9ae520329d6ab5bd77690a2c5ac5dd43700d6229765937`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -222,7 +222,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | cli.traces | cli | metriplane traces | python -m metriplane.cli traces |
 | runner.atlas-demo | allowlist | Build Evidence Sample | _PYTHON -m metriplane.cli atlas run-pack assembly_cell --out {metriplane_platform_data_dir}/dashboard/atlas_run |
 | runner.atlas-edge-doctor | allowlist | Run Edge Readiness | _PYTHON -m metriplane.cli atlas edge doctor --runs-root {metriplane_platform_data_dir}/dashboard/atlas_run --min-free-mb 64 |
-| runner.atlas-freeze-build | allowlist | Build Audit Snapshot | _PYTHON -m metriplane.cli atlas freeze build --root . --out {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_freeze |
+| runner.atlas-freeze-build | allowlist | Build Audit Snapshot | _PYTHON -m metriplane.cli atlas freeze build --root {explicit_repository_root_required} --out {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_freeze |
 | runner.atlas-lake-build | allowlist | Build Evidence Index | _PYTHON -m metriplane.cli atlas lake build --root {metriplane_platform_data_dir}/dashboard/atlas_run --db {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_lake.sqlite |
 | runner.atlas-pilot-kit | allowlist | Create Field Review Kit | _PYTHON -m metriplane.cli atlas pilot kit --out {metriplane_platform_data_dir}/dashboard/atlas_run/pilot_kit |
 | runner.atlas-protocol-export | allowlist | Export Protocol Files | _PYTHON -m metriplane.cli atlas protocol export --out {metriplane_platform_data_dir}/dashboard/atlas_run/protocol |

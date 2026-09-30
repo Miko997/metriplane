@@ -12,6 +12,7 @@ from metriplane.config.runtime import (
     load_active_profile,
     load_config,
     maybe_get_calib_paths,
+    resolve_calib_root,
     resolve_profile,
     resolve_profile_dir,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "load_active_profile",
     "load_config",
     "maybe_get_calib_paths",
+    "resolve_calib_root",
     "resolve_profile",
     "resolve_profile_dir",
 ]

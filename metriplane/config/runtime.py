@@ -7,7 +7,7 @@ from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
-
+from metriplane.paths import PlatformPaths, resolve_platform_paths
 from metriplane.strict_parsing import load_yaml_path
 
 
@@ -378,18 +378,33 @@ class CalibPaths:
     cameras: tuple[CameraCalibPaths, ...] | None = None
 
 
+def resolve_calib_root(
+    calib_root: str | Path | None = None,
+    *,
+    paths: PlatformPaths | None = None,
+) -> Path:
+    """Resolve site calibration without assuming a source checkout."""
+    if calib_root is not None:
+        return Path(calib_root)
+    resolved_paths = paths if paths is not None else resolve_platform_paths()
+    return resolved_paths.config_dir / "calib"
+
+
 def load_active_profile(
-    active_profile_path: Path = Path("calib/active_profile.yaml"),
+    active_profile_path: Path | None = None,
+    *,
+    paths: PlatformPaths | None = None,
 ) -> str | None:
     """
     Read calib/active_profile.yaml:
       profile: board_110x40_warehouse_story_v1_fusion
     """
-    if not active_profile_path.is_file():
+    profile_path = active_profile_path or (resolve_calib_root(paths=paths) / "active_profile.yaml")
+    if not profile_path.is_file():
         return None
 
     try:
-        data = load_yaml_path(active_profile_path) or {}
+        data = load_yaml_path(profile_path) or {}
     except Exception:
         return None
 
@@ -408,7 +423,10 @@ def load_active_profile(
 
 
 def resolve_profile(
-    profile: str | None, *, active_profile_path: Path = Path("calib/active_profile.yaml")
+    profile: str | None,
+    *,
+    active_profile_path: Path | None = None,
+    paths: PlatformPaths | None = None,
 ) -> str | None:
     """
     Resolve profile name:
@@ -417,28 +435,30 @@ def resolve_profile(
     """
     if profile is not None and str(profile).strip():
         return str(profile).strip()
-    return load_active_profile(active_profile_path)
+    return load_active_profile(active_profile_path, paths=paths)
 
 
 def resolve_profile_dir(
     profile: str | None,
     *,
-    calib_root: Path = Path("calib"),
+    calib_root: str | Path | None = None,
     active_profile_path: Path | None = None,
+    paths: PlatformPaths | None = None,
     strict: bool = True,
 ) -> Path | None:
     """
     Resolve calib/profiles/<profile> directory.
     If strict=False: return None when unresolved.
     """
-    ap = active_profile_path or (calib_root / "active_profile.yaml")
-    prof = resolve_profile(profile, active_profile_path=ap)
+    root = resolve_calib_root(calib_root, paths=paths)
+    ap = active_profile_path or (root / "active_profile.yaml")
+    prof = resolve_profile(profile, active_profile_path=ap, paths=paths)
     if not prof:
         if strict:
             raise ValueError("No profile specified and calib/active_profile.yaml missing/empty.")
         return None
 
-    d = calib_root / "profiles" / prof
+    d = root / "profiles" / prof
     if not d.is_dir():
         if strict:
             raise FileNotFoundError(f"Profile directory not found: {d}")
@@ -475,8 +495,9 @@ def _discover_camera_dirs(profile_dir: Path) -> tuple[CameraCalibPaths, ...] | N
 def maybe_get_calib_paths(
     profile: str | None,
     *,
-    calib_root: Path = Path("calib"),
+    calib_root: str | Path | None = None,
     active_profile_path: Path | None = None,
+    paths: PlatformPaths | None = None,
 ) -> CalibPaths | None:
     """
     Best-effort (non-throwing) profile resolution.
@@ -490,12 +511,13 @@ def maybe_get_calib_paths(
           3) else profile_dir/mapping.yaml (fallback path)
       - sets `intrinsics` similarly (root camera.yaml, else cam0/camera.yaml)
     """
-    ap = active_profile_path or (calib_root / "active_profile.yaml")
-    prof = resolve_profile(profile, active_profile_path=ap)
+    root = resolve_calib_root(calib_root, paths=paths)
+    ap = active_profile_path or (root / "active_profile.yaml")
+    prof = resolve_profile(profile, active_profile_path=ap, paths=paths)
     if not prof:
         return None
 
-    d = calib_root / "profiles" / prof
+    d = root / "profiles" / prof
     if not d.is_dir():
         return None
 
@@ -537,13 +559,18 @@ def maybe_get_calib_paths(
 # ======================================================================================
 
 
-def apply_profile_defaults(cfg: Config, *, calib_root: Path = Path("calib")) -> Config:
+def apply_profile_defaults(
+    cfg: Config,
+    *,
+    calib_root: str | Path | None = None,
+    paths: PlatformPaths | None = None,
+) -> Config:
     """
     Returns a NEW Config where missing calibration paths are auto-filled from the active profile.
 
     This is intentionally non-throwing: if files are missing, we leave fields as-is.
     """
-    cal = maybe_get_calib_paths(cfg.profile, calib_root=calib_root)
+    cal = maybe_get_calib_paths(cfg.profile, calib_root=calib_root, paths=paths)
     if cal is None:
         return cfg
 

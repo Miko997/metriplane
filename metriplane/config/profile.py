@@ -5,17 +5,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from metriplane.strict_parsing import load_yaml_path
-
-# metriplane-core/metriplane/config/profile.py
-REPO_ROOT = Path(__file__).resolve().parents[2]  # .../metriplane-core
-CALIB_ROOT = REPO_ROOT / "calib"
+from metriplane.config.runtime import (
+    load_active_profile as _load_active_profile,
+    maybe_get_calib_paths,
+    resolve_calib_root,
+    resolve_profile_dir as _resolve_profile_dir,
+)
+from metriplane.paths import PlatformPaths
 
 
 @dataclass(frozen=True, slots=True)
 class CalibPaths:
+    """Legacy positional shape; mapping intentionally precedes zones."""
+
     profile: str
     profile_dir: Path
     anchors: Path
@@ -24,36 +27,65 @@ class CalibPaths:
     test_points: Path
 
 
-def load_active_profile(calib_root: Path = CALIB_ROOT) -> str:
-    p = calib_root / "active_profile.yaml"
-    if not p.exists():
-        raise FileNotFoundError(
-            f"Missing {p}. Create calib/active_profile.yaml with: profile: <name>"
-        )
-    data: dict[str, Any] = load_yaml_path(p) or {}
-    prof = data.get("profile")
-    if not isinstance(prof, str) or not prof:
-        raise ValueError(f"{p} must contain: profile: <name>")
-    return prof
+def load_active_profile(
+    calib_root: str | Path | None = None,
+    *,
+    paths: PlatformPaths | None = None,
+) -> str:
+    """Preserve the legacy directory-based profile lookup."""
+    root = resolve_calib_root(calib_root, paths=paths)
+    active_profile = root / "active_profile.yaml"
+    if not active_profile.exists():
+        raise FileNotFoundError(f"Missing {active_profile}. Create it with: profile: <name>")
+    profile = _load_active_profile(active_profile, paths=paths)
+    if profile is None:
+        raise ValueError(f"{active_profile} must contain: profile: <name>")
+    return profile
 
 
-def resolve_profile_dir(profile: str | None, calib_root: Path = CALIB_ROOT) -> Path:
-    # profile=None means: read calib/active_profile.yaml
-    if profile is None or str(profile).strip() == "":
-        profile = load_active_profile(calib_root)
-    d = calib_root / "profiles" / profile
-    if not d.exists():
-        raise FileNotFoundError(f"Profile not found: {d}")
-    return d
-
-
-def get_calib_paths(profile: str | None) -> CalibPaths:
-    d = resolve_profile_dir(profile)
-    return CalibPaths(
-        profile=d.name,
-        profile_dir=d,
-        anchors=d / "anchors.yaml",
-        mapping=d / "mapping.yaml",
-        zones=d / "zones.yaml",
-        test_points=d / "test_points.yaml",
+def resolve_profile_dir(
+    profile: str | None,
+    calib_root: str | Path | None = None,
+    *,
+    paths: PlatformPaths | None = None,
+) -> Path:
+    """Preserve the legacy positional calibration-root argument."""
+    resolved = _resolve_profile_dir(
+        profile,
+        calib_root=calib_root,
+        paths=paths,
+        strict=True,
     )
+    if resolved is None:  # pragma: no cover - strict=True guarantees a path or error
+        raise AssertionError("strict profile resolution returned no path")
+    return resolved
+
+
+def get_calib_paths(
+    profile: str | None,
+    calib_root: str | Path | None = None,
+    *,
+    paths: PlatformPaths | None = None,
+) -> CalibPaths:
+    """Return canonical calibration paths through the legacy import surface."""
+    resolved = maybe_get_calib_paths(profile, calib_root=calib_root, paths=paths)
+    if resolved is None:
+        root = resolve_calib_root(calib_root, paths=paths)
+        raise FileNotFoundError(f"Profile not found under: {root / 'profiles'}")
+    return CalibPaths(
+        profile=resolved.profile,
+        profile_dir=resolved.profile_dir,
+        anchors=resolved.anchors,
+        mapping=resolved.mapping,
+        zones=resolved.zones,
+        test_points=resolved.test_points,
+    )
+
+
+__all__ = [
+    "CalibPaths",
+    "get_calib_paths",
+    "load_active_profile",
+    "resolve_calib_root",
+    "resolve_profile_dir",
+]

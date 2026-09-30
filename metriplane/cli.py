@@ -63,7 +63,7 @@ def _main_run(argv: list[str], *, paths: PlatformPaths | None = None) -> int:
     from metriplane.run import run_loop
 
     p = argparse.ArgumentParser("metriplane")
-    p.add_argument("--config", default="config.example.yaml", help="Path to YAML config")
+    p.add_argument("--config", required=True, help="Path to YAML config")
     p.add_argument(
         "--profile",
         default=None,
@@ -548,7 +548,7 @@ def _main_start(
     return cmd_start(
         live=bool(args.live),
         backend=str(args.backend),
-        config=str(args.config),
+        config=str(args.config) if args.config is not None else None,
         duration_s=float(args.duration_s),
         run_id=str(args.run_id) if args.run_id is not None else None,
         dashboard_port=int(args.dashboard_port),
@@ -608,7 +608,7 @@ def _main_restart(
     return cmd_restart(
         live=bool(args.live),
         backend=str(args.backend),
-        config=str(args.config),
+        config=str(args.config) if args.config is not None else None,
         duration_s=float(args.duration_s),
         run_id=str(args.run_id) if args.run_id is not None else None,
         dashboard_port=int(args.dashboard_port),

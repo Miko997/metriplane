@@ -74,11 +74,14 @@ def test_primary_runtime_injects_platform_default(tmp_path: Path, monkeypatch) -
         lambda _cfg, **kwargs: (captured.update(kwargs), 18)[1],
     )
 
-    assert cli._main_run([]) == 18
+    assert cli._main_run(["--config", str(tmp_path / "runtime.yaml")]) == 18
     assert captured["paths"] is paths
 
 
-def test_primary_runtime_preserves_shipping_docker_data_mount(monkeypatch) -> None:
+def test_primary_runtime_preserves_shipping_docker_data_mount(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     from metriplane import cli, run
     from metriplane.provenance import run_provenance
 
@@ -96,7 +99,7 @@ def test_primary_runtime_preserves_shipping_docker_data_mount(monkeypatch) -> No
         lambda _cfg, **kwargs: (captured.update(kwargs), 19)[1],
     )
 
-    assert cli._main_run([]) == 19
+    assert cli._main_run(["--config", str(tmp_path / "runtime.yaml")]) == 19
     assert captured["runs_dir"] is None
     assert run_provenance.data_dir() / "runs" == Path("/data/runs")
 
@@ -111,7 +114,9 @@ def test_primary_runtime_explicit_runs_dir_skips_platform_resolution(
 
     explicit = tmp_path / "explicit-runs"
     configured = str(explicit) if override_source == "config" else None
-    argv = ["--runs-dir", str(explicit)] if override_source == "cli" else []
+    argv = ["--config", str(tmp_path / "runtime.yaml")]
+    if override_source == "cli":
+        argv.extend(["--runs-dir", str(explicit)])
     captured: dict[str, object] = {}
     monkeypatch.setattr(
         "metriplane.config.load_config",
@@ -178,6 +183,7 @@ def test_runtime_provenance_preserves_data_dir_environment_precedence(
 
 
 def test_primary_runtime_path_resolution_failure_is_user_facing(
+    tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
@@ -195,7 +201,7 @@ def test_primary_runtime_path_resolution_failure_is_user_facing(
         lambda *_args, **_kwargs: pytest.fail("runtime must not start"),
     )
 
-    assert cli._main_run([]) == 2
+    assert cli._main_run(["--config", str(tmp_path / "runtime.yaml")]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "platform path error: home unavailable\n"
@@ -519,7 +525,7 @@ def test_metriplane_run_cli_propagates_injected_platform_paths(
 
     monkeypatch.setattr("metriplane.run.run_loop", fake_run_loop)
 
-    assert cli.main(["run"], paths=paths) == 29
+    assert cli.main(["run", "--config", str(tmp_path / "runtime.yaml")], paths=paths) == 29
     assert captured["paths"] is paths
 
 

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `6e18eda734d64dde3f594c06f25e9e7a87ef1b69e36d091ef923419c188e6ad6`
+Canonical projection SHA-256: `50a8feda4097bb1a7e9ae520329d6ab5bd77690a2c5ac5dd43700d6229765937`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -81,7 +81,7 @@ Canonical projection SHA-256: `6e18eda734d64dde3f594c06f25e9e7a87ef1b69e36d091ef
 | cli.traces | metriplane traces | metriplane/cli.py | python -m metriplane.cli traces | - | - | ui_missing | P1 |  |
 | runner.atlas-demo | Build Evidence Sample | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas run-pack assembly_cell --out {metriplane_platform_data_dir}/dashboard/atlas_run | web/dashboard/atlas.html; web/dashboard/atlas.html | Build sample run; Run | ui_full | P1 | Run the Metriplane evidence workflow over the assembly-cell sample and publish local dashboard artifacts |
 | runner.atlas-edge-doctor | Run Edge Readiness | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas edge doctor --runs-root {metriplane_platform_data_dir}/dashboard/atlas_run --min-free-mb 64 | web/dashboard/atlas.html | Run | ui_full | P2 | Check generated evidence storage and edge-appliance readiness signals |
-| runner.atlas-freeze-build | Build Audit Snapshot | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas freeze build --root . --out {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_freeze | web/dashboard/atlas.html | Run | ui_full | P2 | Build a local evidence audit and review-note snapshot |
+| runner.atlas-freeze-build | Build Audit Snapshot | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas freeze build --root {explicit_repository_root_required} --out {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_freeze | web/dashboard/atlas.html | Run | ui_disabled_with_reason | P2 | Requires an explicit repository root; run the Atlas CLI directly |
 | runner.atlas-lake-build | Build Evidence Index | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas lake build --root {metriplane_platform_data_dir}/dashboard/atlas_run --db {metriplane_platform_data_dir}/dashboard/atlas_run/evidence_lake.sqlite | web/dashboard/atlas.html | Run | ui_full | P2 | Index generated manifests, incidents, and events into a local SQLite evidence index |
 | runner.atlas-pilot-kit | Create Field Review Kit | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas pilot kit --out {metriplane_platform_data_dir}/dashboard/atlas_run/pilot_kit | web/dashboard/atlas.html | Run | ui_full | P2 | Create external review checklist, script, and review templates |
 | runner.atlas-protocol-export | Export Protocol Files | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas protocol export --out {metriplane_platform_data_dir}/dashboard/atlas_run/protocol | web/dashboard/atlas.html; web/dashboard/integrations.html | Run; Export protocol | ui_full | P2 | Write local protocol schema/index artifacts for external interchange |
