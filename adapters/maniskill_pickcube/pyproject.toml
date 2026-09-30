@@ -14,7 +14,7 @@ requires-python = ">=3.12,<3.14"
 license = "MIT"
 dependencies = [
   "h5py==3.16.0",
-  "huggingface-hub==1.27.0",
+  "huggingface-hub==2.0.0",
   "mani-skill==3.0.1",
   "numpy==2.5.2",
   "PyYAML==6.0.3",
