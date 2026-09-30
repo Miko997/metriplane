@@ -405,6 +405,28 @@ def test_task_instance_rejects_altered_machine_signature_and_expiry() -> None:
         _validate_task(delegated, authority, snapshot, evaluated_at="2026-09-18T12:09:00Z")
 
 
+def test_task_snapshot_remains_fresh_for_its_bounded_ten_minute_lease() -> None:
+    delegated, authority, snapshot, _ = _task_fixture()
+
+    assert (
+        _validate_task(
+            delegated,
+            authority,
+            snapshot,
+            evaluated_at="2026-09-18T12:07:59Z",
+        )["time_window_valid"]
+        is True
+    )
+
+    with pytest.raises(DelegationNotReady, match="expired"):
+        _validate_task(
+            delegated,
+            authority,
+            snapshot,
+            evaluated_at="2026-09-18T12:08:00Z",
+        )
+
+
 def test_v2_task_instance_materializes_full_ready_work_order_in_fixture_mode(
     tmp_path: Path,
 ) -> None:

@@ -97,6 +97,11 @@ key. `metriplane.task-delegation.v2` requires both valid signatures and all
 original MP2-016 READY predicates. The v1 record and historical work orders
 are not rewritten. A missing credential, partial graph, stale base, expired
 lease, changed dependency, or absent protected grant remains NOT READY.
+For v2, snapshot freshness is bounded by that same signed task lease: the
+snapshot capture cannot predate issuance or be in the future, and neither the
+snapshot nor its delegation remains usable after the maximum ten-minute lease.
+This lets the broker repeat its exact-base and provider admission seals without
+turning a still-live task lease into an undocumented five-minute sub-lease.
 
 Activation needs a protected owner-signed grant, a qualified exact-main merge,
 the isolated credentials, and a live readback of the Linear query. Merely
