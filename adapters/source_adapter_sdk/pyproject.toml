@@ -15,7 +15,7 @@ license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
-test = ["jsonschema==4.25.1", "pytest==8.4.2", "ruff==0.14.10"]
+test = ["jsonschema==4.25.1", "pytest==9.1.1", "ruff==0.14.10"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/metriplane_source_adapter_sdk"]
