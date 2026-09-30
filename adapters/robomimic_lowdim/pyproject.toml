@@ -15,7 +15,7 @@ license = "MIT"
 dependencies = [
   "h5py==3.16.0",
   "huggingface-hub==1.27.0",
-  "numpy==2.5.2",
+  "numpy==2.5.3",
 ]
 
 [project.optional-dependencies]
