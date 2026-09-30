@@ -279,6 +279,11 @@ expired task authority, or an expired merge request still fails closed at
 every admission seal, and the existing pre-reservation merge-budget guard
 still applies.
 
+The rootless delegate request helper uses that same bounded ten-minute window.
+This leaves the broker's required pre-reservation budget intact after a complete
+provider readback without extending either the task authority or the maximum
+lease accepted by the broker.
+
 This mechanism is not active merely because the code exists. Until the owner
 grant, isolated attestor, read-only Linear credential, executor key and
 protected exact-main qualification exist, the broker fails closed and the
